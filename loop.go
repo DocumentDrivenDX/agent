@@ -143,6 +143,17 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		result.Tokens.Add(resp.Usage)
 		result.Model = resp.Model
 
+		// Accumulate cost
+		iterCost := DefaultPricing.EstimateCost(resp.Model, resp.Usage.Input, resp.Usage.Output)
+		if iterCost < 0 {
+			// Unknown model — mark total cost as unknown if not already set
+			if result.CostUSD == 0 {
+				result.CostUSD = -1
+			}
+		} else if result.CostUSD >= 0 {
+			result.CostUSD += iterCost
+		}
+
 		// Emit LLM response event
 		emitCallback(req.Callback, Event{
 			SessionID: sessionID,
@@ -258,6 +269,7 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result)
 			"status":      result.Status,
 			"output":      result.Output,
 			"tokens":      result.Tokens,
+			"cost_usd":    result.CostUSD,
 			"duration_ms": result.Duration.Milliseconds(),
 			"error":       errStr,
 		}),

@@ -233,3 +233,85 @@ func TestRun_MultipleToolCalls(t *testing.T) {
 	assert.Equal(t, StatusSuccess, result.Status)
 	require.Len(t, result.ToolCalls, 2)
 }
+
+func TestRun_CostAccumulation(t *testing.T) {
+	// gpt-4o is in DefaultPricing: $2.50/MTok input, $10.00/MTok output
+	// iteration 1: 1000 input, 500 output -> $0.0025 + $0.005 = $0.0075
+	// iteration 2: 2000 input, 1000 output -> $0.005 + $0.010 = $0.015
+	// total: $0.0225
+	provider := &mockProvider{
+		responses: []Response{
+			{
+				ToolCalls: []ToolCall{
+					{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{}`)},
+				},
+				Usage: TokenUsage{Input: 1000, Output: 500, Total: 1500},
+				Model: "gpt-4o",
+			},
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 2000, Output: 1000, Total: 3000},
+				Model:   "gpt-4o",
+			},
+		},
+	}
+
+	readTool := &mockTool{name: "read", result: "content"}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:   "test cost",
+		Provider: provider,
+		Tools:    []Tool{readTool},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	expected := DefaultPricing.EstimateCost("gpt-4o", 1000, 500) +
+		DefaultPricing.EstimateCost("gpt-4o", 2000, 1000)
+	assert.InDelta(t, expected, result.CostUSD, 1e-9)
+	assert.Greater(t, result.CostUSD, 0.0)
+}
+
+func TestRun_CostUnknownModel(t *testing.T) {
+	// Unknown model should result in CostUSD == -1
+	provider := &mockProvider{
+		responses: []Response{
+			{Content: "done", Usage: TokenUsage{Input: 100, Output: 50, Total: 150}, Model: "unknown-model-xyz"},
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:   "test",
+		Provider: provider,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, -1.0, result.CostUSD)
+}
+
+func TestRun_SessionEndEventIncludesCost(t *testing.T) {
+	provider := &mockProvider{
+		responses: []Response{
+			{Content: "done", Usage: TokenUsage{Input: 1000, Output: 500, Total: 1500}, Model: "gpt-4o"},
+		},
+	}
+
+	var sessionEndData map[string]any
+	cb := func(e Event) {
+		if e.Type == EventSessionEnd {
+			_ = json.Unmarshal(e.Data, &sessionEndData)
+		}
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:   "test",
+		Provider: provider,
+		Callback: cb,
+	})
+	require.NoError(t, err)
+	assert.Greater(t, result.CostUSD, 0.0)
+	require.NotNil(t, sessionEndData)
+	costVal, ok := sessionEndData["cost_usd"]
+	require.True(t, ok, "session.end event must include cost_usd")
+	assert.Greater(t, costVal.(float64), 0.0)
+}
