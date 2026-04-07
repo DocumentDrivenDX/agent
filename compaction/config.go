@@ -1,6 +1,10 @@
 package compaction
 
-import "github.com/DocumentDrivenDX/forge"
+import (
+	"strings"
+
+	"github.com/DocumentDrivenDX/forge"
+)
 
 // DefaultContextWindow is used when no context window is configured.
 const DefaultContextWindow = 8192
@@ -118,18 +122,5 @@ func findValidBoundary(messages []forge.Message, index int) int {
 func IsCompactionSummary(msg forge.Message) bool {
 	return msg.Role == forge.RoleUser &&
 		len(msg.Content) > 50 &&
-		(contains(msg.Content, "<summary>") || contains(msg.Content, "compacted into the following summary"))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+		(strings.Contains(msg.Content, "<summary>") || strings.Contains(msg.Content, "compacted into the following summary"))
 }

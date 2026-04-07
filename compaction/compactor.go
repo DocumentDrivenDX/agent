@@ -12,7 +12,6 @@ type state struct {
 	mu              sync.Mutex
 	previousSummary string
 	previousFileOps *FileOps
-	lastUsage       forge.TokenUsage
 }
 
 // NewCompactor creates a Compactor function suitable for forge.Request.Compactor.
