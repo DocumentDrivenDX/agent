@@ -114,9 +114,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		})
 		seq++
 
-		// Call the provider
+		// Call the provider (streaming if supported)
 		llmStart := time.Now()
-		resp, err := req.Provider.Chat(ctx, messages, toolDefs, opts)
+		var resp Response
+		var err error
+		if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
+			resp, err = consumeStream(ctx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
+		} else {
+			resp, err = req.Provider.Chat(ctx, messages, toolDefs, opts)
+		}
 		llmDuration := time.Since(llmStart)
 
 		if err != nil {
