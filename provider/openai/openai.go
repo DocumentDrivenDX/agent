@@ -22,9 +22,10 @@ type Provider struct {
 
 // Config holds configuration for the OpenAI-compatible provider.
 type Config struct {
-	BaseURL string // e.g., "http://localhost:1234/v1" for LM Studio
-	APIKey  string // optional for local providers
-	Model   string // e.g., "qwen3.5-7b", "gpt-4o"
+	BaseURL string            // e.g., "http://localhost:1234/v1" for LM Studio
+	APIKey  string            // optional for local providers
+	Model   string            // e.g., "qwen3.5-7b", "gpt-4o"
+	Headers map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
 }
 
 // New creates a new OpenAI-compatible provider.
@@ -36,6 +37,9 @@ func New(cfg Config) *Provider {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	} else {
 		opts = append(opts, option.WithAPIKey("not-needed"))
+	}
+	for k, v := range cfg.Headers {
+		opts = append(opts, option.WithHeader(k, v))
 	}
 
 	client := oai.NewClient(opts...)
