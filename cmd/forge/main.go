@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/anthropics/forge"
+	"github.com/anthropics/forge/prompt"
 	"github.com/anthropics/forge/provider/anthropic"
 	oaiProvider "github.com/anthropics/forge/provider/openai"
 	"github.com/anthropics/forge/session"
@@ -27,6 +28,8 @@ var (
 	BuildTime = ""
 	GitCommit = ""
 )
+
+const defaultBasePrompt = `You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files. Use the available tools to complete tasks.`
 
 // config mirrors the YAML config file structure.
 type config struct {
@@ -54,7 +57,7 @@ func main() {
 
 func run() int {
 	// Define flags
-	prompt := flag.String("p", "", "Prompt (use @file to read from file)")
+	promptFlag := flag.String("p", "", "Prompt (use @file to read from file)")
 	jsonOutput := flag.Bool("json", false, "Output result as JSON")
 	provider := flag.String("provider", "", "Provider type (openai-compat or anthropic)")
 	baseURL := flag.String("base-url", "", "Provider base URL")
@@ -63,7 +66,7 @@ func run() int {
 	maxIter := flag.Int("max-iter", 0, "Max iterations")
 	workDir := flag.String("work-dir", "", "Working directory")
 	version := flag.Bool("version", false, "Print version")
-	systemPrompt := flag.String("system", "", "System prompt")
+	sysPromptFlag := flag.String("system", "", "System prompt")
 
 	flag.Parse()
 
@@ -92,7 +95,7 @@ func run() int {
 	applyFlags(&cfg, *provider, *baseURL, *apiKey, *model, *maxIter)
 
 	// Resolve prompt
-	promptText, err := resolvePrompt(*prompt)
+	promptText, err := resolvePrompt(*promptFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -124,6 +127,20 @@ func run() int {
 		&tool.BashTool{WorkDir: wd},
 	}
 
+	// Build system prompt using prompt.Builder
+	sysPrompt := prompt.New(defaultBasePrompt).
+		WithTools(tools).
+		WithGuidelines(
+			"Be concise in your responses",
+			"Show file paths clearly when working with files",
+		).
+		WithContextFiles(prompt.LoadContextFiles(wd)).
+		WithWorkDir(wd)
+
+	if *sysPromptFlag != "" {
+		sysPrompt.WithAppend(*sysPromptFlag)
+	}
+
 	// Session logger
 	sessionID := fmt.Sprintf("s-%d", os.Getpid())
 	logger := session.NewLogger(cfg.SessionLogDir, sessionID)
@@ -132,7 +149,7 @@ func run() int {
 	// Build request
 	req := forge.Request{
 		Prompt:        promptText,
-		SystemPrompt:  *systemPrompt,
+		SystemPrompt:  sysPrompt.Build(),
 		Provider:      p,
 		Tools:         tools,
 		MaxIterations: cfg.MaxIterations,
