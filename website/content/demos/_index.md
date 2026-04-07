@@ -3,11 +3,18 @@ title: Demos
 weight: 2
 ---
 
-Terminal recordings showing forge in action.
+Terminal recordings showing forge in action with LM Studio.
 
-{{< cards >}}
-  {{< card title="File Read Task" subtitle="Model reads a file using the read tool and reports its contents." >}}
-  {{< card title="File Edit Workflow" subtitle="Model reads, edits, and verifies a file change end-to-end." >}}
-{{< /cards >}}
+## File Read Task
 
-*Demo recordings coming soon — see the [integration tests](https://github.com/anthropics/forge/blob/main/integration_test.go) for the workflows these will demonstrate.*
+Model reads `main.go` using the read tool and describes the package.
+
+{{< asciinema key="file-read" cols="100" rows="24" >}}
+
+## File Edit Workflow
+
+Model reads a file, uses the edit tool to replace a word, then reads again to confirm the change.
+
+{{< asciinema key="file-edit" cols="100" rows="24" >}}
+
+Both demos run against [qwen3-coder-next](https://huggingface.co/Qwen) via LM Studio on a local machine.

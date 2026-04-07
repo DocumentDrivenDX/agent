@@ -1,0 +1,2 @@
+{"version": 2, "width": 100, "height": 24, "timestamp": 1775522316, "env": {"SHELL": "/bin/zsh", "TERM": "screen-256color"}, "title": "Forge: File Read Task"}
+[3.619781, "o", "**Package name:** `main`\r\n\r\n**What it does:** This is a simple Go program that prints \"Hello, World!\" to the console. It's the classic introductory example for Go programs, using the `fmt` package to output text.\r\n[success] tokens: 1791 in / 71 out\r\n"]
