@@ -211,34 +211,60 @@ func (p *Provider) ChatStream(ctx context.Context, messages []forge.Message, too
 	ch := make(chan forge.StreamDelta, 1)
 	go func() {
 		defer close(ch)
+		// OpenAI only sends tool call ID in the first chunk for each index;
+		// subsequent argument chunks carry the index but have an empty ID.
+		// Track index→ID so we can carry the ID forward.
+		indexToID := make(map[int]string)
 		for stream.Next() {
 			chunk := stream.Current()
 
-			delta := forge.StreamDelta{
-				Model: chunk.Model,
-			}
-
 			if len(chunk.Choices) > 0 {
 				choice := chunk.Choices[0]
-				delta.Content = choice.Delta.Content
-				delta.FinishReason = string(choice.FinishReason)
 
+				// Emit one delta per tool call entry so multiple parallel tool
+				// calls in the same chunk are not collapsed to the last one.
 				for _, tc := range choice.Delta.ToolCalls {
-					delta.ToolCallID = tc.ID
-					delta.ToolCallName = tc.Function.Name
-					delta.ToolCallArgs = tc.Function.Arguments
+					id := tc.ID
+					if id != "" {
+						indexToID[int(tc.Index)] = id
+					} else {
+						id = indexToID[int(tc.Index)]
+					}
+					ch <- forge.StreamDelta{
+						Model:        chunk.Model,
+						ToolCallID:   id,
+						ToolCallName: tc.Function.Name,
+						ToolCallArgs: tc.Function.Arguments,
+					}
 				}
+
+				// Emit a separate delta for content / finish reason when present.
+				if choice.Delta.Content != "" || choice.FinishReason != "" {
+					ch <- forge.StreamDelta{
+						Model:        chunk.Model,
+						Content:      choice.Delta.Content,
+						FinishReason: string(choice.FinishReason),
+					}
+				} else if len(choice.Delta.ToolCalls) == 0 {
+					// No content, no tool calls — still forward model/finish metadata.
+					ch <- forge.StreamDelta{
+						Model:        chunk.Model,
+						FinishReason: string(choice.FinishReason),
+					}
+				}
+			} else {
+				ch <- forge.StreamDelta{Model: chunk.Model}
 			}
 
 			if chunk.Usage.TotalTokens != 0 {
-				delta.Usage = &forge.TokenUsage{
-					Input:  int(chunk.Usage.PromptTokens),
-					Output: int(chunk.Usage.CompletionTokens),
-					Total:  int(chunk.Usage.TotalTokens),
+				ch <- forge.StreamDelta{
+					Usage: &forge.TokenUsage{
+						Input:  int(chunk.Usage.PromptTokens),
+						Output: int(chunk.Usage.CompletionTokens),
+						Total:  int(chunk.Usage.TotalTokens),
+					},
 				}
 			}
-
-			ch <- delta
 		}
 
 		if err := stream.Err(); err != nil {
