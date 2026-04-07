@@ -189,13 +189,3 @@ type Result struct {
 	// SessionID identifies the session log for this run.
 	SessionID string `json:"session_id"`
 }
-
-// Run executes the agent loop: send prompt, process tool calls, repeat until
-// the model produces a final text response or limits are reached.
-//
-// This is a placeholder that will be implemented in the agent loop bead.
-func Run(ctx context.Context, req Request) (Result, error) {
-	_ = ctx
-	_ = req
-	return Result{Status: StatusError}, nil
-}
