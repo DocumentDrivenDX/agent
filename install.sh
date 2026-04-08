@@ -1,61 +1,254 @@
 #!/usr/bin/env bash
 # Forge installer — downloads the latest release binary for your platform.
 # Usage: curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/forge/master/install.sh | bash
+
 set -euo pipefail
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
 REPO="DocumentDrivenDX/forge"
 INSTALL_DIR="${FORGE_INSTALL_DIR:-$HOME/.local/bin}"
 
+# Logging functions (all to stderr to avoid polluting command substitution)
+log() {
+    echo -e "${BLUE}[forge]${NC} $1" >&2
+}
+
+success() {
+    echo -e "${GREEN}[forge]${NC} $1" >&2
+}
+
+warn() {
+    echo -e "${YELLOW}[forge]${NC} $1" >&2
+}
+
+error() {
+    echo -e "${RED}[forge]${NC} $1" >&2
+    exit 1
+}
+
+# Check prerequisites
+check_prerequisites() {
+    log "Checking prerequisites..."
+    
+    # Check for curl or wget
+    if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+        error "curl or wget is required but neither is installed."
+    fi
+    
+    success "Prerequisites check passed"
+}
+
 # Detect platform
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m)"
+detect_platform() {
+    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    ARCH="$(uname -m)"
 
-case "$ARCH" in
-  x86_64|amd64) ARCH="amd64" ;;
-  aarch64|arm64) ARCH="arm64" ;;
-  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
-esac
+    case "$ARCH" in
+        x86_64|amd64) ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        *) error "Unsupported architecture: $ARCH" ;;
+    esac
 
-case "$OS" in
-  linux|darwin) ;;
-  *) echo "Unsupported OS: $OS"; exit 1 ;;
-esac
+    case "$OS" in
+        linux|darwin) ;;
+        *) error "Unsupported OS: $OS" ;;
+    esac
 
-BINARY="forge-${OS}-${ARCH}"
+    BINARY="forge-${OS}-${ARCH}"
+}
 
 # Get latest release tag
-echo "Fetching latest release..."
-TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+get_latest_release() {
+    log "Fetching latest release..."
+    
+    if [ -n "${FORGE_VERSION:-}" ]; then
+        TAG="${FORGE_VERSION}"
+        # Normalize to tag format (add v prefix if missing)
+        if [[ ! "$TAG" =~ ^v ]]; then
+            TAG="v${TAG}"
+        fi
+        log "Using requested version: ${TAG}"
+    else
+        if command -v curl &>/dev/null; then
+            TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+        elif command -v wget &>/dev/null; then
+            TAG=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+        fi
 
-if [ -z "$TAG" ]; then
-  echo "Error: could not determine latest release"
-  exit 1
-fi
+        if [ -z "$TAG" ]; then
+            error "Could not determine latest release. Set FORGE_VERSION to specify a version."
+        fi
+        
+        log "Latest release: ${TAG}"
+    fi
+    
+    echo "$TAG"
+}
 
-URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}"
+# Download and install binary
+install_binary() {
+    local TAG="$1"
+    
+    URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}"
+    
+    log "Installing forge ${TAG} (${OS}/${ARCH})..."
+    
+    # Create installation directory
+    mkdir -p "$INSTALL_DIR"
+    
+    # Download binary
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$URL" -o "${INSTALL_DIR}/forge"
+    elif command -v wget &>/dev/null; then
+        wget -q "$URL" -O "${INSTALL_DIR}/forge"
+    fi
+    
+    # Make executable
+    chmod +x "${INSTALL_DIR}/forge"
+    
+    success "Installed forge to ${INSTALL_DIR}/forge"
+}
 
-echo "Installing forge ${TAG} (${OS}/${ARCH})..."
-mkdir -p "$INSTALL_DIR"
+# Configure PATH in shell rc files
+configure_path() {
+    log "Checking PATH configuration..."
+    
+    # Check if already in PATH
+    if [[ ":$PATH:" == *":${INSTALL_DIR}:"* ]]; then
+        success "PATH is already configured (${INSTALL_DIR})"
+        return
+    fi
+    
+    # Detect shell and add to appropriate rc file
+    local SHELL_NAME=$(basename "$SHELL")
+    local RC_FILE=""
+    
+    case "$SHELL_NAME" in
+        bash)
+            RC_FILE="$HOME/.bashrc"
+            ;;
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            ;;
+        fish)
+            RC_FILE="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            RC_FILE="$HOME/.profile"
+            ;;
+    esac
+    
+    if [ -f "$RC_FILE" ]; then
+        # Check if already added
+        if ! grep -q "${INSTALL_DIR}" "$RC_FILE" 2>/dev/null; then
+            echo "" >> "$RC_FILE"
+            echo "# Forge CLI PATH" >> "$RC_FILE"
+            
+            case "$SHELL_NAME" in
+                fish)
+                    echo "fish_add_path ${INSTALL_DIR}" >> "$RC_FILE"
+                    ;;
+                *)
+                    echo 'export PATH="${PATH}:${INSTALL_DIR}"' >> "$RC_FILE"
+                    ;;
+            esac
+            
+            success "Added forge to PATH in $RC_FILE"
+        else
+            success "Forge is already configured in $RC_FILE"
+        fi
+    else
+        warn "Could not find shell config file. Please add ${INSTALL_DIR} to your PATH manually."
+        echo ""
+        echo "Add this to your shell rc file:"
+        case "$SHELL_NAME" in
+            fish)
+                echo "  fish_add_path ${INSTALL_DIR}"
+                ;;
+            *)
+                echo '  export PATH="${PATH}:${INSTALL_DIR}"'
+                ;;
+        esac
+    fi
+}
 
-if command -v curl &>/dev/null; then
-  curl -fsSL "$URL" -o "${INSTALL_DIR}/forge"
-elif command -v wget &>/dev/null; then
-  wget -q "$URL" -O "${INSTALL_DIR}/forge"
-else
-  echo "Error: curl or wget required"
-  exit 1
-fi
+# Verify installation
+verify_installation() {
+    log "Verifying installation..."
 
-chmod +x "${INSTALL_DIR}/forge"
+    # Check if binary exists and is executable
+    if [ ! -f "${INSTALL_DIR}/forge" ] || [ ! -x "${INSTALL_DIR}/forge" ]; then
+        error "Installation failed: forge binary not found or not executable at ${INSTALL_DIR}/forge"
+    fi
 
-echo "Installed forge to ${INSTALL_DIR}/forge"
+    # Test binary execution
+    if ! "${INSTALL_DIR}/forge" --version &>/dev/null; then
+        warn "Forge binary installed but 'forge --version' command failed."
+        warn "This may be normal if PATH is not yet configured."
+    else
+        success "Installation verification passed"
+    fi
+}
 
-# Check if install dir is in PATH
-if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
-  echo ""
-  echo "Add ${INSTALL_DIR} to your PATH:"
-  echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
-fi
+# Show getting started information
+show_getting_started() {
+    echo ""
+    echo -e "${GREEN}🎉 Forge installed successfully!${NC}"
+    echo ""
+    echo -e "${BLUE}📚 Next Steps:${NC}"
+    echo "   forge version     Check your installation"
+    echo "   forge update      Check for and install updates"
+    echo "   forge providers   List configured LLM providers"
+    echo "   forge import pi   Import configuration from Pi"
+    echo ""
+    echo -e "${BLUE}📖 Documentation:${NC}"
+    echo "   https://github.com/${REPO}"
+    echo ""
+    echo -e "${BLUE}🔧 Binary Location:${NC}"
+    echo "   ${INSTALL_DIR}/forge"
+    echo ""
+    echo -e "${BLUE}⚡ Quick Start:${NC}"
+    echo "   forge --help              Show all commands and options"
+    echo "   forge -p \"Your task\"      Run a quick task with default provider"
+    echo ""
+    
+    if command -v forge &>/dev/null; then
+        success "Forge is ready to use! Run 'forge --version' to verify."
+    else
+        warn "Please restart your shell or run the following to use forge immediately:"
+        echo ""
+        case "$SHELL_NAME" in
+            fish)
+                echo "  source ${RC_FILE}"
+                ;;
+            *)
+                echo "  source $RC_FILE"
+                ;;
+        esac
+    fi
+}
 
-echo ""
-"${INSTALL_DIR}/forge" --version
+# Main installation flow
+main() {
+    echo -e "${BLUE}🚀 Installing Forge — Embeddable Go Agent Runtime${NC}"
+    echo ""
+    
+    check_prerequisites
+    detect_platform
+    
+    TAG=$(get_latest_release)
+    install_binary "$TAG"
+    configure_path
+    verify_installation
+    show_getting_started
+}
+
+# Run installation
+main "$@"

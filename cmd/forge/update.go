@@ -1,0 +1,312 @@
+// Package main provides the forge CLI.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+const (
+	defaultGitHubRepo = "DocumentDrivenDX/forge"
+	version           = "v0.0.8" // Updated by release script
+	updateCheckTTL    = time.Hour // Cache version check for 1 hour
+)
+
+var githubRepo = defaultGitHubRepo // Made var for testing
+
+// SemVer represents a semantic version.
+type SemVer struct {
+	Major      int
+	Minor      int
+	Patch      int
+	PreRelease string // e.g., "rc1", "beta2"
+}
+
+// ParseSemVer parses a version string like "v0.0.8" or "1.2.3-beta".
+// Returns error for non-semantic versions like "dev".
+func ParseSemVer(v string) (SemVer, error) {
+	// Handle special cases
+	if v == "dev" || v == "" {
+		return SemVer{}, fmt.Errorf("non-semantic version: %s", v)
+	}
+
+	v = strings.TrimPrefix(v, "v")
+
+	// Split by '-' for pre-release
+	parts := strings.SplitN(v, "-", 2)
+	versionStr := parts[0]
+	prerelease := ""
+	if len(parts) > 1 {
+		prerelease = parts[1]
+	}
+
+	// Parse major.minor.patch
+	nums := strings.Split(versionStr, ".")
+	if len(nums) != 3 {
+		return SemVer{}, fmt.Errorf("invalid version format: %s", v)
+	}
+
+	var major, minor, patch int
+	fmt.Sscanf(nums[0], "%d", &major)
+	fmt.Sscanf(nums[1], "%d", &minor)
+	fmt.Sscanf(nums[2], "%d", &patch)
+
+	return SemVer{Major: major, Minor: minor, Patch: patch, PreRelease: prerelease}, nil
+}
+
+// String returns the version string.
+func (v SemVer) String() string {
+	s := fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
+	if v.PreRelease != "" {
+		s += "-" + v.PreRelease
+	}
+	return s
+}
+
+// Less returns true if v < other.
+func (v SemVer) Less(other SemVer) bool {
+	if v.Major != other.Major {
+		return v.Major < other.Major
+	}
+	if v.Minor != other.Minor {
+		return v.Minor < other.Minor
+	}
+	// Pre-release versions are less than release versions
+	if v.PreRelease != "" && other.PreRelease == "" {
+		return true
+	}
+	if v.PreRelease == "" && other.PreRelease != "" {
+		return false
+	}
+	return v.Patch < other.Patch || (v.Patch == other.Patch && v.PreRelease < other.PreRelease)
+}
+
+// GitHubRelease represents a GitHub release.
+type GitHubRelease struct {
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"` // Release notes (markdown)
+	PublishedAt time.Time `json:"published_at"`
+}
+
+// GetLatestRelease fetches the latest release from GitHub API.
+func GetLatestRelease(repo string, cacheFile string) (*GitHubRelease, error) {
+	// Check cache first
+	if cached, err := loadCachedVersion(cacheFile); err == nil && time.Since(cached.Time) < updateCheckTTL {
+		return &GitHubRelease{TagName: cached.Version}, nil
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching latest release: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API returned %s: %s", resp.Status, string(body))
+	}
+
+	var release GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("parsing release data: %w", err)
+	}
+
+	// Cache the result
+	saveCachedVersion(cacheFile, release.TagName)
+
+	return &release, nil
+}
+
+type cachedVersion struct {
+	Version string    `json:"version"`
+	Time    time.Time `json:"time"`
+}
+
+func loadCachedVersion(path string) (*cachedVersion, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cv cachedVersion
+	if err := json.Unmarshal(data, &cv); err != nil {
+		return nil, err
+	}
+	return &cv, nil
+}
+
+func saveCachedVersion(path, version string) error {
+	cv := cachedVersion{Version: version, Time: time.Now().UTC()}
+	data, err := json.MarshalIndent(cv, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// FindBinaryPath finds the path to the forge binary.
+func FindBinaryPath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("getting executable path: %w", err)
+	}
+
+	dir := filepath.Dir(exe)
+	// Check if in common locations
+	if strings.Contains(dir, ".local/bin") ||
+		strings.Contains(dir, "go/bin") ||
+		strings.Contains(dir, "/bin/") {
+		return exe, nil
+	}
+
+	// Fall back to which command
+	cmd := exec.Command("which", "forge")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("cannot locate forge binary: %w", err)
+	}
+	path := strings.TrimSpace(string(output))
+	if path == "" {
+		return exe, nil // Return current executable as fallback
+	}
+	return path, nil
+}
+
+// DownloadBinary downloads the latest binary for the current platform.
+func DownloadBinary(tag string, w io.Writer) (string, error) {
+	osName := runtime.GOOS
+	arch := runtime.GOARCH
+
+	switch arch {
+	case "amd64", "x86_64":
+		arch = "amd64"
+	case "arm64", "aarch64":
+		arch = "arm64"
+	default:
+		return "", fmt.Errorf("unsupported architecture: %s", arch)
+	}
+
+	binaryName := fmt.Sprintf("forge-%s-%s", osName, arch)
+	// Use default GitHub URL for downloads (not the test override)
+	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", defaultGitHubRepo, tag, binaryName)
+
+	fmt.Fprintf(w, "Downloading %s from %s...\n", tag, url)
+
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", "forge-update-*")
+	if err != nil {
+		return "", fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Download to temp file
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Get(url)
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("downloading binary: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("download failed (%s): %s", resp.Status, string(body))
+	}
+
+	// Copy with progress
+	buf := make([]byte, 32*1024)
+	written := int64(0)
+	total := resp.ContentLength
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			written += int64(n)
+			if total > 0 {
+				progress := float64(written) / float64(total) * 100
+				fmt.Fprintf(w, "\r  Downloading: %.1f%%", progress)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			os.Remove(tmpPath)
+			return "", fmt.Errorf("download interrupted: %w", err)
+		}
+		if _, writeErr := tmpFile.Write(buf[:n]); writeErr != nil {
+			os.Remove(tmpPath)
+			return "", fmt.Errorf("writing temp file: %w", writeErr)
+		}
+	}
+
+	fmt.Fprintln(w) // Newline after progress
+
+	// Verify download
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("checking downloaded file: %w", err)
+	}
+	if info.Size() < 10*1024 { // At least 10KB for a binary
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("downloaded file too small (%d bytes)", info.Size())
+	}
+
+	// Make executable
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("setting permissions: %w", err)
+	}
+
+	return tmpPath, nil
+}
+
+// ReplaceBinary atomically replaces the old binary with the new one.
+func ReplaceBinary(oldPath, newPath string, w io.Writer) error {
+	fmt.Fprintf(w, "Replacing binary at %s...\n", oldPath)
+
+	// Get current permissions and owner
+	info, err := os.Stat(oldPath)
+	if err != nil {
+		return fmt.Errorf("checking original binary: %w", err)
+	}
+
+	// Atomic rename (works on same filesystem)
+	if err := os.Rename(newPath, oldPath); err != nil {
+		// If rename fails (different filesystem), try copy+remove
+		fmt.Fprintf(w, "  Note: Using fallback copy method...\n")
+		
+		// Read new binary
+		data, readErr := os.ReadFile(newPath)
+		if readErr != nil {
+			os.Remove(newPath)
+			return fmt.Errorf("reading new binary: %w", readErr)
+		}
+
+		// Write to old path (atomic on most systems for small files)
+		writeErr := os.WriteFile(oldPath, data, info.Mode())
+		if writeErr != nil {
+			os.Remove(newPath)
+			return fmt.Errorf("writing new binary: %w", writeErr)
+		}
+
+		// Clean up temp file
+		os.Remove(newPath)
+	}
+
+	fmt.Fprintf(w, "Successfully updated forge\n")
+	return nil
+}

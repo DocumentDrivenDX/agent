@@ -77,8 +77,9 @@ func run() int {
 		case "import":
 			return cmdImport(wd, args[1:])
 		case "version":
-			fmt.Printf("forge %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
-			return 0
+			return cmdVersion(args[1:])
+		case "update":
+			return cmdUpdate(args[1:])
 		}
 	}
 
@@ -888,4 +889,158 @@ func shouldCheckDrift(source string) bool {
 	// Update check file
 	os.WriteFile(checkFile, []byte(time.Now().Format(time.RFC3339)), 0644)
 	return true
+}
+
+// cmdVersion shows version with update availability check.
+func cmdVersion(args []string) int {
+	checkOnly := false
+	for _, arg := range args {
+		if arg == "--check-only" || arg == "-c" {
+			checkOnly = true
+		}
+	}
+
+	fmt.Printf("forge %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
+
+	// Skip update check for dev builds or if requested
+	if Version == "dev" || checkOnly {
+		return 0
+	}
+
+	// Check for updates
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0 // Can't determine home dir, skip update check
+	}
+	cacheFile := filepath.Join(home, ".cache", "forge", "latest-version.json")
+
+	release, err := GetLatestRelease(githubRepo, cacheFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  (update check failed: %v)\n", err)
+		return 0
+	}
+
+	currentVer, err := ParseSemVer(Version)
+	if err != nil {
+		return 0 // Invalid version format, skip comparison
+	}
+
+	latestVer, err := ParseSemVer(release.TagName)
+	if err != nil {
+		return 0 // Invalid latest version, skip comparison
+	}
+
+	if currentVer.Less(latestVer) {
+		fmt.Printf("  Update available: %s\n", release.TagName)
+	} else {
+		fmt.Println("  (latest)")
+	}
+
+	return 0
+}
+
+// cmdUpdate checks for and performs updates.
+func cmdUpdate(args []string) int {
+	checkOnly := false
+	force := false
+	for _, arg := range args {
+		switch arg {
+		case "--check-only", "-c":
+			checkOnly = true
+		case "--force", "-f":
+			force = true
+		}
+	}
+
+	// Get current binary path
+	binaryPath, err := FindBinaryPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: cannot determine home directory: %v\n", err)
+		return 1
+	}
+	cacheFile := filepath.Join(home, ".cache", "forge", "latest-version.json")
+
+	// Get latest release
+	release, err := GetLatestRelease(githubRepo, cacheFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+
+	currentVer, err := ParseSemVer(Version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid current version format: %s\n", Version)
+		return 1
+	}
+
+	latestVer, err := ParseSemVer(release.TagName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid latest version format: %s\n", release.TagName)
+		return 1
+	}
+
+	fmt.Printf("Current: %s\n", Version)
+	fmt.Printf("Latest:  %s\n", release.TagName)
+
+	if !currentVer.Less(latestVer) {
+		fmt.Println("\nYou are up to date!")
+		return 0
+	}
+
+	if checkOnly {
+		fmt.Println("\nUpdate available. Run 'forge update' to upgrade.")
+		return 1 // Exit code 1 indicates outdated
+	}
+
+	// Show changelog summary (first few lines)
+	fmt.Printf("\nRelease notes:\n")
+	lines := strings.Split(release.Body, "\n")
+	for i, line := range lines {
+		if i >= 5 || (i > 0 && strings.HasPrefix(line, "##")) {
+			break
+		}
+		if line != "" {
+			fmt.Printf("  %s\n", line)
+		}
+	}
+
+	// Prompt user
+	if !force {
+		fmt.Print("\nUpdate to " + release.TagName + "? [y/N] ")
+		
+		buf := make([]byte, 1)
+		if _, err := os.Stdin.Read(buf); err != nil {
+			fmt.Println("\nCancelled.")
+			return 0
+		}
+
+		response := strings.ToLower(strings.TrimSpace(string(buf)))
+		if response != "y" && response != "yes" {
+			fmt.Println("Cancelled. Run 'forge update --force' to skip prompt.")
+			return 0
+		}
+	}
+
+	// Download new binary
+	tmpPath, err := DownloadBinary(release.TagName, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nerror: %v\n", err)
+		return 1
+	}
+	defer os.Remove(tmpPath) // Clean up temp file
+
+	// Replace old binary
+	if err := ReplaceBinary(binaryPath, tmpPath, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("\nSuccessfully updated to %s!\n", release.TagName)
+	return 0
 }
