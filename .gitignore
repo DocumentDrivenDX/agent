@@ -14,6 +14,12 @@ website/public/
 website/resources/
 .helix-logs/
 
+# DDx and HELIX runtime artifacts
+.ddx/agent-logs/
+.ddx/config.yaml
+.ddx/run-state.json
+.helix/
+
 # Coverage
 coverage.out
 coverage.html
