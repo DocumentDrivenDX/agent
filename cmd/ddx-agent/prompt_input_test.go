@@ -25,6 +25,15 @@ func TestResolvePromptPlainJSONIsNotEnvelope(t *testing.T) {
 	assert.Nil(t, metadata)
 }
 
+func TestResolvePromptPlainJSONWithKindIsNotEnvelope(t *testing.T) {
+	raw := `{"kind":"note","text":"hello"}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.NoError(t, err)
+	assert.Equal(t, raw, promptText)
+	assert.Nil(t, metadata)
+}
+
 func TestResolvePromptEnvelopeInline(t *testing.T) {
 	raw := `{
 		"kind": "prompt",
@@ -63,7 +72,7 @@ func TestResolvePromptEnvelopeFromFile(t *testing.T) {
 }
 
 func TestResolvePromptEnvelopeInvalid(t *testing.T) {
-	raw := `{"kind":"prompt","id":"task-42","inputs":{"paths":["main.go"]}}`
+	raw := `{"kind":"prompt","id":"task-42","prompt":""}`
 
 	promptText, metadata, err := resolvePrompt(raw)
 	require.Error(t, err)

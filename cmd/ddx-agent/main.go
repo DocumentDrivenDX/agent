@@ -328,7 +328,7 @@ func parsePromptInput(raw string) (string, map[string]string, error) {
 	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
 		return raw, nil, nil
 	}
-	if _, ok := probe["kind"]; !ok {
+	if !isPromptEnvelopeProbe(probe) {
 		return raw, nil, nil
 	}
 
@@ -370,6 +370,13 @@ func parsePromptInput(raw string) (string, map[string]string, error) {
 	}
 
 	return env.Prompt, metadata, nil
+}
+
+func isPromptEnvelopeProbe(probe map[string]json.RawMessage) bool {
+	_, kindOK := probe["kind"]
+	_, idOK := probe["id"]
+	_, promptOK := probe["prompt"]
+	return kindOK && idOK && promptOK
 }
 
 func canonicalPromptJSON(raw json.RawMessage) (string, error) {
