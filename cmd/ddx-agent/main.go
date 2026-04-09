@@ -645,14 +645,21 @@ func cmdUsage(workDir string, args []string) int {
 		return 2
 	}
 
+	now := time.Now().UTC()
+	if _, err := session.ParseUsageWindow(*since, now); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 2
+	}
+
 	cfg, err := agentConfig.Load(workDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
-		return 1
+		return 2
 	}
 
 	report, err := session.AggregateUsage(sessionLogDir(workDir, cfg), session.UsageOptions{
 		Since: *since,
+		Now:   now,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)

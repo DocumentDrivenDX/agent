@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -80,6 +81,39 @@ func TestCLI_Usage(t *testing.T) {
 	assert.Contains(t, output, "openai-compat")
 	assert.Contains(t, output, "qwen3.5-7b")
 	assert.Contains(t, output, "Window:")
+}
+
+func TestCLI_Usage_InvalidSince_ExitCode(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	cmd := exec.Command(exe, "--work-dir", workDir, "usage", "--since=bad-window")
+	home := t.TempDir()
+	cmd.Env = append(os.Environ(),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+	)
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err, string(out))
+
+	exitErr, ok := err.(*exec.ExitError)
+	require.True(t, ok, "expected process exit error, got %T: %v", err, err)
+	assert.Equal(t, 2, exitErr.ExitCode())
+	assert.Contains(t, string(out), "invalid time window")
+}
+
+func buildAgentCLI(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "ddx-agent")
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	cmd := exec.Command("go", "build", "-o", exe, "./cmd/ddx-agent")
+	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	return exe
 }
 
 func usageFloat64Ptr(v float64) *float64 {
