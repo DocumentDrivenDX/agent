@@ -41,6 +41,21 @@ type ModelCatalogConfig struct {
 	Manifest string `yaml:"manifest,omitempty"`
 }
 
+// BackendPoolConfig describes a named routing target that selects one provider
+// before a run using a specified strategy.
+type BackendPoolConfig struct {
+	// ModelRef is the model catalog reference (alias, profile, or canonical
+	// target) attached to this backend pool. Optional.
+	ModelRef string `yaml:"model_ref,omitempty"`
+
+	// Providers is the ordered list of named provider references.
+	Providers []string `yaml:"providers"`
+
+	// Strategy is the provider selection algorithm: "round-robin" or
+	// "first-available". Defaults to "first-available" if empty.
+	Strategy string `yaml:"strategy,omitempty"`
+}
+
 // ProviderOverrides are per-run overrides applied before building a provider.
 type ProviderOverrides struct {
 	Model           string
@@ -57,6 +72,14 @@ const (
 type Config struct {
 	// Providers is a map of named provider configurations.
 	Providers map[string]ProviderConfig `yaml:"providers"`
+
+	// Backends is a map of named backend pool configurations.
+	Backends map[string]BackendPoolConfig `yaml:"backends,omitempty"`
+
+	// DefaultBackend is the name of the default backend pool. When set, it
+	// takes precedence over Default for runs that do not name a provider
+	// or backend explicitly.
+	DefaultBackend string `yaml:"default_backend,omitempty"`
 
 	// ModelCatalog configures the optional external manifest path.
 	ModelCatalog ModelCatalogConfig `yaml:"model_catalog,omitempty"`
@@ -323,6 +346,85 @@ func (c *Config) DefaultProvider() (agent.Provider, error) {
 func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
 	pc, ok := c.Providers[name]
 	return pc, ok
+}
+
+// GetBackend returns the BackendPoolConfig for a named backend pool.
+func (c *Config) GetBackend(name string) (BackendPoolConfig, bool) {
+	bc, ok := c.Backends[name]
+	return bc, ok
+}
+
+// BackendNames returns configured backend pool names in stable alphabetical order.
+func (c *Config) BackendNames() []string {
+	if c.Backends == nil {
+		return nil
+	}
+	names := make([]string, 0, len(c.Backends))
+	for name := range c.Backends {
+		names = append(names, name)
+	}
+	for i := 0; i < len(names); i++ {
+		for j := i + 1; j < len(names); j++ {
+			if names[j] < names[i] {
+				names[i], names[j] = names[j], names[i]
+			}
+		}
+	}
+	return names
+}
+
+// selectProviderIndex returns the provider list index to use for a backend pool
+// given the strategy and a rotation counter.
+//
+// Supported strategies:
+//   - "first-available" (default): always index 0
+//   - "round-robin": counter % len(providers)
+func selectProviderIndex(strategy string, counter, numProviders int) int {
+	if numProviders <= 0 {
+		return 0
+	}
+	if strategy == "round-robin" {
+		return counter % numProviders
+	}
+	// first-available and any unknown strategy
+	return 0
+}
+
+// ResolveBackend resolves a named backend pool to a concrete provider and model.
+//
+// counter is the rotation index used for round-robin selection; it should be
+// the number of prior requests against this backend pool. Callers that want
+// stateless first-available behavior can always pass 0.
+//
+// overrides.Model, when set, bypasses the catalog and uses the given concrete
+// model string. overrides.ModelRef, when set, overrides the backend's own
+// model_ref. If neither the backend nor the overrides specify a model, the
+// provider's configured default model is used.
+func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOverrides) (agent.Provider, ProviderConfig, *modelcatalog.ResolvedTarget, error) {
+	bc, ok := c.Backends[name]
+	if !ok {
+		return nil, ProviderConfig{}, nil, fmt.Errorf("config: unknown backend pool %q", name)
+	}
+	if len(bc.Providers) == 0 {
+		return nil, ProviderConfig{}, nil, fmt.Errorf("config: backend pool %q has no providers", name)
+	}
+
+	idx := selectProviderIndex(bc.Strategy, counter, len(bc.Providers))
+	providerName := bc.Providers[idx]
+
+	// Determine the effective model ref: explicit override takes priority over
+	// the backend's own model_ref.
+	effectiveOverrides := overrides
+	if effectiveOverrides.ModelRef == "" && bc.ModelRef != "" {
+		effectiveOverrides.ModelRef = bc.ModelRef
+	}
+
+	p, pc, resolved, err := c.BuildProviderWithOverrides(providerName, effectiveOverrides)
+	if err != nil {
+		return nil, ProviderConfig{}, nil, fmt.Errorf("config: backend pool %q: %w", name, err)
+	}
+
+	return p, pc, resolved, nil
 }
 
 func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {

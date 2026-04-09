@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -40,6 +41,7 @@ func run() int {
 	promptFlag := flag.String("p", "", "Prompt (use @file to read from file)")
 	jsonOutput := flag.Bool("json", false, "Output result as JSON")
 	providerFlag := flag.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
+	backendFlag := flag.String("backend", "", "Named backend pool from config (e.g., code-fast-local)")
 	model := flag.String("model", "", "Explicit model name override (bypasses catalog)")
 	modelRef := flag.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
 	allowDeprecatedModel := flag.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
@@ -110,11 +112,12 @@ func run() int {
 		return 2
 	}
 
-	_, p, _, err := resolveProviderForRun(cfg, *providerFlag, agentConfig.ProviderOverrides{
+	overrides := agentConfig.ProviderOverrides{
 		Model:           *model,
 		ModelRef:        *modelRef,
 		AllowDeprecated: *allowDeprecatedModel,
-	})
+	}
+	_, p, _, err := resolveProviderForRun(cfg, wd, *backendFlag, *providerFlag, overrides)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -203,17 +206,74 @@ func run() int {
 	}
 }
 
-func resolveProviderForRun(cfg *agentConfig.Config, providerName string, overrides agentConfig.ProviderOverrides) (string, agent.Provider, agentConfig.ProviderConfig, error) {
+// resolveProviderForRun selects and builds the provider for a run.
+//
+// Resolution order (matching SD-005):
+//  1. If backendName is non-empty, resolve that backend pool.
+//  2. Else if cfg.DefaultBackend is set and providerName is empty, resolve
+//     the default backend pool.
+//  3. Else fall back to direct provider selection (providerName or cfg.DefaultName).
+func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (string, agent.Provider, agentConfig.ProviderConfig, error) {
+	// Determine whether to use a backend pool.
+	effectiveBackend := backendName
+	if effectiveBackend == "" && providerName == "" {
+		effectiveBackend = cfg.DefaultBackend
+	}
+
+	if effectiveBackend != "" {
+		counter, err := readAndIncrementBackendCounter(workDir, effectiveBackend)
+		if err != nil {
+			// Non-fatal: fall back to counter 0.
+			counter = 0
+		}
+		p, pc, _, err := cfg.ResolveBackend(effectiveBackend, counter, overrides)
+		if err != nil {
+			return "", nil, agentConfig.ProviderConfig{}, err
+		}
+		return effectiveBackend, p, pc, nil
+	}
+
+	// Direct provider selection.
 	if providerName == "" {
 		providerName = cfg.DefaultName()
 	}
-
 	p, pc, _, err := cfg.BuildProviderWithOverrides(providerName, overrides)
 	if err != nil {
 		return "", nil, agentConfig.ProviderConfig{}, err
 	}
-
 	return providerName, p, pc, nil
+}
+
+// backendStateFile returns the path to the per-backend round-robin counter file.
+func backendStateFile(workDir, backendName string) string {
+	return filepath.Join(workDir, ".agent", "backend-state-"+backendName+".counter")
+}
+
+// backendCounterMu serializes counter reads and writes within a process.
+var backendCounterMu sync.Mutex
+
+// readAndIncrementBackendCounter reads the current round-robin counter for a
+// backend pool, increments it, writes it back, and returns the value that was
+// read (i.e. the counter to use for this request).
+func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
+	backendCounterMu.Lock()
+	defer backendCounterMu.Unlock()
+
+	path := backendStateFile(workDir, backendName)
+
+	// Read existing counter; treat missing file as counter 0.
+	var counter int
+	if data, err := os.ReadFile(path); err == nil {
+		if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &counter); err != nil {
+			counter = 0
+		}
+	}
+
+	// Write incremented counter.
+	next := counter + 1
+	_ = os.WriteFile(path, []byte(fmt.Sprintf("%d\n", next)), 0600)
+
+	return counter, nil
 }
 
 func resolvePrompt(p string) (string, error) {

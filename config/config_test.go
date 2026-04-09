@@ -500,6 +500,277 @@ func TestSaveToFile(t *testing.T) {
 	assert.Contains(t, string(data), "local:")
 }
 
+// — Backend pool tests —
+
+func TestResolveBackend_FirstAvailable(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"vidar": {
+				Type:    "openai-compat",
+				BaseURL: "http://vidar:1234/v1",
+				Model:   "qwen3",
+			},
+			"bragi": {
+				Type:    "openai-compat",
+				BaseURL: "http://bragi:1234/v1",
+				Model:   "qwen3",
+			},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"local-pool": {
+				Providers: []string{"vidar", "bragi"},
+				Strategy:  "first-available",
+			},
+		},
+	}
+
+	// All counters pick vidar (index 0) for first-available.
+	for _, counter := range []int{0, 1, 2, 5, 99} {
+		p, pc, resolved, err := cfg.ResolveBackend("local-pool", counter, ProviderOverrides{})
+		require.NoError(t, err, "counter=%d", counter)
+		assert.NotNil(t, p)
+		assert.Equal(t, "qwen3", pc.Model)
+		assert.Equal(t, "http://vidar:1234/v1", pc.BaseURL)
+		assert.Nil(t, resolved)
+	}
+}
+
+func TestResolveBackend_RoundRobin(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"vidar": {
+				Type:    "openai-compat",
+				BaseURL: "http://vidar:1234/v1",
+				Model:   "qwen3",
+			},
+			"bragi": {
+				Type:    "openai-compat",
+				BaseURL: "http://bragi:1234/v1",
+				Model:   "qwen3",
+			},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"rr-pool": {
+				Providers: []string{"vidar", "bragi"},
+				Strategy:  "round-robin",
+			},
+		},
+	}
+
+	tests := []struct {
+		counter  int
+		wantBase string
+	}{
+		{0, "http://vidar:1234/v1"},
+		{1, "http://bragi:1234/v1"},
+		{2, "http://vidar:1234/v1"},
+		{3, "http://bragi:1234/v1"},
+		{4, "http://vidar:1234/v1"},
+	}
+	for _, tt := range tests {
+		_, pc, _, err := cfg.ResolveBackend("rr-pool", tt.counter, ProviderOverrides{})
+		require.NoError(t, err, "counter=%d", tt.counter)
+		assert.Equal(t, tt.wantBase, pc.BaseURL, "counter=%d", tt.counter)
+	}
+}
+
+func TestResolveBackend_RoundRobin_ThreeProviders(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"a": {Type: "openai-compat", BaseURL: "http://a/v1", Model: "m"},
+			"b": {Type: "openai-compat", BaseURL: "http://b/v1", Model: "m"},
+			"c": {Type: "openai-compat", BaseURL: "http://c/v1", Model: "m"},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"tri": {
+				Providers: []string{"a", "b", "c"},
+				Strategy:  "round-robin",
+			},
+		},
+	}
+
+	wantURLs := []string{"http://a/v1", "http://b/v1", "http://c/v1", "http://a/v1", "http://b/v1"}
+	for i, want := range wantURLs {
+		_, pc, _, err := cfg.ResolveBackend("tri", i, ProviderOverrides{})
+		require.NoError(t, err, "counter=%d", i)
+		assert.Equal(t, want, pc.BaseURL, "counter=%d", i)
+	}
+}
+
+func TestResolveBackend_WithModelRef(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {Type: "anthropic", APIKey: "test"},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"smart": {
+				ModelRef:  "code-smart",
+				Providers: []string{"cloud"},
+				Strategy:  "first-available",
+			},
+		},
+	}
+
+	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{})
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
+}
+
+func TestResolveBackend_OverrideModelRef(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {Type: "anthropic", APIKey: "test"},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"smart": {
+				ModelRef:  "code-smart",
+				Providers: []string{"cloud"},
+				Strategy:  "first-available",
+			},
+		},
+	}
+
+	// overrides.ModelRef takes priority over backend model_ref
+	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{ModelRef: "code-smart"})
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+}
+
+func TestResolveBackend_ExplicitModelBypassesCatalog(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {Type: "anthropic", APIKey: "test", Model: "default-model"},
+		},
+		Backends: map[string]BackendPoolConfig{
+			"smart": {
+				ModelRef:  "code-smart",
+				Providers: []string{"cloud"},
+				Strategy:  "first-available",
+			},
+		},
+	}
+
+	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{Model: "pinned-model"})
+	require.NoError(t, err)
+	assert.Nil(t, resolved)
+	assert.Equal(t, "pinned-model", pc.Model)
+}
+
+func TestResolveBackend_UnknownBackend(t *testing.T) {
+	cfg := Config{}
+	_, _, _, err := cfg.ResolveBackend("nonexistent", 0, ProviderOverrides{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown backend pool "nonexistent"`)
+}
+
+func TestResolveBackend_EmptyProviders(t *testing.T) {
+	cfg := Config{
+		Backends: map[string]BackendPoolConfig{
+			"empty": {
+				Strategy: "first-available",
+			},
+		},
+	}
+	_, _, _, err := cfg.ResolveBackend("empty", 0, ProviderOverrides{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no providers")
+}
+
+func TestResolveBackend_UnknownProvider(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{},
+		Backends: map[string]BackendPoolConfig{
+			"bad": {
+				Providers: []string{"missing"},
+				Strategy:  "first-available",
+			},
+		},
+	}
+	_, _, _, err := cfg.ResolveBackend("bad", 0, ProviderOverrides{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown provider")
+}
+
+func TestSelectProviderIndex(t *testing.T) {
+	tests := []struct {
+		strategy string
+		counter  int
+		n        int
+		want     int
+	}{
+		{"first-available", 0, 3, 0},
+		{"first-available", 5, 3, 0},
+		{"round-robin", 0, 3, 0},
+		{"round-robin", 1, 3, 1},
+		{"round-robin", 2, 3, 2},
+		{"round-robin", 3, 3, 0},
+		{"round-robin", 7, 3, 1},
+		{"unknown", 5, 2, 0}, // unknown defaults to first-available
+		{"", 5, 2, 0},        // empty defaults to first-available
+	}
+	for _, tt := range tests {
+		got := selectProviderIndex(tt.strategy, tt.counter, tt.n)
+		assert.Equal(t, tt.want, got, "strategy=%q counter=%d n=%d", tt.strategy, tt.counter, tt.n)
+	}
+}
+
+func TestLoad_BackendPools(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  vidar:
+    type: openai-compat
+    base_url: http://vidar:1234/v1
+    model: qwen3
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+    model: qwen3
+backends:
+  local-pool:
+    model_ref: code-fast
+    providers: [vidar, bragi]
+    strategy: round-robin
+default_backend: local-pool
+default: vidar
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	assert.Equal(t, "local-pool", cfg.DefaultBackend)
+	require.Len(t, cfg.Backends, 1)
+
+	bc, ok := cfg.GetBackend("local-pool")
+	require.True(t, ok)
+	assert.Equal(t, "code-fast", bc.ModelRef)
+	assert.Equal(t, []string{"vidar", "bragi"}, bc.Providers)
+	assert.Equal(t, "round-robin", bc.Strategy)
+}
+
+func TestBackendNames(t *testing.T) {
+	cfg := Config{
+		Backends: map[string]BackendPoolConfig{
+			"zebra":  {},
+			"alpha":  {},
+			"middle": {},
+		},
+	}
+	assert.Equal(t, []string{"alpha", "middle", "zebra"}, cfg.BackendNames())
+}
+
+func TestBackendNames_Empty(t *testing.T) {
+	cfg := Config{}
+	assert.Nil(t, cfg.BackendNames())
+}
+
 func TestImportMetadata(t *testing.T) {
 	cfg := &Config{
 		ImportedFrom: &ImportMetadata{
