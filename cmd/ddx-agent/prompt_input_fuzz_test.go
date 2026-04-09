@@ -100,15 +100,19 @@ func classifyPromptInput(raw string) promptInputClassification {
 		return promptInputPlain
 	}
 
-	if !isPromptEnvelopeProbe(probe) {
-		var kindValue any
-		if err := json.Unmarshal(kindRaw, &kindValue); err == nil {
-			if _, ok := kindValue.(string); !ok && hasPromptEnvelopeFields(probe) {
-				return promptInputMalformedEnvelope
-			}
-		} else if hasPromptEnvelopeFields(probe) {
+	var kind string
+	if err := json.Unmarshal(kindRaw, &kind); err != nil {
+		if localHasPromptEnvelopeFields(probe) {
 			return promptInputMalformedEnvelope
 		}
+		return promptInputPlain
+	}
+
+	if kind != "prompt" {
+		return promptInputPlain
+	}
+
+	if !localHasPromptEnvelopeFields(probe) {
 		return promptInputPlain
 	}
 
@@ -121,4 +125,15 @@ func classifyPromptInput(raw string) promptInputClassification {
 	}
 
 	return promptInputValidEnvelope
+}
+
+func localHasPromptEnvelopeFields(probe map[string]json.RawMessage) bool {
+	_, titleOK := probe["title"]
+	_, promptOK := probe["prompt"]
+	_, idOK := probe["id"]
+	_, inputsOK := probe["inputs"]
+	_, responseSchemaOK := probe["response_schema"]
+	_, callbackOK := probe["callback"]
+
+	return titleOK || promptOK || idOK || inputsOK || responseSchemaOK || callbackOK
 }
