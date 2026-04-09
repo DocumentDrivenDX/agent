@@ -34,6 +34,15 @@ func TestResolvePromptPlainJSONWithKindIsNotEnvelope(t *testing.T) {
 	assert.Nil(t, metadata)
 }
 
+func TestResolvePromptPlainJSONWithKindAndTitleIsNotEnvelope(t *testing.T) {
+	raw := `{"kind":"note","title":"hello"}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.NoError(t, err)
+	assert.Equal(t, raw, promptText)
+	assert.Nil(t, metadata)
+}
+
 func TestResolvePromptPlainJSONWithKindAndTitleIsInvalidEnvelope(t *testing.T) {
 	raw := `{"kind":"prompt","title":"Inspect main"}`
 
@@ -211,4 +220,36 @@ func TestResolvePromptEnvelopeMissingIDWithTitleFromFile(t *testing.T) {
 	assert.Empty(t, promptText)
 	assert.Nil(t, metadata)
 	assert.Contains(t, err.Error(), "invalid prompt envelope")
+}
+
+func TestResolvePromptPlainJSONWithKindAndTitleFromStdinIsNotEnvelope(t *testing.T) {
+	raw := `{"kind":"note","title":"hello"}`
+	oldStdin := os.Stdin
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		_ = r.Close()
+	})
+	_, err = w.WriteString(raw)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	os.Stdin = r
+
+	promptText, metadata, err := resolvePrompt("")
+	require.NoError(t, err)
+	assert.Equal(t, raw, promptText)
+	assert.Nil(t, metadata)
+}
+
+func TestResolvePromptPlainJSONWithKindAndTitleFromFileIsNotEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prompt.json")
+	raw := `{"kind":"note","title":"hello"}`
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o600))
+
+	promptText, metadata, err := resolvePrompt("@" + path)
+	require.NoError(t, err)
+	assert.Equal(t, raw, promptText)
+	assert.Nil(t, metadata)
 }

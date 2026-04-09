@@ -373,8 +373,16 @@ func parsePromptInput(raw string) (string, map[string]string, error) {
 }
 
 func isPromptEnvelopeProbe(probe map[string]json.RawMessage) bool {
-	_, kindOK := probe["kind"]
+	kindRaw, kindOK := probe["kind"]
 	if !kindOK {
+		return false
+	}
+
+	var kind string
+	if err := json.Unmarshal(kindRaw, &kind); err != nil {
+		return false
+	}
+	if kind != "prompt" {
 		return false
 	}
 
