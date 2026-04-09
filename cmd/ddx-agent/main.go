@@ -101,7 +101,7 @@ func run() int {
 	checkDrift(cfg, wd)
 
 	// Resolve prompt
-	promptText, err := resolvePrompt(*promptFlag)
+	promptText, promptMetadata, err := resolvePrompt(*promptFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -173,6 +173,7 @@ func run() int {
 		Tools:         tools,
 		MaxIterations: iterations,
 		WorkDir:       wd,
+		Metadata:      promptMetadata,
 		Callback:      logger.Callback(),
 	}
 
@@ -282,28 +283,108 @@ func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
 	return counter, nil
 }
 
-func resolvePrompt(p string) (string, error) {
+type ddxPromptEnvelope struct {
+	Kind           string          `json:"kind"`
+	ID             string          `json:"id"`
+	Title          string          `json:"title,omitempty"`
+	Prompt         string          `json:"prompt"`
+	Inputs         json.RawMessage `json:"inputs,omitempty"`
+	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
+	Callback       json.RawMessage `json:"callback,omitempty"`
+}
+
+func resolvePrompt(p string) (string, map[string]string, error) {
+	var raw string
 	if p != "" {
 		if strings.HasPrefix(p, "@") {
 			data, err := os.ReadFile(p[1:])
 			if err != nil {
-				return "", fmt.Errorf("reading prompt file: %w", err)
+				return "", nil, fmt.Errorf("reading prompt file: %w", err)
 			}
-			return string(data), nil
+			raw = string(data)
+		} else {
+			raw = p
 		}
-		return p, nil
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return "", nil, fmt.Errorf("reading stdin: %w", err)
+			}
+			raw = strings.TrimSpace(string(data))
+		}
 	}
 
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		data, err := io.ReadAll(os.Stdin)
+	return parsePromptInput(raw)
+}
+
+func parsePromptInput(raw string) (string, map[string]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil, nil
+	}
+
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
+		return raw, nil, nil
+	}
+	if _, ok := probe["kind"]; !ok {
+		return raw, nil, nil
+	}
+
+	var env ddxPromptEnvelope
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		return "", nil, fmt.Errorf("parsing prompt envelope: %w", err)
+	}
+	if env.Kind == "" || env.ID == "" || env.Prompt == "" {
+		return "", nil, fmt.Errorf("invalid prompt envelope: kind, id, and prompt are required")
+	}
+
+	metadata := map[string]string{
+		"prompt.kind": env.Kind,
+		"prompt.id":   env.ID,
+	}
+	if env.Title != "" {
+		metadata["prompt.title"] = env.Title
+	}
+	if len(env.Inputs) > 0 {
+		inputs, err := canonicalPromptJSON(env.Inputs)
 		if err != nil {
-			return "", fmt.Errorf("reading stdin: %w", err)
+			return "", nil, fmt.Errorf("normalizing prompt envelope inputs: %w", err)
 		}
-		return strings.TrimSpace(string(data)), nil
+		metadata["prompt.inputs"] = inputs
+	}
+	if len(env.ResponseSchema) > 0 {
+		schema, err := canonicalPromptJSON(env.ResponseSchema)
+		if err != nil {
+			return "", nil, fmt.Errorf("normalizing prompt envelope response schema: %w", err)
+		}
+		metadata["prompt.response_schema"] = schema
+	}
+	if len(env.Callback) > 0 {
+		callback, err := canonicalPromptJSON(env.Callback)
+		if err != nil {
+			return "", nil, fmt.Errorf("normalizing prompt envelope callback: %w", err)
+		}
+		metadata["prompt.callback"] = callback
 	}
 
-	return "", nil
+	return env.Prompt, metadata, nil
+}
+
+func canonicalPromptJSON(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", err
+	}
+	normalized, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(normalized), nil
 }
 
 func cmdProviders(workDir string, jsonOut bool) int {

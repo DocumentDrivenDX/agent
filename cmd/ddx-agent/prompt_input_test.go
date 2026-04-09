@@ -1,0 +1,73 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestResolvePromptPlainString(t *testing.T) {
+	promptText, metadata, err := resolvePrompt("Read main.go and tell me the package name")
+	require.NoError(t, err)
+	assert.Equal(t, "Read main.go and tell me the package name", promptText)
+	assert.Nil(t, metadata)
+}
+
+func TestResolvePromptPlainJSONIsNotEnvelope(t *testing.T) {
+	raw := `{"prompt":"not an envelope"}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.NoError(t, err)
+	assert.Equal(t, raw, promptText)
+	assert.Nil(t, metadata)
+}
+
+func TestResolvePromptEnvelopeInline(t *testing.T) {
+	raw := `{
+		"kind": "prompt",
+		"id": "task-42",
+		"title": "Inspect main",
+		"prompt": "Read main.go and tell me the package name",
+		"inputs": {"paths": ["main.go"]},
+		"response_schema": {"type": "object"},
+		"callback": {"url": "https://example.com/callback"}
+	}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "Read main.go and tell me the package name", promptText)
+	require.NotNil(t, metadata)
+	assert.Equal(t, "prompt", metadata["prompt.kind"])
+	assert.Equal(t, "task-42", metadata["prompt.id"])
+	assert.Equal(t, "Inspect main", metadata["prompt.title"])
+	assert.Equal(t, `{"paths":["main.go"]}`, metadata["prompt.inputs"])
+	assert.Equal(t, `{"type":"object"}`, metadata["prompt.response_schema"])
+	assert.Equal(t, `{"url":"https://example.com/callback"}`, metadata["prompt.callback"])
+}
+
+func TestResolvePromptEnvelopeFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prompt.json")
+	raw := `{"kind":"prompt","id":"file-1","prompt":"Read main.go"}`
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o600))
+
+	promptText, metadata, err := resolvePrompt("@" + path)
+	require.NoError(t, err)
+	assert.Equal(t, "Read main.go", promptText)
+	require.NotNil(t, metadata)
+	assert.Equal(t, "prompt", metadata["prompt.kind"])
+	assert.Equal(t, "file-1", metadata["prompt.id"])
+}
+
+func TestResolvePromptEnvelopeInvalid(t *testing.T) {
+	raw := `{"kind":"prompt","id":"task-42","inputs":{"paths":["main.go"]}}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.Error(t, err)
+	assert.Empty(t, promptText)
+	assert.Nil(t, metadata)
+	assert.Contains(t, err.Error(), "prompt envelope")
+}
