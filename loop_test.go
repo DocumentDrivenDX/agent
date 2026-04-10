@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent/telemetry"
 	"github.com/stretchr/testify/assert"
@@ -745,6 +746,70 @@ func TestRun_EmitsRetryIndexedChatSpans(t *testing.T) {
 	assert.True(t, attempts[3])
 }
 
+func TestRun_StreamingChatSpanIncludesServerUsageAndTiming(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	sp := &mockStreamingProvider{
+		delayFirst:   12 * time.Millisecond,
+		delayBetween: 18 * time.Millisecond,
+		deltas: []StreamDelta{
+			{
+				Content: "streamed ",
+				Model:   "gpt-4o",
+				Usage: &TokenUsage{
+					Input:      11,
+					CacheRead:  2,
+					CacheWrite: 1,
+				},
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					ServerAddress:  "api.openai.com",
+					ServerPort:     443,
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+					Cost: &CostAttribution{
+						Source: CostSourceUnknown,
+					},
+				},
+			},
+			{
+				Content: "response",
+				Usage: &TokenUsage{
+					Output: 9,
+				},
+				Done: true,
+			},
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  sp,
+		Telemetry: tel,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 2)
+	chatSpan := spansWithOperation(t, ended, "chat")[0]
+
+	assert.Equal(t, "openai", attrString(t, chatSpan.Attributes(), telemetry.KeyProviderName))
+	assert.Equal(t, "openai", attrString(t, chatSpan.Attributes(), telemetry.KeyProviderSystem))
+	assert.Equal(t, "api.openai.com", attrString(t, chatSpan.Attributes(), telemetry.KeyServerAddress))
+	assert.Equal(t, int64(443), attrInt(t, chatSpan.Attributes(), telemetry.KeyServerPort))
+	assert.Equal(t, int64(11), attrInt(t, chatSpan.Attributes(), telemetry.KeyUsageInput))
+	assert.Equal(t, int64(9), attrInt(t, chatSpan.Attributes(), telemetry.KeyUsageOutput))
+	assert.Equal(t, int64(2), attrInt(t, chatSpan.Attributes(), telemetry.KeyUsageCacheRead))
+	assert.Equal(t, int64(1), attrInt(t, chatSpan.Attributes(), telemetry.KeyUsageCacheWrite))
+	assert.GreaterOrEqual(t, attrFloat(t, chatSpan.Attributes(), telemetry.KeyTimingFirstTokenMS), 12.0)
+	assert.GreaterOrEqual(t, attrFloat(t, chatSpan.Attributes(), telemetry.KeyTimingGenerationMS), 18.0)
+}
+
 func TestRun_ToolSpanRecordsErrors(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
@@ -970,6 +1035,19 @@ func attrInt(t *testing.T, attrs []attribute.KeyValue, key string) int64 {
 	for _, attr := range attrs {
 		if string(attr.Key) == key {
 			return attr.Value.AsInt64()
+		}
+	}
+
+	require.Failf(t, "attribute not found", "missing %q", key)
+	return 0
+}
+
+func attrFloat(t *testing.T, attrs []attribute.KeyValue, key string) float64 {
+	t.Helper()
+
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsFloat64()
 		}
 	}
 

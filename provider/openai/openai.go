@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/DocumentDrivenDX/agent"
 	oai "github.com/openai/openai-go"
@@ -15,8 +18,12 @@ import (
 
 // Provider implements agent.Provider for OpenAI-compatible APIs.
 type Provider struct {
-	client *oai.Client
-	model  string
+	client         *oai.Client
+	model          string
+	providerName   string
+	providerSystem string
+	serverAddress  string
+	serverPort     int
 }
 
 // Config holds configuration for the OpenAI-compatible provider.
@@ -43,9 +50,14 @@ func New(cfg Config) *Provider {
 	}
 
 	client := oai.NewClient(opts...)
+	providerSystem, serverAddress, serverPort := openAIIdentity(cfg.BaseURL)
 	return &Provider{
-		client: &client,
-		model:  cfg.Model,
+		client:         &client,
+		model:          cfg.Model,
+		providerName:   "openai-compat",
+		providerSystem: providerSystem,
+		serverAddress:  serverAddress,
+		serverPort:     serverPort,
 	}
 }
 
@@ -81,8 +93,10 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 
 	resp.Model = completion.Model
 	resp.Attempt = &agent.AttemptMetadata{
-		ProviderName:   "openai",
-		ProviderSystem: "openai",
+		ProviderName:   p.providerName,
+		ProviderSystem: p.providerSystem,
+		ServerAddress:  p.serverAddress,
+		ServerPort:     p.serverPort,
 		RequestedModel: model,
 		ResponseModel:  completion.Model,
 		ResolvedModel:  completion.Model,
@@ -115,7 +129,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 // SessionStartMetadata reports the broad provider identity and configured model
 // that should be recorded on session.start events.
 func (p *Provider) SessionStartMetadata() (string, string) {
-	return "openai-compat", p.model
+	return p.providerName, p.model
 }
 
 func convertMessages(msgs []agent.Message) []oai.ChatCompletionMessageParamUnion {
@@ -287,8 +301,10 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		ch <- agent.StreamDelta{
 			Model: responseModel,
 			Attempt: &agent.AttemptMetadata{
-				ProviderName:   "openai",
-				ProviderSystem: "openai",
+				ProviderName:   p.providerName,
+				ProviderSystem: p.providerSystem,
+				ServerAddress:  p.serverAddress,
+				ServerPort:     p.serverPort,
 				RequestedModel: model,
 				ResponseModel:  responseModel,
 				ResolvedModel:  responseModel,
@@ -305,3 +321,49 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 
 var _ agent.Provider = (*Provider)(nil)
 var _ agent.StreamingProvider = (*Provider)(nil)
+
+func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serverPort int) {
+	providerSystem = "openai"
+	serverAddress = "api.openai.com"
+	serverPort = 443
+
+	if baseURL == "" {
+		return providerSystem, serverAddress, serverPort
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return providerSystem, serverAddress, serverPort
+	}
+
+	host := parsed.Hostname()
+	if host != "" {
+		serverAddress = host
+	}
+
+	if port := parsed.Port(); port != "" {
+		if parsedPort, err := strconv.Atoi(port); err == nil {
+			serverPort = parsedPort
+		}
+	} else if strings.EqualFold(parsed.Scheme, "http") {
+		serverPort = 80
+	}
+
+	switch {
+	case strings.Contains(host, "openrouter.ai"):
+		providerSystem = "openrouter"
+	case host == "localhost" || host == "127.0.0.1":
+		switch serverPort {
+		case 11434:
+			providerSystem = "ollama"
+		case 1234:
+			providerSystem = "lmstudio"
+		default:
+			providerSystem = "local"
+		}
+	case strings.Contains(host, "openai.com"):
+		providerSystem = "openai"
+	}
+
+	return providerSystem, serverAddress, serverPort
+}

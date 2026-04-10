@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,14 +15,35 @@ import (
 type mockStreamingProvider struct {
 	mockProvider // embed for Chat() fallback
 	deltas       []StreamDelta
+	delayFirst   time.Duration
+	delayBetween time.Duration
 }
 
 func (m *mockStreamingProvider) ChatStream(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (<-chan StreamDelta, error) {
 	ch := make(chan StreamDelta, len(m.deltas))
-	for _, d := range m.deltas {
-		ch <- d
-	}
-	close(ch)
+	go func() {
+		defer close(ch)
+		for i, d := range m.deltas {
+			if i == 0 && m.delayFirst > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(m.delayFirst):
+				}
+			} else if i > 0 && m.delayBetween > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(m.delayBetween):
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- d:
+			}
+		}
+	}()
 	return ch, nil
 }
 
@@ -108,6 +130,60 @@ func TestConsumeStream_ContentAndToolCalls(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "I'll read that. ", resp.Content)
 	require.Len(t, resp.ToolCalls, 1)
+}
+
+func TestConsumeStream_CapturesTimingWhenStreamingOutputArrives(t *testing.T) {
+	sp := &mockStreamingProvider{
+		delayFirst:   15 * time.Millisecond,
+		delayBetween: 20 * time.Millisecond,
+		deltas: []StreamDelta{
+			{
+				Content: "hello ",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+				},
+			},
+			{Content: "world", Done: true},
+		},
+	}
+
+	seq := 0
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Attempt)
+	require.NotNil(t, resp.Attempt.Timing)
+	require.NotNil(t, resp.Attempt.Timing.FirstToken)
+	require.NotNil(t, resp.Attempt.Timing.Generation)
+	assert.GreaterOrEqual(t, resp.Attempt.Timing.FirstToken.Milliseconds(), int64(15))
+	assert.GreaterOrEqual(t, resp.Attempt.Timing.Generation.Milliseconds(), int64(20))
+}
+
+func TestConsumeStream_OmitsTimingWhenNoOutputBearingDeltaArrives(t *testing.T) {
+	sp := &mockStreamingProvider{
+		deltas: []StreamDelta{
+			{
+				Model: "gpt-4o",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+				},
+			},
+			{Done: true},
+		},
+	}
+
+	seq := 0
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Attempt)
+	assert.Nil(t, resp.Attempt.Timing)
 }
 
 func TestRun_StreamingFallback(t *testing.T) {

@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/DocumentDrivenDX/agent"
 	ant "github.com/anthropics/anthropic-sdk-go"
@@ -13,8 +16,12 @@ import (
 
 // Provider implements agent.Provider for the Anthropic Messages API.
 type Provider struct {
-	client *ant.Client
-	model  string
+	client         *ant.Client
+	model          string
+	providerName   string
+	providerSystem string
+	serverAddress  string
+	serverPort     int
 }
 
 // Config holds configuration for the Anthropic provider.
@@ -34,9 +41,14 @@ func New(cfg Config) *Provider {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	}
 	client := ant.NewClient(opts...)
+	serverAddress, serverPort := anthropicIdentity(cfg.BaseURL)
 	return &Provider{
-		client: &client,
-		model:  cfg.Model,
+		client:         &client,
+		model:          cfg.Model,
+		providerName:   "anthropic",
+		providerSystem: "anthropic",
+		serverAddress:  serverAddress,
+		serverPort:     serverPort,
 	}
 }
 
@@ -88,8 +100,10 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 
 	resp.Model = string(msg.Model)
 	resp.Attempt = &agent.AttemptMetadata{
-		ProviderName:   "anthropic",
-		ProviderSystem: "anthropic",
+		ProviderName:   p.providerName,
+		ProviderSystem: p.providerSystem,
+		ServerAddress:  p.serverAddress,
+		ServerPort:     p.serverPort,
 		RequestedModel: model,
 		ResponseModel:  string(msg.Model),
 		ResolvedModel:  string(msg.Model),
@@ -133,7 +147,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 // SessionStartMetadata reports the broad provider identity and configured model
 // that should be recorded on session.start events.
 func (p *Provider) SessionStartMetadata() (string, string) {
-	return "anthropic", p.model
+	return p.providerName, p.model
 }
 
 func convertMessages(msgs []agent.Message) []ant.MessageParam {
@@ -301,8 +315,10 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				ch <- agent.StreamDelta{
 					Model: responseModel,
 					Attempt: &agent.AttemptMetadata{
-						ProviderName:   "anthropic",
-						ProviderSystem: "anthropic",
+						ProviderName:   p.providerName,
+						ProviderSystem: p.providerSystem,
+						ServerAddress:  p.serverAddress,
+						ServerPort:     p.serverPort,
 						RequestedModel: model,
 						ResponseModel:  responseModel,
 						ResolvedModel:  responseModel,
@@ -324,8 +340,10 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		ch <- agent.StreamDelta{
 			Model: responseModel,
 			Attempt: &agent.AttemptMetadata{
-				ProviderName:   "anthropic",
-				ProviderSystem: "anthropic",
+				ProviderName:   p.providerName,
+				ProviderSystem: p.providerSystem,
+				ServerAddress:  p.serverAddress,
+				ServerPort:     p.serverPort,
 				RequestedModel: model,
 				ResponseModel:  responseModel,
 				ResolvedModel:  responseModel,
@@ -342,3 +360,31 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 
 var _ agent.Provider = (*Provider)(nil)
 var _ agent.StreamingProvider = (*Provider)(nil)
+
+func anthropicIdentity(baseURL string) (serverAddress string, serverPort int) {
+	serverAddress = "api.anthropic.com"
+	serverPort = 443
+
+	if baseURL == "" {
+		return serverAddress, serverPort
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return serverAddress, serverPort
+	}
+
+	if host := parsed.Hostname(); host != "" {
+		serverAddress = host
+	}
+
+	if port := parsed.Port(); port != "" {
+		if parsedPort, err := strconv.Atoi(port); err == nil {
+			serverPort = parsedPort
+		}
+	} else if strings.EqualFold(parsed.Scheme, "http") {
+		serverPort = 80
+	}
+
+	return serverAddress, serverPort
+}

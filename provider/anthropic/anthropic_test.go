@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -79,6 +80,55 @@ func TestProvider_New(t *testing.T) {
 			assert.NotNil(t, p)
 		})
 	}
+}
+
+func TestProvider_Chat_AttemptMetadataIncludesServerIdentityAndCacheUsage(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "messages")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "msg_123",
+			"type": "message",
+			"role": "assistant",
+			"content": [
+				{"type": "text", "text": "Hello, world!"}
+			],
+			"model": "claude-sonnet-4-20250514",
+			"stop_reason": "end_turn",
+			"usage": {
+				"input_tokens": 10,
+				"output_tokens": 5,
+				"cache_creation_input_tokens": 7,
+				"cache_read_input_tokens": 2
+			}
+		}`))
+	})
+	defer srv.Close()
+
+	parsed, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	p := anthropic.New(anthropic.Config{
+		APIKey:  "test-key",
+		Model:   "claude-sonnet-4-20250514",
+		BaseURL: srv.URL,
+	})
+
+	resp, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "Hello"},
+	}, nil, agent.Options{})
+	require.NoError(t, err)
+
+	require.NotNil(t, resp.Attempt)
+	assert.Equal(t, "anthropic", resp.Attempt.ProviderName)
+	assert.Equal(t, "anthropic", resp.Attempt.ProviderSystem)
+	assert.Equal(t, parsed.Hostname(), resp.Attempt.ServerAddress)
+	assert.NotZero(t, resp.Attempt.ServerPort)
+	assert.Equal(t, "claude-sonnet-4-20250514", resp.Attempt.RequestedModel)
+	assert.Equal(t, "claude-sonnet-4-20250514", resp.Attempt.ResponseModel)
+	assert.Equal(t, "claude-sonnet-4-20250514", resp.Attempt.ResolvedModel)
+	assert.Equal(t, 2, resp.Usage.CacheRead)
+	assert.Equal(t, 7, resp.Usage.CacheWrite)
 }
 
 func TestProvider_ConvertMessages(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 
@@ -83,6 +84,48 @@ func TestChatStream_ToolCallIndexIDMapping(t *testing.T) {
 	require.Contains(t, argsByID, "call_abc", "tool call ID must be present on all arg deltas")
 	assert.Equal(t, `{"path":"main.go"}`, argsByID["call_abc"], "arguments must be assembled from all chunks")
 	assert.Equal(t, "read", idNames["call_abc"])
+}
+
+func TestChat_AttemptMetadataIncludesServerIdentityAndCacheUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"gpt-4o",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{
+				"prompt_tokens":12,
+				"completion_tokens":5,
+				"total_tokens":17,
+				"prompt_tokens_details":{"cached_tokens":3}
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	parsed, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	resp, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	require.NoError(t, err)
+
+	require.NotNil(t, resp.Attempt)
+	assert.Equal(t, "openai-compat", resp.Attempt.ProviderName)
+	assert.Equal(t, "local", resp.Attempt.ProviderSystem)
+	assert.Equal(t, parsed.Hostname(), resp.Attempt.ServerAddress)
+	assert.NotZero(t, resp.Attempt.ServerPort)
+	assert.Equal(t, "gpt-4o", resp.Attempt.RequestedModel)
+	assert.Equal(t, "gpt-4o", resp.Attempt.ResponseModel)
+	assert.Equal(t, "gpt-4o", resp.Attempt.ResolvedModel)
+	assert.Equal(t, 3, resp.Usage.CacheRead)
 }
 
 func TestChat_SingleAttemptPerCall(t *testing.T) {

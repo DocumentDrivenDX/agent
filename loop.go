@@ -491,7 +491,7 @@ func annotateChatSpan(span trace.Span, resp Response) {
 		return
 	}
 
-	attrs := make([]attribute.KeyValue, 0, 6)
+	attrs := make([]attribute.KeyValue, 0, 16)
 	if resp.Attempt != nil {
 		attrs = appendStringAttr(attrs, telemetry.KeyProviderName, resp.Attempt.ProviderName)
 		attrs = appendStringAttr(attrs, telemetry.KeyProviderSystem, resp.Attempt.ProviderSystem)
@@ -499,6 +499,22 @@ func annotateChatSpan(span trace.Span, resp Response) {
 		attrs = appendStringAttr(attrs, telemetry.KeyRequestModel, resp.Attempt.RequestedModel)
 		attrs = appendStringAttr(attrs, telemetry.KeyResponseModel, resp.Attempt.ResponseModel)
 		attrs = appendStringAttr(attrs, telemetry.KeyProviderModelResolved, resp.Attempt.ResolvedModel)
+		attrs = appendStringAttr(attrs, telemetry.KeyServerAddress, resp.Attempt.ServerAddress)
+		attrs = appendIntAttr(attrs, telemetry.KeyServerPort, resp.Attempt.ServerPort)
+		if resp.Attempt.Timing != nil {
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingFirstTokenMS, resp.Attempt.Timing.FirstToken)
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingQueueMS, resp.Attempt.Timing.Queue)
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingPrefillMS, resp.Attempt.Timing.Prefill)
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingGenerationMS, resp.Attempt.Timing.Generation)
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingCacheReadMS, resp.Attempt.Timing.CacheRead)
+			attrs = appendDurationMSAttr(attrs, telemetry.KeyTimingCacheWriteMS, resp.Attempt.Timing.CacheWrite)
+		}
+	}
+	if resp.Usage.Input > 0 || resp.Usage.Output > 0 || resp.Usage.CacheRead > 0 || resp.Usage.CacheWrite > 0 {
+		attrs = appendIntAttr(attrs, telemetry.KeyUsageInput, resp.Usage.Input)
+		attrs = appendIntAttr(attrs, telemetry.KeyUsageOutput, resp.Usage.Output)
+		attrs = appendIntAttr(attrs, telemetry.KeyUsageCacheRead, resp.Usage.CacheRead)
+		attrs = appendIntAttr(attrs, telemetry.KeyUsageCacheWrite, resp.Usage.CacheWrite)
 	}
 	span.SetAttributes(attrs...)
 }
@@ -517,4 +533,19 @@ func appendStringAttr(dst []attribute.KeyValue, key, value string) []attribute.K
 		return dst
 	}
 	return append(dst, attribute.String(key, value))
+}
+
+func appendIntAttr(dst []attribute.KeyValue, key string, value int) []attribute.KeyValue {
+	if value == 0 {
+		return dst
+	}
+	return append(dst, attribute.Int(key, value))
+}
+
+func appendDurationMSAttr(dst []attribute.KeyValue, key string, value *time.Duration) []attribute.KeyValue {
+	if value == nil {
+		return dst
+	}
+	ms := float64(*value) / float64(time.Millisecond)
+	return append(dst, attribute.Float64(key, ms))
 }

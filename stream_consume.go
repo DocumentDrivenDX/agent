@@ -26,6 +26,8 @@ func consumeStream(
 
 	var resp Response
 	var contentBuf strings.Builder
+	streamStart := time.Now()
+	var firstOutputAt time.Time
 
 	// Track tool call assembly — deltas arrive as fragments
 	type toolCallState struct {
@@ -89,6 +91,10 @@ func consumeStream(
 			return Response{}, delta.Err
 		}
 
+		if firstOutputAt.IsZero() && streamDeltaHasOutput(delta) {
+			firstOutputAt = time.Now()
+		}
+
 		if delta.Done {
 			break
 		}
@@ -96,6 +102,19 @@ func consumeStream(
 
 	resp.Content = contentBuf.String()
 	resp.Usage.Total = resp.Usage.Input + resp.Usage.Output
+
+	if !firstOutputAt.IsZero() {
+		if resp.Attempt == nil {
+			resp.Attempt = &AttemptMetadata{}
+		}
+		if resp.Attempt.Timing == nil {
+			resp.Attempt.Timing = &TimingBreakdown{}
+		}
+		firstToken := firstOutputAt.Sub(streamStart)
+		generation := time.Since(firstOutputAt)
+		resp.Attempt.Timing.FirstToken = &firstToken
+		resp.Attempt.Timing.Generation = &generation
+	}
 
 	// Assemble tool calls from fragments
 	for _, id := range toolCallOrder {
@@ -108,4 +127,11 @@ func consumeStream(
 	}
 
 	return resp, nil
+}
+
+func streamDeltaHasOutput(delta StreamDelta) bool {
+	return delta.Content != "" ||
+		delta.ToolCallID != "" ||
+		delta.ToolCallName != "" ||
+		delta.ToolCallArgs != ""
 }
