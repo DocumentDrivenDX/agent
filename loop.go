@@ -150,7 +150,20 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			return true, compResult
 		}
 
-		// No compaction happened
+		// No compaction happened - still close the event pair so callbacks stay balanced.
+		emitCallback(req.Callback, Event{
+			SessionID: sessionID,
+			Seq:       seq,
+			Type:      EventCompactionEnd,
+			Timestamp: time.Now().UTC(),
+			Data: mustMarshal(map[string]any{
+				"success":         false,
+				"no_compaction":   true,
+				"messages_before": len(messages),
+				"messages_after":  len(messages),
+			}),
+		})
+		seq++
 		return false, nil
 	}
 

@@ -2,13 +2,16 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	agent "github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/compaction"
 	openaiprovider "github.com/DocumentDrivenDX/agent/provider/openai"
 	"github.com/DocumentDrivenDX/agent/telemetry"
 	"github.com/stretchr/testify/assert"
@@ -17,6 +20,23 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+type externalMockProvider struct {
+	responses []agent.Response
+	callCount int
+}
+
+func (p *externalMockProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	if ctx.Err() != nil {
+		return agent.Response{}, ctx.Err()
+	}
+	if p.callCount >= len(p.responses) {
+		return agent.Response{Content: "no more responses"}, nil
+	}
+	resp := p.responses[p.callCount]
+	p.callCount++
+	return resp, nil
+}
 
 func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
@@ -59,6 +79,60 @@ func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) 
 		assert.Equal(t, parsed.Hostname(), attrString(span.Attributes(), telemetry.KeyServerAddress))
 		assert.Equal(t, int64(port), attrInt(span.Attributes(), telemetry.KeyServerPort))
 	}
+}
+
+func TestRun_EmitsBalancedCompactionEventsForNoFitPrefixCompaction(t *testing.T) {
+	provider := &externalMockProvider{
+		responses: []agent.Response{
+			{Content: "done", Usage: agent.TokenUsage{Total: 10}},
+		},
+	}
+
+	cfg := compaction.DefaultConfig()
+	cfg.ContextWindow = 80
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 20
+	cfg.EffectivePercent = 100
+
+	systemPrompt := strings.Repeat("P", 260)
+	var events []agent.Event
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		History: []agent.Message{
+			{Role: agent.RoleUser, Content: strings.Repeat("A", 120)},
+			{Role: agent.RoleAssistant, Content: strings.Repeat("B", 120)},
+		},
+		Prompt:       "DO-THE-THING",
+		SystemPrompt: systemPrompt,
+		Provider:     provider,
+		Compactor:    compaction.NewCompactor(cfg),
+		Callback: func(e agent.Event) {
+			events = append(events, e)
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+
+	var startEvent, endEvent *agent.Event
+	for i := range events {
+		switch events[i].Type {
+		case agent.EventCompactionStart:
+			startEvent = &events[i]
+		case agent.EventCompactionEnd:
+			endEvent = &events[i]
+		}
+	}
+
+	require.NotNil(t, startEvent, "compaction start event should be emitted")
+	require.NotNil(t, endEvent, "compaction end event should be emitted")
+	assert.Less(t, startEvent.Seq, endEvent.Seq, "compaction end must follow compaction start")
+
+	var endPayload map[string]any
+	require.NoError(t, json.Unmarshal(endEvent.Data, &endPayload))
+	assert.Equal(t, false, endPayload["success"])
+	assert.Equal(t, true, endPayload["no_compaction"])
+	assert.Equal(t, float64(3), endPayload["messages_before"])
+	assert.Equal(t, float64(3), endPayload["messages_after"])
 }
 
 func spansWithOperation(spans []sdktrace.ReadOnlySpan, operation string) []sdktrace.ReadOnlySpan {
