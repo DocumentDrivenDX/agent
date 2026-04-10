@@ -22,7 +22,7 @@ This feature therefore has three related but separate responsibilities:
 
 - **Providers** — concrete transport/auth definitions
 - **Shared model catalog** — agent-owned aliases, tiers/profiles, canonical
-  targets, and deprecation metadata
+  policy targets, and deprecation metadata
 - **Model routes** — optional provider-selection policy keyed by requested
   model or canonical target
 
@@ -34,13 +34,15 @@ prompt behavior and must not be reused for model policy or routing.
 - **Provider** — a concrete backend configuration: type, credentials, base URL,
   headers, and an optional default pinned model
 - **Model catalog** — agent-owned policy/data describing model families,
-  aliases, tiers/profiles, canonical targets, and deprecation/staleness status
+  aliases, tiers/profiles, canonical policy targets, and
+  deprecation/staleness status
 - **Manifest** — the structured model-catalog data file maintained separately
   from Go logic and consumed by the catalog package
 - **Model reference** — a user-facing name resolved through the catalog, such
   as an alias or tier/profile
-- **Canonical target** — the current concrete model/version the catalog wants a
-  given reference to resolve to for a specific consumer surface
+- **Canonical target** — the stable policy target the catalog wants a given
+  reference to resolve to; one target may project to different concrete models
+  and effort defaults on different consumer surfaces
 - **Model route** — a routing entry keyed by requested model or canonical
   target that chooses among one or more concrete providers for a run
 - **Route candidate** — one concrete provider option within a model route, with
@@ -58,7 +60,7 @@ prompt behavior and must not be reused for model policy or routing.
   `backend` UX forces operators to invent labels when what they actually know
   is the model they want.
 - **Desired outcome**: DDX Agent becomes the reusable source of truth for model
-  aliases, tiers/profiles, canonical targets, deprecations, and embedded
+  aliases, tiers/profiles, canonical policy targets, deprecations, and embedded
   provider-selection policy, while DDx keeps cross-harness orchestration and
   HELIX keeps stage intent only.
 
@@ -85,21 +87,28 @@ prompt behavior and must not be reused for model policy or routing.
 8. The catalog represents:
    - model families
    - aliases
-   - tiers/profiles (for example `smart`, `fast`, `cheap`)
-   - canonical current targets
+   - tiers/profiles (for example `code-high`, `code-medium`, `code-economy`,
+     with compatibility aliases such as `smart`, `fast`, `cheap`)
+   - canonical policy targets
    - deprecated or stale targets with replacement metadata
    - consumer-surface mappings where a canonical target needs different
-     concrete strings for different downstream integrations
+     concrete strings and may carry different effort defaults for different
+     downstream integrations
 9. Catalog data is stored in a structured manifest maintained separately from
    Go logic inside the agent repo.
 10. DDX Agent ships an embedded snapshot of that manifest and may also load an
     external manifest override so policy/data can update independently of code
     releases where practical.
-11. DDX Agent CLI and DDx can resolve a model reference through the catalog to a
+11. DDX Agent publishes versioned catalog manifests outside normal binary
+    releases and exposes a stable machine-readable channel pointer so operators
+    and DDx can refresh policy faster than the binary release cadence.
+12. Catalog refresh is explicit. Ordinary request execution must not fetch
+    remote manifest data.
+13. DDX Agent CLI and DDx can resolve a model reference through the catalog to a
     concrete model string appropriate for the chosen consumer surface.
-12. Explicit concrete model pins remain supported and intentionally bypass the
+14. Explicit concrete model pins remain supported and intentionally bypass the
     catalog when a caller wants exact control.
-13. Ownership split is explicit:
+15. Ownership split is explicit:
     - agent owns model catalog data/policy and provider selection inside the
       embedded runtime
     - DDx owns cross-harness orchestration and guardrails
@@ -188,13 +197,15 @@ prompt behavior and must not be reused for model policy or routing.
 | ID | Criterion | Suggested Verification |
 |----|-----------|------------------------|
 | AC-FEAT-004-01 | Direct named-provider resolution selects the configured provider before the run starts, and unknown provider names fail during config/CLI resolution rather than inside `agent.Run()`. | `go test ./config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string, and missing references/surfaces fail deterministically before the run. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string and per-surface effort metadata, and missing references/surfaces fail deterministically before the run. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-03 | Deprecated or stale model references are rejected by default, surface replacement metadata, and can be explicitly allowed only when the caller opts in. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-04 | An explicit concrete `--model` or provider-level pin bypasses catalog policy for that run while leaving catalog-backed resolution unchanged for other runs. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-05 | Model routes keyed by requested model or canonical target choose provider candidates deterministically for `priority-round-robin` and `ordered-failover`, reject empty/unknown routes before the run, and preserve direct-provider override behavior. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-06 | Passive failover advances only on provider-side availability failures, records the attempt chain, and returns an aggregated routing error when every candidate fails. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-07 | The selected concrete provider, requested model input, resolved model reference, route key, and resolved concrete model are recorded in the run result and session artifacts so DDx and downstream analytics can attribute the actual embedded-provider choice without reproducing the route logic. | `go test ./cmd/ddx-agent ./session ./...` |
 | AC-FEAT-004-08 | Deprecated `backends`, `default_backend`, and `--backend` inputs still resolve during the migration window, emit a deprecation warning, and map to the same provider choice as the equivalent model-route configuration. | `go test ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./modelcatalog ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-10 | The starter shared catalog publishes `code-high`, `code-medium`, and `code-economy` policy tiers with compatibility aliases `smart`, `fast`, and `cheap`, and projects the current concrete model/effort pairs onto supported surfaces. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
 
 ## Dependencies
 

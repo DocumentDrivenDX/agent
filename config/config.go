@@ -56,6 +56,28 @@ type RoutingConfig struct {
 	// HealthCooldown controls how long a failed candidate remains deprioritized
 	// before it is retried.
 	HealthCooldown string `yaml:"health_cooldown,omitempty"`
+
+	// HistoryWindow controls how far back observed routing history is sampled
+	// when scoring healthy candidates.
+	HistoryWindow string `yaml:"history_window,omitempty"`
+
+	// ProbeTimeout controls provider availability/model probes.
+	ProbeTimeout string `yaml:"probe_timeout,omitempty"`
+
+	// ReliabilityWeight weights recent success history when scoring healthy
+	// candidates.
+	ReliabilityWeight float64 `yaml:"reliability_weight,omitempty"`
+
+	// PerformanceWeight weights observed latency/throughput when scoring healthy
+	// candidates.
+	PerformanceWeight float64 `yaml:"performance_weight,omitempty"`
+
+	// LoadWeight weights recent selection volume when balancing healthy
+	// candidates.
+	LoadWeight float64 `yaml:"load_weight,omitempty"`
+
+	// CostWeight weights observed known cost when balancing healthy candidates.
+	CostWeight float64 `yaml:"cost_weight,omitempty"`
 }
 
 // ModelRouteCandidateConfig describes one provider candidate inside a route.
@@ -635,11 +657,6 @@ func (c *Config) validateModelRoutes() error {
 			return err
 		}
 	}
-	if c.Routing.DefaultModel != "" {
-		if _, ok := c.ModelRoutes[c.Routing.DefaultModel]; !ok {
-			return fmt.Errorf("config: unknown routing.default_model %q", c.Routing.DefaultModel)
-		}
-	}
 	return nil
 }
 
@@ -651,7 +668,7 @@ func (c *Config) validateModelRoute(name string, route ModelRouteConfig) error {
 		return fmt.Errorf("config: model route %q has no candidates", name)
 	}
 	switch strings.TrimSpace(route.Strategy) {
-	case "", "priority-round-robin", "ordered-failover":
+	case "", "priority-round-robin", "ordered-failover", "smart":
 	default:
 		return fmt.Errorf("config: model route %q has unknown strategy %q", name, route.Strategy)
 	}
@@ -668,9 +685,21 @@ func (c *Config) validateModelRoute(name string, route ModelRouteConfig) error {
 
 // LoadModelCatalog loads the shared model catalog using the configured manifest override path.
 func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {
+	manifestPath := c.ModelCatalog.Manifest
+	if strings.TrimSpace(manifestPath) == "" {
+		manifestPath = defaultModelCatalogManifestPath()
+	}
 	return modelcatalog.Load(modelcatalog.LoadOptions{
-		ManifestPath: c.ModelCatalog.Manifest,
+		ManifestPath: manifestPath,
 	})
+}
+
+func defaultModelCatalogManifestPath() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(configDir, globalConfigDirName, "models.yaml")
 }
 
 func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {

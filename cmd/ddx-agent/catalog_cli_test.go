@@ -1,6 +1,8 @@
 package main_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +16,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type fakeCatalogServer struct {
+	server         *httptest.Server
+	indexByPath    map[string]string
+	manifestByPath map[string]string
+}
 
 type recordedChatRequest struct {
 	Model string `json:"model"`
@@ -61,6 +69,37 @@ func newFakeOpenAIServer(t *testing.T) *fakeOpenAIServer {
 	return fake
 }
 
+func newFakeCatalogServer(t *testing.T, files map[string]string) *fakeCatalogServer {
+	t.Helper()
+	fake := &fakeCatalogServer{
+		indexByPath:    make(map[string]string),
+		manifestByPath: make(map[string]string),
+	}
+	for name, body := range files {
+		switch filepath.Ext(name) {
+		case ".json":
+			fake.indexByPath["/"+name] = body
+		default:
+			fake.manifestByPath["/"+name] = body
+		}
+	}
+	fake.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if body, ok := fake.indexByPath[r.URL.Path]; ok {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		if body, ok := fake.manifestByPath[r.URL.Path]; ok {
+			w.Header().Set("Content-Type", "application/x-yaml")
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(fake.server.Close)
+	return fake
+}
+
 func (f *fakeOpenAIServer) baseURL() string {
 	return f.server.URL + "/v1"
 }
@@ -74,6 +113,10 @@ func (f *fakeOpenAIServer) lastModel() string {
 	return f.modelsSeen[len(f.modelsSeen)-1]
 }
 
+func (f *fakeCatalogServer) baseURL() string {
+	return f.server.URL
+}
+
 func writeTempConfig(t *testing.T, workDir, configBody string) {
 	t.Helper()
 	cfgDir := filepath.Join(workDir, ".agent")
@@ -84,6 +127,24 @@ func writeTempConfig(t *testing.T, workDir, configBody string) {
 func writeTempManifest(t *testing.T, path, body string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+}
+
+func catalogIndexJSON(manifestPath, manifestBody, catalogVersion string, schemaVersion int) string {
+	sum := sha256.Sum256([]byte(manifestBody))
+	payload := map[string]any{
+		"schema_version":    schemaVersion,
+		"catalog_version":   catalogVersion,
+		"channel":           "stable",
+		"published_at":      "2026-04-10T12:00:00Z",
+		"manifest_path":     manifestPath,
+		"manifest_sha256":   hex.EncodeToString(sum[:]),
+		"min_agent_version": "0.2.0",
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 func TestCLI_SessionLogs_UseWorkDirWhenRelative(t *testing.T) {
@@ -323,6 +384,151 @@ default: local
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "[success]")
 	assert.Equal(t, "explicit-model", fake.lastModel())
+}
+
+func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "show")
+	require.NoError(t, err, string(out))
+	output := string(out)
+	assert.Contains(t, output, "source: embedded")
+	assert.Contains(t, output, "catalog_version: 2026-04-10.1")
+	assert.Contains(t, output, "code-high:")
+	assert.Contains(t, output, "agent.openai: gpt-5.4")
+	assert.Contains(t, output, "agent.anthropic: opus-4.6")
+}
+
+func TestCLI_CatalogCheck_ShowsUpdateAvailable(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+	manifest := `
+version: 2
+generated_at: 2026-04-11T00:00:00Z
+catalog_version: 2026-04-11.1
+profiles:
+  code-high:
+    target: code-high
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+    surface_policy:
+      agent.openai:
+        effort_default: high
+`
+	server := newFakeCatalogServer(t, map[string]string{
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 2),
+		"stable/models.yaml": manifest,
+	})
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "check", "--base-url", server.baseURL())
+	require.NoError(t, err, string(out))
+	output := string(out)
+	assert.Contains(t, output, "remote_catalog_version: 2026-04-11.1")
+	assert.Contains(t, output, "status: update-available")
+}
+
+func TestCLI_CatalogUpdate_InstallsVerifiedManifest(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+	manifest := `
+version: 2
+generated_at: 2026-04-11T00:00:00Z
+catalog_version: 2026-04-11.1
+profiles:
+  code-high:
+    target: code-high
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+    surface_policy:
+      agent.openai:
+        effort_default: high
+`
+	server := newFakeCatalogServer(t, map[string]string{
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 2),
+		"stable/models.yaml": manifest,
+	})
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "installed catalog 2026-04-11.1")
+
+	installedPath := filepath.Join(home, ".config", "agent", "models.yaml")
+	data, readErr := os.ReadFile(installedPath)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "catalog_version: 2026-04-11.1")
+
+	showOut, showErr := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "show")
+	require.NoError(t, showErr, string(showOut))
+	assert.Contains(t, string(showOut), "source: "+installedPath)
+	assert.Contains(t, string(showOut), "catalog_version: 2026-04-11.1")
+}
+
+func TestCLI_CatalogUpdate_RejectsChecksumMismatch(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+	manifest := `
+version: 2
+generated_at: 2026-04-11T00:00:00Z
+catalog_version: 2026-04-11.1
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+`
+	index := `{
+  "schema_version": 2,
+  "catalog_version": "2026-04-11.1",
+  "channel": "stable",
+  "published_at": "2026-04-11T12:00:00Z",
+  "manifest_path": "models.yaml",
+  "manifest_sha256": "deadbeef",
+  "min_agent_version": "0.2.0"
+}`
+	server := newFakeCatalogServer(t, map[string]string{
+		"stable/index.json":  index,
+		"stable/models.yaml": manifest,
+	})
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
+	require.Error(t, err)
+	assert.Contains(t, string(out), "checksum mismatch")
+
+	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
+	assert.Error(t, statErr)
+}
+
+func TestCLI_CatalogUpdate_RejectsUnsupportedSchemaVersion(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+	manifest := `
+version: 3
+generated_at: 2026-04-11T00:00:00Z
+catalog_version: 2026-04-11.1
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+`
+	server := newFakeCatalogServer(t, map[string]string{
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 3),
+		"stable/models.yaml": manifest,
+	})
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
+	require.Error(t, err)
+	assert.Contains(t, string(out), "unsupported schema version 3")
+
+	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
+	assert.Error(t, statErr)
 }
 
 func TestCLI_Providers_Check_ModelsUseConfiguredProviderWithoutRunningModelResolution(t *testing.T) {

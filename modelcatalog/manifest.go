@@ -14,6 +14,7 @@ const (
 	statusActive     = "active"
 	statusDeprecated = "deprecated"
 	statusStale      = "stale"
+	maxSchemaVersion = 2
 )
 
 //go:embed catalog/models.yaml
@@ -26,10 +27,11 @@ type LoadOptions struct {
 }
 
 type manifest struct {
-	Version     int                     `yaml:"version"`
-	GeneratedAt string                  `yaml:"generated_at"`
-	Profiles    map[string]profileEntry `yaml:"profiles"`
-	Targets     map[string]targetEntry  `yaml:"targets"`
+	Version        int                     `yaml:"version"`
+	GeneratedAt    string                  `yaml:"generated_at"`
+	CatalogVersion string                  `yaml:"catalog_version,omitempty"`
+	Profiles       map[string]profileEntry `yaml:"profiles"`
+	Targets        map[string]targetEntry  `yaml:"targets"`
 }
 
 type profileEntry struct {
@@ -37,12 +39,21 @@ type profileEntry struct {
 }
 
 type targetEntry struct {
-	Family       string            `yaml:"family"`
-	Aliases      []string          `yaml:"aliases"`
-	Status       string            `yaml:"status"`
-	Replacement  string            `yaml:"replacement,omitempty"`
-	DeprecatedAt string            `yaml:"deprecated_at,omitempty"`
-	Surfaces     map[string]string `yaml:"surfaces"`
+	Family        string                        `yaml:"family"`
+	Aliases       []string                      `yaml:"aliases"`
+	Status        string                        `yaml:"status"`
+	Replacement   string                        `yaml:"replacement,omitempty"`
+	DeprecatedAt  string                        `yaml:"deprecated_at,omitempty"`
+	Surfaces      map[string]string             `yaml:"surfaces"`
+	SurfacePolicy map[string]surfacePolicyEntry `yaml:"surface_policy,omitempty"`
+}
+
+type surfacePolicyEntry struct {
+	EffortDefault string `yaml:"effort_default,omitempty"`
+}
+
+func (s surfacePolicyEntry) toResolved() SurfacePolicy {
+	return SurfacePolicy{EffortDefault: strings.TrimSpace(s.EffortDefault)}
 }
 
 // Default loads the embedded default catalog snapshot.
@@ -102,6 +113,9 @@ func validateManifest(m manifest) error {
 	if m.Version <= 0 {
 		return fmt.Errorf("version must be greater than zero")
 	}
+	if m.Version > maxSchemaVersion {
+		return fmt.Errorf("unsupported schema version %d (max supported %d)", m.Version, maxSchemaVersion)
+	}
 	if len(m.Targets) == 0 {
 		return fmt.Errorf("targets must not be empty")
 	}
@@ -154,6 +168,17 @@ func validateManifest(m manifest) error {
 				return fmt.Errorf("target %q has empty model for surface %q", targetID, surface)
 			}
 		}
+		for surface, policy := range target.SurfacePolicy {
+			if strings.TrimSpace(surface) == "" {
+				return fmt.Errorf("target %q has empty surface_policy key", targetID)
+			}
+			if _, ok := target.Surfaces[surface]; !ok {
+				return fmt.Errorf("target %q surface_policy %q has no matching surface mapping", targetID, surface)
+			}
+			if strings.TrimSpace(policy.EffortDefault) == "" {
+				return fmt.Errorf("target %q surface_policy %q must define effort_default", targetID, surface)
+			}
+		}
 
 		for _, alias := range target.Aliases {
 			alias = strings.TrimSpace(alias)
@@ -184,7 +209,7 @@ func validateManifest(m manifest) error {
 		if _, ok := m.Targets[entry.Target]; !ok {
 			return fmt.Errorf("profile %q references unknown target %q", profile, entry.Target)
 		}
-		if owner, exists := reserved[profile]; exists {
+		if owner, exists := reserved[profile]; exists && profile != entry.Target {
 			return fmt.Errorf("profile %q collides with %s", profile, owner)
 		}
 		reserved[profile] = fmt.Sprintf("profile %q", profile)

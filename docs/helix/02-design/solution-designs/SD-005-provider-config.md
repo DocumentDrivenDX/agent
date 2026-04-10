@@ -18,7 +18,8 @@ real users need three separate concerns:
 1. **Named providers** — concrete backend definitions for Anthropic,
    OpenRouter, LM Studio hosts, etc.
 2. **Shared model policy** — one agent-owned catalog for aliases,
-   tiers/profiles, canonical targets, and deprecations.
+   tiers/profiles, canonical policy targets, per-surface projections, and
+   deprecations.
 3. **Simple routing across equivalent providers** — for example choose among
    several local inference servers that should all serve the same requested
    model.
@@ -32,7 +33,8 @@ DDX Agent keeps three layers above the runtime boundary:
 
 - **Providers** — transport/auth definitions and optional direct pinned models
 - **Model catalog** — agent-owned reusable policy/data loaded from an embedded
-  snapshot plus an optional external manifest override
+  snapshot plus an optional external manifest override, with published manifest
+  bundles distributed outside binary releases
 - **Model routes** — routing entries keyed by requested model or canonical
   target that pick one provider candidate before a run
 
@@ -51,7 +53,7 @@ DDx boundary:
 ```yaml
 # .agent/config.yaml
 model_catalog:
-  manifest: ~/.config/agent/models.yaml   # optional local override of the embedded snapshot
+  manifest: ~/.config/ddx-agent/models.yaml   # optional local override of the embedded snapshot
 
 providers:
   vidar:
@@ -82,34 +84,34 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}
 
 routing:
-  default_model_ref: code-fast
+  default_model_ref: code-medium
   health_cooldown: 30s
 
 model_routes:
-  qwen3-coder-next:
+  code-medium:
     strategy: priority-round-robin
     candidates:
       - provider: vidar
-        model: qwen/qwen3-coder-next
+        model: gpt-5.4-mini
         priority: 100
       - provider: bragi
-        model: qwen/qwen3-coder-next
+        model: gpt-5.4-mini
         priority: 100
       - provider: grendel
-        model: qwen/qwen3-coder-next
+        model: gpt-5.4-mini
         priority: 100
       - provider: openrouter
-        model: qwen/qwen3-coder-next
+        model: gpt-5.4-mini
         priority: 10
 
-  claude-sonnet-4:
+  code-high:
     strategy: ordered-failover
     candidates:
       - provider: anthropic
-        model: claude-sonnet-4-20250514
+        model: opus-4.6
         priority: 100
       - provider: openrouter
-        model: anthropic/claude-sonnet-4
+        model: gpt-5.4
         priority: 50
 
 default: vidar
@@ -143,7 +145,12 @@ alias/profile policy.
 
 **D2: Add an agent-owned model catalog as a first-class layer.** The catalog is
 loaded from an embedded manifest snapshot with an optional external override,
-and it owns aliases, tiers/profiles, canonical targets, and deprecations.
+and it owns aliases, tiers/profiles, canonical policy targets, deprecations,
+and per-surface projections.
+
+**D2A: Publish catalog bundles independently of binary releases.** The embedded
+snapshot remains the safe default, but operators and DDx can install a newer
+shared manifest from a versioned published bundle via an explicit update flow.
 
 **D3: Preserve prompt preset terminology for prompts only.** The top-level
 `preset` field and CLI `--preset` flag refer to system prompt presets defined in
@@ -213,15 +220,15 @@ Built-in preset details are defined by SD-003 and implemented in
 
 ```bash
 ddx-agent run --provider vidar "prompt"
-ddx-agent run --provider anthropic --model claude-sonnet-4-20250514 "prompt"
-ddx-agent run --model-ref code-smart "prompt"
+ddx-agent run --provider anthropic --model opus-4.6 "prompt"
+ddx-agent run --model-ref code-high "prompt"
 ```
 
 ### Model-Route Selection
 
 ```bash
-ddx-agent run --model qwen3-coder-next "prompt"
-ddx-agent run --model-ref code-fast "prompt"
+ddx-agent run --model qwen3.5-27b "prompt"
+ddx-agent run --model-ref code-medium "prompt"
 ddx-agent run "prompt"                        # use default model route if set, else default provider
 ```
 
@@ -240,8 +247,9 @@ single `Provider` in the `Request`.
 
 Config and CLI code grow a catalog-aware layer above that boundary. The
 detailed package/API shape is defined in
-`docs/helix/02-design/plan-2026-04-08-shared-model-catalog.md` and
-`docs/helix/02-design/plan-2026-04-10-model-first-routing.md`.
+`docs/helix/02-design/plan-2026-04-08-shared-model-catalog.md`,
+`docs/helix/02-design/plan-2026-04-10-model-first-routing.md`, and
+`docs/helix/02-design/plan-2026-04-10-catalog-distribution-and-refresh.md`.
 
 Expected package split:
 
@@ -258,5 +266,7 @@ Expected package split:
 - `plan-2026-04-08-shared-model-catalog.md` defines the catalog package/API,
   manifest format, and consumer examples
 - `plan-2026-04-10-model-first-routing.md` captures the converged replacement
+- `plan-2026-04-10-catalog-distribution-and-refresh.md` defines published
+  manifest bundles, explicit update flow, and the initial effort-tier baseline
   of backend pools with model routes
 - `agent-94b5d420` covers the shared-catalog design lineage

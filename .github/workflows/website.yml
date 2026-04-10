@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
     paths:
+      - 'modelcatalog/catalog/models.yaml'
+      - 'catalogdist/**'
+      - 'cmd/catalogdist/**'
+      - 'Makefile'
       - 'website/**'
       - '.github/workflows/website.yml'
   workflow_dispatch:
@@ -37,6 +41,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Build catalog distribution
+        env:
+          MIN_AGENT_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          rm -rf website/static/catalog
+          MIN_AGENT_VERSION="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo dev)"
+          make catalog-dist
 
       - name: Build
         working-directory: website

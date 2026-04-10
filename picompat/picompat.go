@@ -3,16 +3,16 @@ package picompat
 
 import (
 	"os"
-	"os/user"
+	"path/filepath"
 )
 
 // DefaultPiDir returns the default pi config directory.
 func DefaultPiDir() string {
-	home, err := user.Current()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return home.HomeDir + "/.pi"
+	return filepath.Join(home, ".pi")
 }
 
 // CheckExists checks if pi config directory and auth.json exist.

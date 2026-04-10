@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDefaultPiDir_UsesProcessHome(t *testing.T) {
+	t.Setenv("HOME", "/tmp/picompat-home")
+
+	dir := DefaultPiDir()
+	assert.Equal(t, filepath.Join("/tmp/picompat-home", ".pi"), dir)
+}
+
 func TestLoadAuth(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
@@ -69,6 +76,48 @@ func TestLoadModels(t *testing.T) {
 	assert.Equal(t, "openai-completions", prov.API)
 	assert.Len(t, prov.Models, 1)
 	assert.Equal(t, "qwen3.5-7b", prov.Models[0])
+}
+
+func TestLoadModels_ObjectMapProviders(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentDir := filepath.Join(tmpDir, "agent")
+	err := os.MkdirAll(agentDir, 0755)
+	require.NoError(t, err)
+
+	modelsJSON := `{
+		"providers": {
+			"vidar": {
+				"baseUrl": "http://vidar:1234/v1",
+				"api": "openai-completions",
+				"models": [
+					{ "id": "qwen3.5-27b" },
+					{ "id": "openai/gpt-oss-20b" }
+				]
+			},
+			"bragi": {
+				"baseUrl": "http://bragi:1234/v1",
+				"api": "openai-completions",
+				"models": [
+					{ "id": "qwen3.5-27b" }
+				]
+			}
+		}
+	}`
+	err = os.WriteFile(filepath.Join(agentDir, "models.json"), []byte(modelsJSON), 0644)
+	require.NoError(t, err)
+
+	cfg, err := LoadModels(tmpDir)
+	require.NoError(t, err)
+	require.Len(t, cfg.Providers, 2)
+
+	vidar := cfg.GetProviderByName("vidar")
+	require.NotNil(t, vidar)
+	assert.Equal(t, "http://vidar:1234/v1", vidar.BaseURL)
+	assert.Equal(t, []string{"qwen3.5-27b", "openai/gpt-oss-20b"}, vidar.Models)
+
+	bragi := cfg.GetProviderByName("bragi")
+	require.NotNil(t, bragi)
+	assert.Equal(t, []string{"qwen3.5-27b"}, bragi.Models)
 }
 
 func TestLoadSettings(t *testing.T) {
@@ -157,6 +206,66 @@ func TestTranslate_TwoSourceMerge(t *testing.T) {
 
 	// Default should be anthropic
 	assert.Equal(t, "anthropic", result.Default)
+}
+
+func TestTranslate_CurrentPiObjectMapShape(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentDir := filepath.Join(tmpDir, "agent")
+	err := os.MkdirAll(agentDir, 0755)
+	require.NoError(t, err)
+
+	authJSON := `{
+		"openrouter": {"api_key": "sk-or-api-key"}
+	}`
+	err = os.WriteFile(filepath.Join(agentDir, "auth.json"), []byte(authJSON), 0644)
+	require.NoError(t, err)
+
+	modelsJSON := `{
+		"providers": {
+			"vidar": {
+				"baseUrl": "http://vidar:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [
+					{ "id": "qwen3.5-27b" },
+					{ "id": "openai/gpt-oss-20b" }
+				]
+			},
+			"grendel": {
+				"baseUrl": "http://grendel:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [
+					{ "id": "qwen3.5-27b" }
+				]
+			}
+		}
+	}`
+	err = os.WriteFile(filepath.Join(agentDir, "models.json"), []byte(modelsJSON), 0644)
+	require.NoError(t, err)
+
+	settingsJSON := `{
+		"defaultProvider": "grendel",
+		"defaultModel": "qwen3.5-27b"
+	}`
+	err = os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsJSON), 0644)
+	require.NoError(t, err)
+
+	result, err := Translate(tmpDir)
+	require.NoError(t, err)
+
+	require.Contains(t, result.Providers, "vidar")
+	assert.Equal(t, "http://vidar:1234/v1", result.Providers["vidar"].BaseURL)
+	assert.Equal(t, "qwen3.5-27b", result.Providers["vidar"].Model)
+	assert.Equal(t, "lmstudio", result.Providers["vidar"].APIKey)
+
+	require.Contains(t, result.Providers, "grendel")
+	assert.Equal(t, "http://grendel:1234/v1", result.Providers["grendel"].BaseURL)
+	assert.Equal(t, "qwen3.5-27b", result.Providers["grendel"].Model)
+	assert.Equal(t, "grendel", result.Default)
+
+	require.Contains(t, result.Providers, "openrouter")
+	assert.Equal(t, "https://openrouter.ai/api/v1", result.Providers["openrouter"].BaseURL)
 }
 
 func TestTranslate_SkipsUnsupported(t *testing.T) {

@@ -29,6 +29,18 @@ type Catalog struct {
 	profileToID map[string]string
 }
 
+// SurfacePolicy captures optional routing metadata for a resolved surface.
+type SurfacePolicy struct {
+	EffortDefault string
+}
+
+// Metadata describes the loaded manifest.
+type Metadata struct {
+	ManifestSource  string
+	ManifestVersion int
+	CatalogVersion  string
+}
+
 // ResolvedTarget is the resolved output for a model reference.
 type ResolvedTarget struct {
 	Ref             string
@@ -36,10 +48,21 @@ type ResolvedTarget struct {
 	Family          string
 	CanonicalID     string
 	ConcreteModel   string
+	SurfacePolicy   SurfacePolicy
 	Deprecated      bool
 	Replacement     string
+	CatalogVersion  string
 	ManifestSource  string
 	ManifestVersion int
+}
+
+// Metadata returns the loaded manifest metadata for inspection surfaces.
+func (c *Catalog) Metadata() Metadata {
+	return Metadata{
+		ManifestSource:  c.manifestSrc,
+		ManifestVersion: c.manifest.Version,
+		CatalogVersion:  c.manifest.CatalogVersion,
+	}
 }
 
 // UnknownReferenceError indicates that a reference is not known to the catalog.
@@ -145,6 +168,12 @@ func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptio
 			Surface:     opts.Surface,
 		}
 	}
+	policy := SurfacePolicy{}
+	if target.SurfacePolicy != nil {
+		if entry, ok := target.SurfacePolicy[string(opts.Surface)]; ok {
+			policy = entry.toResolved()
+		}
+	}
 
 	return ResolvedTarget{
 		Ref:             ref,
@@ -152,8 +181,10 @@ func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptio
 		Family:          target.Family,
 		CanonicalID:     targetID,
 		ConcreteModel:   concreteModel,
+		SurfacePolicy:   policy,
 		Deprecated:      deprecated,
 		Replacement:     target.Replacement,
+		CatalogVersion:  c.manifest.CatalogVersion,
 		ManifestSource:  c.manifestSrc,
 		ManifestVersion: c.manifest.Version,
 	}, nil

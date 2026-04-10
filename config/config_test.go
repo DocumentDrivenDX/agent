@@ -12,7 +12,9 @@ import (
 
 func isolateHome(t *testing.T) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 }
 
 func TestLoad_NewFormat(t *testing.T) {
@@ -153,6 +155,41 @@ func TestLoad_MissingFile(t *testing.T) {
 	assert.Equal(t, ".agent/sessions", cfg.SessionLogDir)
 }
 
+func TestLoadModelCatalog_UsesDefaultInstalledManifestPath(t *testing.T) {
+	isolateHome(t)
+	configDir, err := os.UserConfigDir()
+	require.NoError(t, err)
+	manifestPath := filepath.Join(configDir, "agent", "models.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+	require.NoError(t, os.WriteFile(manifestPath, []byte(`
+version: 2
+generated_at: 2026-04-10T00:00:00Z
+catalog_version: 2026-04-11.1
+profiles:
+  code-high:
+    target: code-high
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+    surface_policy:
+      agent.openai:
+        effort_default: high
+`), 0o644))
+
+	cfg := Defaults()
+	catalog, err := cfg.LoadModelCatalog()
+	require.NoError(t, err)
+	resolved, err := catalog.Resolve("code-high", modelcatalog.ResolveOptions{
+		Surface: modelcatalog.SurfaceAgentOpenAI,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "gpt-5.4", resolved.ConcreteModel)
+	assert.Equal(t, manifestPath, resolved.ManifestSource)
+	assert.Equal(t, "2026-04-11.1", resolved.CatalogVersion)
+}
+
 func TestLoad_EnvOverrides(t *testing.T) {
 	isolateHome(t)
 	t.Setenv("AGENT_PROVIDER", "anthropic")
@@ -255,6 +292,7 @@ func TestBuildProvider_WithHeaders(t *testing.T) {
 }
 
 func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		ModelCatalog: ModelCatalogConfig{},
 		Providers: map[string]ProviderConfig{
@@ -271,11 +309,12 @@ func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "qwen/qwen3-coder-next", pc.Model)
-	assert.Equal(t, "qwen3-coder-next", resolved.CanonicalID)
+	assert.Equal(t, "gpt-5.4-mini", pc.Model)
+	assert.Equal(t, "code-medium", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -290,11 +329,12 @@ func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
-	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
+	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_ExplicitModelBypassesCatalog(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -352,6 +392,7 @@ targets:
 }
 
 func TestResolveProviderConfig_MissingSurface(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -362,7 +403,8 @@ func TestResolveProviderConfig_MissingSurface(t *testing.T) {
 	}
 
 	_, _, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef: "code-fast",
+		ModelRef:        "qwen3-coder-next",
+		AllowDeprecated: true,
 	})
 	require.Error(t, err)
 
@@ -372,6 +414,7 @@ func TestResolveProviderConfig_MissingSurface(t *testing.T) {
 }
 
 func TestBuildProviderWithOverrides(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -386,12 +429,13 @@ func TestBuildProviderWithOverrides(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	assert.Equal(t, "opus-4.6", pc.Model)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_AllowDeprecated(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -615,6 +659,7 @@ func TestResolveBackend_RoundRobin_ThreeProviders(t *testing.T) {
 }
 
 func TestResolveBackend_WithModelRef(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test"},
@@ -631,11 +676,12 @@ func TestResolveBackend_WithModelRef(t *testing.T) {
 	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
-	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
+	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
 func TestResolveBackend_OverrideModelRef(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test"},
@@ -653,10 +699,11 @@ func TestResolveBackend_OverrideModelRef(t *testing.T) {
 	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{ModelRef: "code-smart"})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	assert.Equal(t, "opus-4.6", pc.Model)
 }
 
 func TestResolveBackend_ExplicitModelBypassesCatalog(t *testing.T) {
+	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test", Model: "default-model"},
@@ -889,7 +936,7 @@ model_routes:
 	assert.Contains(t, err.Error(), `model route "qwen3.5-27b" has no candidates`)
 }
 
-func TestLoad_RoutingDefaultModelMustExist(t *testing.T) {
+func TestLoad_RoutingDefaultModelAllowsAutoDiscoveredIntentRoute(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".agent")
@@ -909,9 +956,9 @@ model_routes:
       - provider: bragi
 `), 0o644))
 
-	_, err := Load(dir)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown routing.default_model "missing-route"`)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "missing-route", cfg.Routing.DefaultModel)
 }
 
 func TestLoad_BackendPoolsRejectUnknownProviderDuringTranslation(t *testing.T) {

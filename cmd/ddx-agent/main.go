@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -91,6 +90,10 @@ func run() int {
 			return cmdCheck(wd, *providerFlag, args[1:])
 		case "providers":
 			return cmdProviders(wd, *jsonOutput)
+		case "catalog":
+			return cmdCatalog(wd, args[1:])
+		case "route-status":
+			return cmdRouteStatus(wd, args[1:])
 		case "import":
 			return cmdImport(wd, args[1:])
 		case "version":
@@ -308,12 +311,12 @@ type providerSelection struct {
 }
 
 func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
-	routeKey, routeModelRef, useLegacyBackend, treatModelAsPin, err := resolveRouteTarget(cfg, backendName, providerName, overrides)
+	routeKey, routeModelRef, useLegacyBackend, err := resolveRouteTarget(cfg, backendName, providerName, overrides)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
 	if routeKey != "" {
-		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, routeModelRef, overrides, treatModelAsPin)
+		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, routeModelRef, overrides.AllowDeprecated)
 		if err != nil {
 			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 		}
@@ -372,94 +375,103 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 	return selection, p, pc, nil
 }
 
-func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName string, overrides agentConfig.ProviderOverrides) (routeKey string, routeModelRef string, legacyBackend string, treatModelAsPin bool, err error) {
+func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName string, overrides agentConfig.ProviderOverrides) (routeKey string, routeModelRef string, legacyBackend string, err error) {
 	if providerName != "" {
-		return "", "", "", false, nil
+		return "", "", "", nil
 	}
 	if backendName != "" {
-		return "", "", backendName, false, nil
+		return "", "", backendName, nil
 	}
 	if overrides.Model != "" {
-		if _, ok := cfg.GetModelRoute(overrides.Model); ok {
-			return overrides.Model, "", "", false, nil
-		}
-		return "", "", "", true, nil
+		return overrides.Model, "", "", nil
 	}
 	if overrides.ModelRef != "" {
 		resolved, err := resolveCanonicalModelRef(cfg, overrides.ModelRef, overrides.AllowDeprecated)
 		if err != nil {
-			return "", "", "", false, err
+			return "", "", "", err
 		}
 		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
-			return resolved.CanonicalID, overrides.ModelRef, "", false, nil
+			return resolved.CanonicalID, overrides.ModelRef, "", nil
 		}
 		if _, ok := cfg.GetModelRoute(overrides.ModelRef); ok {
-			return overrides.ModelRef, overrides.ModelRef, "", false, nil
+			return overrides.ModelRef, overrides.ModelRef, "", nil
 		}
-		return "", "", "", false, nil
+		return resolved.CanonicalID, overrides.ModelRef, "", nil
 	}
 	if cfg.Routing.DefaultModel != "" {
-		return cfg.Routing.DefaultModel, "", "", false, nil
+		return cfg.Routing.DefaultModel, "", "", nil
 	}
 	if cfg.Routing.DefaultModelRef != "" {
 		resolved, err := resolveCanonicalModelRef(cfg, cfg.Routing.DefaultModelRef, true)
 		if err != nil {
-			return "", "", "", false, err
+			return "", "", "", err
 		}
 		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
-			return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", false, nil
+			return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", nil
 		}
 		if _, ok := cfg.GetModelRoute(cfg.Routing.DefaultModelRef); ok {
-			return cfg.Routing.DefaultModelRef, cfg.Routing.DefaultModelRef, "", false, nil
+			return cfg.Routing.DefaultModelRef, cfg.Routing.DefaultModelRef, "", nil
 		}
+		return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", nil
 	}
 	if cfg.DefaultBackend != "" {
-		return "", "", cfg.DefaultBackend, false, nil
+		return "", "", cfg.DefaultBackend, nil
 	}
-	return "", "", "", false, nil
+	return "", "", "", nil
 }
 
-func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, overrides agentConfig.ProviderOverrides, treatModelAsPin bool) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
-	route, ok := cfg.GetModelRoute(routeKey)
-	if !ok {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: unknown model route %q", routeKey)
+func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
+	var explicitRoute *agentConfig.ModelRouteConfig
+	if route, ok := cfg.GetModelRoute(routeKey); ok {
+		explicitRoute = &route
 	}
-	counter, err := readAndIncrementRouteCounter(workDir, routeKey)
-	if err != nil {
-		counter = 0
-	}
-	healthState, err := loadRouteHealthState(workDir, routeKey)
-	if err != nil {
-		healthState = routeHealthState{Failures: make(map[string]time.Time)}
-	}
-	order := routeAttemptOrder(route, counter, healthState, routeHealthCooldown(cfg))
-	if len(order) == 0 {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: model route %q has no candidates", routeKey)
-	}
-	candidate := route.Candidates[order[0]]
-
-	candidateOverrides := agentConfig.ProviderOverrides{
-		AllowDeprecated: overrides.AllowDeprecated,
-	}
-	if treatModelAsPin {
-		candidateOverrides.Model = overrides.Model
-	}
-	if routeModelRef != "" && candidate.Model == "" {
-		candidateOverrides.ModelRef = routeModelRef
-	}
-
-	p, pc, resolved, err := cfg.BuildProviderWithOverrides(candidate.Provider, candidateOverrides)
+	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, routeModelRef, allowDeprecated, explicitRoute)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
-	if candidate.Model != "" {
-		pc.Model = candidate.Model
+	if len(plan.Order) == 0 {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: no route candidates available for %q", routeKey)
 	}
-	p = newRouteProvider(cfg, workDir, routeKey, routeKey, routeModelRef, route, order, candidate.Provider, overrides.AllowDeprecated)
+	selected := plan.Candidates[plan.Order[0]]
+	if routeModelRef != "" && (selected.Model == "" || selected.Model == routeKey) {
+		resolvedPC, _, err := cfg.ResolveProviderConfig(selected.Provider, agentConfig.ProviderOverrides{ModelRef: routeModelRef, AllowDeprecated: allowDeprecated})
+		if err != nil {
+			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
+		}
+		selected.Model = resolvedPC.Model
+	}
+	p, pc, resolved, err := cfg.BuildProviderWithOverrides(selected.Provider, agentConfig.ProviderOverrides{
+		Model:           selected.Model,
+		ModelRef:        routeModelRef,
+		AllowDeprecated: allowDeprecated,
+	})
+	if err != nil {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
+	}
+	pc.Model = selected.Model
+	routeCandidates := make([]agentConfig.ModelRouteCandidateConfig, 0, len(plan.Candidates))
+	for _, candidate := range plan.Candidates {
+		if routeModelRef != "" && (candidate.Model == "" || candidate.Model == routeKey) {
+			resolvedPC, _, err := cfg.ResolveProviderConfig(candidate.Provider, agentConfig.ProviderOverrides{ModelRef: routeModelRef, AllowDeprecated: allowDeprecated})
+			if err != nil {
+				return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
+			}
+			candidate.Model = resolvedPC.Model
+		}
+		routeCandidates = append(routeCandidates, agentConfig.ModelRouteCandidateConfig{
+			Provider: candidate.Provider,
+			Model:    candidate.Model,
+			Priority: candidate.Priority,
+		})
+	}
+	p = newRouteProvider(cfg, workDir, routeKey, routeKey, routeModelRef, agentConfig.ModelRouteConfig{
+		Strategy:   plan.Strategy,
+		Candidates: routeCandidates,
+	}, plan.Order, selected.Provider, allowDeprecated)
 
 	selection := providerSelection{
 		Route:             routeKey,
-		Provider:          candidate.Provider,
+		Provider:          selected.Provider,
 		RequestedModel:    routeKey,
 		RequestedModelRef: routeModelRef,
 		ResolvedModel:     pc.Model,
@@ -1083,72 +1095,21 @@ func csvEscape(value string) string {
 }
 
 func checkProviderStatus(pc agentConfig.ProviderConfig) string {
+	probe := probeProviderModels(pc, routingProbeTimeout(nil))
 	if pc.Type == "anthropic" {
-		if pc.APIKey == "" {
-			return "no API key"
+		if probe.err != nil {
+			return probe.err.Error()
 		}
 		return "api key configured"
 	}
-
-	url := pc.BaseURL
-	if url == "" {
-		return "no URL configured"
+	if probe.err != nil {
+		return probe.err.Error()
 	}
-	modelsURL := strings.TrimSuffix(url, "/") + "/models"
-	if strings.HasSuffix(url, "/v1") {
-		modelsURL = url + "/models"
-	}
-
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(modelsURL)
-	if err != nil {
-		return fmt.Sprintf("unreachable (%s)", strings.Split(err.Error(), ": ")[len(strings.Split(err.Error(), ": "))-1])
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Data []struct{} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "connected (parse error)"
-	}
-	return fmt.Sprintf("connected (%d models)", len(result.Data))
+	return fmt.Sprintf("connected (%d models)", len(probe.models))
 }
 
 func listModels(pc agentConfig.ProviderConfig) []string {
-	if pc.Type == "anthropic" {
-		return nil
-	}
-	url := pc.BaseURL
-	if url == "" {
-		return nil
-	}
-	modelsURL := strings.TrimSuffix(url, "/") + "/models"
-	if strings.HasSuffix(url, "/v1") {
-		modelsURL = url + "/models"
-	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(modelsURL)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil
-	}
-
-	var models []string
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models
+	return probeProviderModels(pc, routingProbeTimeout(nil)).models
 }
 
 func cmdImport(workDir string, args []string) int {

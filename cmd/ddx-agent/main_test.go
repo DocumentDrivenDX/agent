@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // runAgentCLI runs the ddx-agent CLI from the project root.
@@ -28,6 +29,43 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 	)
 	out, err := cmd.CombinedOutput()
 	return out, err
+}
+
+func runAgentCLIWithHome(t *testing.T, home string, args ...string) ([]byte, error) {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+
+	exe := buildAgentCLI(t)
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+	cmd.Env = append(os.Environ(),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+	)
+	out, err := cmd.CombinedOutput()
+	return out, err
+}
+
+func writePiFixture(t *testing.T, home string, modelsJSON string) {
+	t.Helper()
+	piAgentDir := filepath.Join(home, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piAgentDir, 0o755))
+
+	authJSON := `{
+		"anthropic": {"access_token": "sk-ant-fixture"},
+		"openrouter": {"api_key": "sk-or-fixture"}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(piAgentDir, "auth.json"), []byte(authJSON), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(piAgentDir, "models.json"), []byte(modelsJSON), 0o644))
+
+	settingsJSON := `{
+		"defaultProvider": "grendel",
+		"defaultModel": "qwen3.5-27b"
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".pi", "settings.json"), []byte(settingsJSON), 0o644))
 }
 
 func TestCLI_Version(t *testing.T) {
@@ -129,6 +167,73 @@ func TestCLI_ImportPi_DiffMode(t *testing.T) {
 	output := string(out)
 	assert.True(t, strings.Contains(output, "pi") || strings.Contains(output, "not found") || strings.Contains(output, "stat"),
 		"Expected pi-related output or stat error, got: %s", output)
+}
+
+func TestCLI_ImportPi_Diff_ObjectMapProviders(t *testing.T) {
+	home := t.TempDir()
+	writePiFixture(t, home, `{
+		"providers": {
+			"vidar": {
+				"baseUrl": "http://vidar:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [{ "id": "qwen3.5-27b" }]
+			},
+			"grendel": {
+				"baseUrl": "http://grendel:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [{ "id": "qwen3.5-27b" }]
+			}
+		}
+	}`)
+
+	out, err := runAgentCLIWithHome(t, home, "import", "pi", "--diff")
+	require.NoError(t, err, string(out))
+	output := string(out)
+
+	assert.Contains(t, output, "ddx-agent: pi config -- what would be imported:")
+	assert.Contains(t, output, "[grendel]")
+	assert.Contains(t, output, "http://grendel:1234/v1")
+	assert.Contains(t, output, "[vidar]")
+	assert.Contains(t, output, "default: grendel")
+}
+
+func TestCLI_ImportPi_WritesConfig_ObjectMapProviders(t *testing.T) {
+	home := t.TempDir()
+	writePiFixture(t, home, `{
+		"providers": {
+			"grendel": {
+				"baseUrl": "http://grendel:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [{ "id": "qwen3.5-27b" }]
+			},
+			"bragi": {
+				"baseUrl": "http://bragi:1234/v1",
+				"api": "openai-completions",
+				"api_key": "lmstudio",
+				"models": [{ "id": "qwen3.5-27b" }]
+			}
+		}
+	}`)
+
+	out, err := runAgentCLIWithHome(t, home, "import", "pi")
+	require.NoError(t, err, string(out))
+	output := string(out)
+	assert.Contains(t, output, "imported: grendel")
+	assert.Contains(t, output, "imported: bragi")
+
+	configPath := filepath.Join(home, ".config", "agent", "config.yaml")
+	data, readErr := os.ReadFile(configPath)
+	require.NoError(t, readErr)
+	config := string(data)
+	assert.Contains(t, config, "default: grendel")
+	assert.Contains(t, config, "grendel:")
+	assert.Contains(t, config, "base_url: http://grendel:1234/v1")
+	assert.Contains(t, config, "model: qwen3.5-27b")
+	assert.Contains(t, config, "imported_from:")
+	assert.Contains(t, config, "source: pi")
 }
 
 func TestCLI_ExitCodes(t *testing.T) {

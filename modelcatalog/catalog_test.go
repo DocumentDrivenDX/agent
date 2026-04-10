@@ -21,13 +21,15 @@ func loadFixtureCatalog(t *testing.T) *Catalog {
 	t.Helper()
 	catalog, err := Load(LoadOptions{
 		ManifestPath: writeFixtureManifest(t, `
-version: 7
-generated_at: 2026-04-09T00:00:00Z
+version: 1
+generated_at: 2026-04-10T00:00:00Z
 profiles:
-  code-smart:
+  code-high:
     target: alpha-smart
-  code-fast:
+  code-medium:
     target: beta-fast
+  code-economy:
+    target: gamma-economy
 targets:
   alpha-smart:
     family: alpha
@@ -40,6 +42,12 @@ targets:
     aliases: [beta]
     surfaces:
       agent.openai: beta-openai-1
+  gamma-economy:
+    family: gamma
+    aliases: [gamma]
+    surfaces:
+      agent.anthropic: gamma-anthropic-1
+      agent.openai: gamma-openai-1
   legacy-alpha:
     family: alpha
     status: Deprecated
@@ -57,13 +65,16 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	resolved, err := catalog.Current("code-smart", ResolveOptions{
+	resolved, err := catalog.Current("code-high", ResolveOptions{
 		Surface: SurfaceAgentAnthropic,
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, resolved.CanonicalID)
-	assert.NotEmpty(t, resolved.ConcreteModel)
+	assert.Equal(t, "code-high", resolved.Profile)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "opus-4.6", resolved.ConcreteModel)
+	assert.Equal(t, "high", resolved.SurfacePolicy.EffortDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
+	assert.Equal(t, "2026-04-10.1", resolved.CatalogVersion)
 }
 
 func TestResolveAliasFromFixture(t *testing.T) {
@@ -75,17 +86,17 @@ func TestResolveAliasFromFixture(t *testing.T) {
 	assert.Equal(t, "alpha-smart", resolved.CanonicalID)
 	assert.Equal(t, "alpha-anthropic-1", resolved.ConcreteModel)
 	assert.False(t, resolved.Deprecated)
-	assert.Equal(t, 7, resolved.ManifestVersion)
+	assert.Equal(t, 1, resolved.ManifestVersion)
 }
 
 func TestCurrent_ResolveProfile(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	resolved, err := catalog.Current("code-fast", ResolveOptions{
+	resolved, err := catalog.Current("code-medium", ResolveOptions{
 		Surface: SurfaceAgentOpenAI,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "code-fast", resolved.Profile)
+	assert.Equal(t, "code-medium", resolved.Profile)
 	assert.Equal(t, "beta-fast", resolved.CanonicalID)
 	assert.Equal(t, "beta-openai-1", resolved.ConcreteModel)
 }
@@ -134,6 +145,7 @@ func TestLoad_ExternalOverride(t *testing.T) {
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
 version: 2
 generated_at: 2026-04-09T00:00:00Z
+catalog_version: 2026-04-10.1
 profiles:
   code-smart:
     target: gpt-4.1
@@ -143,6 +155,9 @@ targets:
     aliases: [gpt-smart]
     surfaces:
       agent.openai: gpt-4.1
+    surface_policy:
+      agent.openai:
+        effort_default: medium
 `), 0o644))
 
 	catalog, err := Load(LoadOptions{ManifestPath: manifestPath})
@@ -154,6 +169,8 @@ targets:
 	require.NoError(t, err)
 	assert.Equal(t, "gpt-4.1", resolved.CanonicalID)
 	assert.Equal(t, "gpt-4.1", resolved.ConcreteModel)
+	assert.Equal(t, "medium", resolved.SurfacePolicy.EffortDefault)
+	assert.Equal(t, "2026-04-10.1", resolved.CatalogVersion)
 	assert.Equal(t, manifestPath, resolved.ManifestSource)
 	assert.Equal(t, 2, resolved.ManifestVersion)
 }
@@ -164,12 +181,12 @@ func TestLoad_FallbackToEmbedded(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resolved, err := catalog.Resolve("code-smart", ResolveOptions{
+	resolved, err := catalog.Resolve("smart", ResolveOptions{
 		Surface: SurfaceAgentAnthropic,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
-	assert.NotEmpty(t, resolved.CanonicalID)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
 func TestLoad_RequireExternal(t *testing.T) {
@@ -276,6 +293,82 @@ targets:
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cycle")
+}
+
+func TestLoad_InvalidManifest_SurfacePolicyRequiresMatchingSurface(t *testing.T) {
+	manifestPath := writeFixtureManifest(t, `
+version: 2
+generated_at: 2026-04-10T00:00:00Z
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+    surface_policy:
+      codex:
+        effort_default: high
+`)
+
+	_, err := Load(LoadOptions{
+		ManifestPath:    manifestPath,
+		RequireExternal: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "surface_policy")
+	assert.Contains(t, err.Error(), "matching surface")
+}
+
+func TestLoad_AllowsProfileWithSameNameAsTarget(t *testing.T) {
+	manifestPath := writeFixtureManifest(t, `
+version: 2
+generated_at: 2026-04-10T00:00:00Z
+catalog_version: 2026-04-10.1
+profiles:
+  code-high:
+    target: code-high
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+    surface_policy:
+      agent.openai:
+        effort_default: high
+`)
+
+	catalog, err := Load(LoadOptions{
+		ManifestPath:    manifestPath,
+		RequireExternal: true,
+	})
+	require.NoError(t, err)
+
+	resolved, err := catalog.Current("code-high", ResolveOptions{
+		Surface: SurfaceAgentOpenAI,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "code-high", resolved.Profile)
+	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "gpt-5.4", resolved.ConcreteModel)
+	assert.Equal(t, "high", resolved.SurfacePolicy.EffortDefault)
+}
+
+func TestLoad_UnsupportedSchemaVersion(t *testing.T) {
+	manifestPath := writeFixtureManifest(t, `
+version: 3
+generated_at: 2026-04-10T00:00:00Z
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+`)
+
+	_, err := Load(LoadOptions{
+		ManifestPath:    manifestPath,
+		RequireExternal: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported schema version 3")
 }
 
 func TestResolveEmptyReference(t *testing.T) {

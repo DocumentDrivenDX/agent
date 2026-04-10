@@ -1,39 +1,113 @@
-version: 1
-generated_at: 2026-04-08T00:00:00Z
+version: 2
+generated_at: 2026-04-10T00:00:00Z
+catalog_version: 2026-04-10.1
 
 profiles:
+  code-high:
+    target: code-high
   code-smart:
-    target: claude-sonnet-4
+    target: code-high
+  smart:
+    target: code-high
+  code-medium:
+    target: code-medium
   code-fast:
-    target: qwen3-coder-next
+    target: code-medium
+  fast:
+    target: code-medium
+  code-economy:
+    target: code-economy
   cheap:
-    target: qwen3-coder-next
+    target: code-economy
 
 targets:
+  code-high:
+    family: coding-tier
+    aliases:
+      - high
+    status: active
+    surfaces:
+      agent.anthropic: opus-4.6
+      claude-code: opus-4.6
+      agent.openai: gpt-5.4
+      codex: gpt-5.4
+    surface_policy:
+      agent.anthropic:
+        effort_default: high
+      claude-code:
+        effort_default: high
+      agent.openai:
+        effort_default: high
+      codex:
+        effort_default: high
+
+  code-medium:
+    family: coding-tier
+    aliases:
+      - medium
+    status: active
+    surfaces:
+      agent.anthropic: sonnet-4.6
+      claude-code: sonnet-4.6
+      agent.openai: gpt-5.4-mini
+      codex: gpt-5.4-mini
+    surface_policy:
+      agent.anthropic:
+        effort_default: medium
+      claude-code:
+        effort_default: medium
+      agent.openai:
+        effort_default: medium
+      codex:
+        effort_default: medium
+
+  code-economy:
+    family: coding-tier
+    aliases:
+      - economy
+    status: active
+    surfaces:
+      agent.anthropic: haiku-5.5
+      claude-code: haiku-5.5
+      agent.openai: qwen3.5-27b
+    surface_policy:
+      agent.anthropic:
+        effort_default: medium
+      claude-code:
+        effort_default: medium
+      agent.openai:
+        effort_default: high
+
   claude-sonnet-4:
     family: claude-sonnet
     aliases:
       - claude-sonnet
-      - sonnet
-    status: active
+      - sonnet-legacy
+    status: deprecated
+    replacement: code-medium
+    deprecated_at: 2026-04-10
     surfaces:
       agent.anthropic: claude-sonnet-4-20250514
       agent.openai: anthropic/claude-sonnet-4
-      claude-code: sonnet
+
+  claude-sonnet-3.7:
+    family: claude-sonnet
+    aliases:
+      - claude-3.7-sonnet
+    status: deprecated
+    replacement: code-medium
+    deprecated_at: 2026-04-10
+    surfaces:
+      agent.anthropic: claude-3-7-sonnet-20250219
+      agent.openai: anthropic/claude-3.7-sonnet
 
   qwen3-coder-next:
     family: qwen3-coder
     aliases:
       - qwen-coder-next
       - qwen3-coder
-    status: active
+    status: deprecated
+    replacement: code-economy
+    deprecated_at: 2026-04-10
     surfaces:
       agent.openai: qwen/qwen3-coder-next
-
-  claude-sonnet-3.7:
-    family: claude-sonnet
-    status: deprecated
-    replacement: claude-sonnet-4
-    deprecated_at: 2026-04-08
-    surfaces:
-      agent.anthropic: claude-3-7-sonnet-20250219

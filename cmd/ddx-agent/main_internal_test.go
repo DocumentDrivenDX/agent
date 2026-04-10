@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func isolateCatalogHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+}
+
 func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
@@ -33,6 +40,9 @@ func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
 }
 
 func TestResolveProviderForRun_ModelRef(t *testing.T) {
+	isolateCatalogHome(t)
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -43,19 +53,22 @@ func TestResolveProviderForRun_ModelRef(t *testing.T) {
 		Default: "cloud",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, "", "", "", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
 		ModelRef: "code-smart",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "cloud", selection.Route)
+	assert.Equal(t, "code-high", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "claude-sonnet-4", selection.ResolvedModelRef)
-	assert.Equal(t, "claude-sonnet-4-20250514", selection.ResolvedModel)
-	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	assert.Equal(t, "code-high", selection.ResolvedModelRef)
+	assert.Equal(t, "opus-4.6", selection.ResolvedModel)
+	assert.Equal(t, "opus-4.6", pc.Model)
 }
 
 func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T) {
+	isolateCatalogHome(t)
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -66,13 +79,16 @@ func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T)
 		Default: "cloud",
 	}
 
-	_, _, _, err := resolveProviderForRun(cfg, "", "", "", agentConfig.ProviderOverrides{
+	_, _, _, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
 		ModelRef: "claude-sonnet-3.7",
 	})
 	require.Error(t, err)
 }
 
 func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
+	isolateCatalogHome(t)
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -83,18 +99,23 @@ func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
 		Default: "cloud",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, "", "", "", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
 		ModelRef:        "claude-sonnet-3.7",
 		AllowDeprecated: true,
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
+	assert.Equal(t, "claude-sonnet-3.7", selection.Route)
+	assert.Equal(t, "cloud", selection.Provider)
 	assert.Equal(t, "claude-sonnet-3.7", selection.ResolvedModelRef)
 	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.ResolvedModel)
 	assert.Equal(t, "claude-3-7-sonnet-20250219", pc.Model)
 }
 
-func TestResolveProviderForRun_ExplicitModelWins(t *testing.T) {
+func TestResolveProviderForRun_ModelIntentWithoutRouteUsesSmartSelection(t *testing.T) {
+	isolateCatalogHome(t)
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -106,12 +127,42 @@ func TestResolveProviderForRun_ExplicitModelWins(t *testing.T) {
 		Default: "cloud",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, "", "", "", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
 		Model:    "exact-model",
 		ModelRef: "code-smart",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
+	assert.Equal(t, "exact-model", selection.Route)
+	assert.Equal(t, "cloud", selection.Provider)
+	assert.Equal(t, "", selection.ResolvedModelRef)
+	assert.Equal(t, "exact-model", selection.ResolvedModel)
+	assert.Equal(t, "exact-model", pc.Model)
+}
+
+func TestResolveProviderForRun_ExplicitProviderStillUsesExactModelPin(t *testing.T) {
+	isolateCatalogHome(t)
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	cfg := &agentConfig.Config{
+		Providers: map[string]agentConfig.ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+				Model:  "configured-model",
+			},
+		},
+		Default: "cloud",
+	}
+
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "cloud", agentConfig.ProviderOverrides{
+		Model:    "exact-model",
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "cloud", selection.Route)
+	assert.Equal(t, "cloud", selection.Provider)
 	assert.Equal(t, "", selection.ResolvedModelRef)
 	assert.Equal(t, "exact-model", selection.ResolvedModel)
 	assert.Equal(t, "exact-model", pc.Model)
@@ -190,6 +241,7 @@ func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *test
 }
 
 func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
+	isolateCatalogHome(t)
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
@@ -200,10 +252,10 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 			},
 		},
 		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
-			"qwen3-coder-next": {
+			"code-medium": {
 				Strategy: "ordered-failover",
 				Candidates: []agentConfig.ModelRouteCandidateConfig{
-					{Provider: "cloud", Model: "qwen/qwen3-coder-next"},
+					{Provider: "cloud", Model: "gpt-5.4-mini"},
 				},
 			},
 		},
@@ -215,14 +267,15 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "qwen3-coder-next", selection.Route)
+	assert.Equal(t, "code-medium", selection.Route)
 	assert.Equal(t, "code-fast", selection.RequestedModelRef)
-	assert.Equal(t, "qwen3-coder-next", selection.ResolvedModelRef)
-	assert.Equal(t, "qwen/qwen3-coder-next", selection.ResolvedModel)
-	assert.Equal(t, "qwen/qwen3-coder-next", pc.Model)
+	assert.Equal(t, "code-medium", selection.ResolvedModelRef)
+	assert.Equal(t, "gpt-5.4-mini", selection.ResolvedModel)
+	assert.Equal(t, "gpt-5.4-mini", pc.Model)
 }
 
 func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.T) {
+	isolateCatalogHome(t)
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
 	cfg := &agentConfig.Config{
@@ -251,16 +304,16 @@ func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.
 	assert.NotNil(t, firstProvider)
 	assert.Equal(t, "code-pool", firstSelection.Route)
 	assert.Equal(t, "vidar", firstSelection.Provider)
-	assert.Equal(t, "qwen3-coder-next", firstSelection.ResolvedModelRef)
-	assert.Equal(t, "qwen/qwen3-coder-next", firstSelection.ResolvedModel)
-	assert.Equal(t, "qwen/qwen3-coder-next", firstConfig.Model)
+	assert.Equal(t, "code-medium", firstSelection.ResolvedModelRef)
+	assert.Equal(t, "gpt-5.4-mini", firstSelection.ResolvedModel)
+	assert.Equal(t, "gpt-5.4-mini", firstConfig.Model)
 
 	secondSelection, secondProvider, secondConfig, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{})
 	require.NoError(t, err)
 	assert.NotNil(t, secondProvider)
 	assert.Equal(t, "code-pool", secondSelection.Route)
 	assert.Equal(t, "bragi", secondSelection.Provider)
-	assert.Equal(t, "qwen3-coder-next", secondSelection.ResolvedModelRef)
-	assert.Equal(t, "qwen/qwen3-coder-next", secondSelection.ResolvedModel)
-	assert.Equal(t, "qwen/qwen3-coder-next", secondConfig.Model)
+	assert.Equal(t, "code-medium", secondSelection.ResolvedModelRef)
+	assert.Equal(t, "gpt-5.4-mini", secondSelection.ResolvedModel)
+	assert.Equal(t, "gpt-5.4-mini", secondConfig.Model)
 }

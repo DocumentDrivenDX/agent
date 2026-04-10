@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/session"
@@ -25,8 +26,11 @@ type countedOpenAIServer struct {
 	chatCalls       int
 	lastModel       string
 	responseStatus  int
+	modelsStatus    int
 	responseModel   string
 	responseContent string
+	models          []string
+	chatDelay       time.Duration
 }
 
 func newCountedOpenAIServer(t *testing.T, responseStatus int, responseModel, responseContent string) *countedOpenAIServer {
@@ -39,12 +43,42 @@ func newCountedOpenAIServer(t *testing.T, responseStatus int, responseModel, res
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/models":
+			s.mu.Lock()
+			models := append([]string(nil), s.models...)
+			responseModel := s.responseModel
+			modelsStatus := s.modelsStatus
+			s.mu.Unlock()
+			if modelsStatus == 0 {
+				modelsStatus = http.StatusOK
+			}
+			if modelsStatus != http.StatusOK {
+				w.WriteHeader(modelsStatus)
+				_, _ = w.Write([]byte(`{"error":{"message":"models unavailable"}}`))
+				return
+			}
+			if len(models) == 0 {
+				if responseModel != "" {
+					models = []string{responseModel}
+				} else {
+					models = []string{"stub-model"}
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":[{"id":"stub-model"}]}`))
+			payload := struct {
+				Data []map[string]string `json:"data"`
+			}{Data: make([]map[string]string, 0, len(models))}
+			for _, model := range models {
+				payload.Data = append(payload.Data, map[string]string{"id": model})
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(payload))
 		case "/v1/chat/completions":
 			s.mu.Lock()
 			s.chatCalls++
+			delay := s.chatDelay
 			s.mu.Unlock()
+			if delay > 0 {
+				time.Sleep(delay)
+			}
 
 			defer r.Body.Close()
 			var req routingChatRequest
@@ -93,6 +127,24 @@ func (s *countedOpenAIServer) requestedModel() string {
 	return s.lastModel
 }
 
+func (s *countedOpenAIServer) setModels(models ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.models = append([]string(nil), models...)
+}
+
+func (s *countedOpenAIServer) setChatDelay(delay time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chatDelay = delay
+}
+
+func (s *countedOpenAIServer) setModelsStatus(status int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.modelsStatus = status
+}
+
 func eventDataByType(t *testing.T, events []agent.Event, eventType agent.EventType) map[string]any {
 	t.Helper()
 	for _, e := range events {
@@ -125,6 +177,24 @@ func latestSessionLogPath(t *testing.T, workDir string) string {
 		}
 	}
 	return latest
+}
+
+func writeRoutingHistorySession(t *testing.T, workDir, sessionID string, ts time.Time, data session.SessionEndData) {
+	t.Helper()
+	logDir := filepath.Join(workDir, ".agent", "sessions")
+	require.NoError(t, os.MkdirAll(logDir, 0o755))
+	event := agent.Event{
+		SessionID: sessionID,
+		Seq:       0,
+		Type:      agent.EventSessionEnd,
+		Timestamp: ts.UTC(),
+	}
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	event.Data = raw
+	line, err := json.Marshal(event)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, sessionID+".jsonl"), append(line, '\n'), 0o644))
 }
 
 func TestCLI_Run_ModelRouteByModelName(t *testing.T) {
@@ -313,6 +383,174 @@ model_routes:
 	assert.Equal(t, 0, healthy.chatCallCount())
 }
 
+func TestCLI_ModelIntentAutoRoutingSkipsUnhealthyDefaultAndChoosesBestHealthyProvider(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
+	bragi := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "bragi ok")
+	vidar := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "vidar ok")
+	openrouter := newCountedOpenAIServer(t, http.StatusOK, "qwen/qwen3.5-27b-20260224", "openrouter ok")
+
+	dead.setModelsStatus(http.StatusServiceUnavailable)
+	dead.setModels("qwen3.5-27b")
+	bragi.setModels("qwen3.5-27b")
+	vidar.setModels("qwen3.5-27b")
+	openrouter.setModels("qwen/qwen3.5-27b-20260224")
+
+	knownCost := 0.09
+	writeRoutingHistorySession(t, workDir, "vidar-win", time.Now().Add(-5*time.Minute), session.SessionEndData{
+		Status:           agent.StatusSuccess,
+		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		CostUSD:          nil,
+		DurationMs:       800,
+		SelectedProvider: "vidar",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen3.5-27b",
+	})
+	writeRoutingHistorySession(t, workDir, "bragi-slow", time.Now().Add(-4*time.Minute), session.SessionEndData{
+		Status:           agent.StatusSuccess,
+		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		CostUSD:          nil,
+		DurationMs:       2400,
+		SelectedProvider: "bragi",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen3.5-27b",
+	})
+	writeRoutingHistorySession(t, workDir, "openrouter-costly", time.Now().Add(-3*time.Minute), session.SessionEndData{
+		Status:           agent.StatusSuccess,
+		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		CostUSD:          &knownCost,
+		DurationMs:       1500,
+		SelectedProvider: "openrouter",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen/qwen3.5-27b-20260224",
+	})
+
+	writeTempConfig(t, workDir, `
+providers:
+  openrouter:
+    type: openai-compat
+    base_url: `+dead.baseURL()+`
+    api_key: test
+  bragi:
+    type: openai-compat
+    base_url: `+bragi.baseURL()+`
+    api_key: test
+  vidar:
+    type: openai-compat
+    base_url: `+vidar.baseURL()+`
+    api_key: test
+  grendel:
+    type: openai-compat
+    base_url: `+openrouter.baseURL()+`
+    api_key: test
+default: openrouter
+routing:
+  default_model: qwen3.5-27b
+`)
+
+	type routingResult struct {
+		Status           string   `json:"status"`
+		SelectedProvider string   `json:"selected_provider"`
+		SelectedRoute    string   `json:"selected_route"`
+		RequestedModel   string   `json:"requested_model"`
+		Attempted        []string `json:"attempted_providers"`
+	}
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "smart route")
+	require.Equal(t, 0, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
+
+	var parsed routingResult
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
+	assert.Equal(t, "success", parsed.Status)
+	assert.Equal(t, "vidar", parsed.SelectedProvider)
+	assert.Equal(t, "qwen3.5-27b", parsed.SelectedRoute)
+	assert.Equal(t, "qwen3.5-27b", parsed.RequestedModel)
+	assert.Equal(t, []string{"vidar"}, parsed.Attempted)
+	assert.Equal(t, 0, dead.chatCallCount(), "unhealthy default provider should be excluded before execution")
+	assert.Equal(t, 0, bragi.chatCallCount(), "slower healthy provider should lose to better observed candidate")
+	assert.Equal(t, 1, vidar.chatCallCount())
+	assert.Equal(t, 0, openrouter.chatCallCount(), "higher-cost healthy provider should lose when a faster healthy local candidate exists")
+}
+
+func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
+	expensive := newCountedOpenAIServer(t, http.StatusOK, "qwen/qwen3.5-27b-20260224", "ok")
+	dead.setModelsStatus(http.StatusServiceUnavailable)
+	dead.setModels("qwen3.5-27b")
+	healthy.setModels("qwen3.5-27b")
+	expensive.setModels("qwen/qwen3.5-27b-20260224")
+
+	expensiveCost := 0.12
+	writeRoutingHistorySession(t, workDir, "healthy-history", time.Now().Add(-2*time.Minute), session.SessionEndData{
+		Status:           agent.StatusSuccess,
+		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		DurationMs:       900,
+		SelectedProvider: "vidar",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen3.5-27b",
+	})
+	writeRoutingHistorySession(t, workDir, "expensive-history", time.Now().Add(-2*time.Minute), session.SessionEndData{
+		Status:           agent.StatusSuccess,
+		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		CostUSD:          &expensiveCost,
+		DurationMs:       1200,
+		SelectedProvider: "openrouter",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen/qwen3.5-27b-20260224",
+	})
+
+	writeTempConfig(t, workDir, `
+providers:
+  bragi:
+    type: openai-compat
+    base_url: `+dead.baseURL()+`
+    api_key: test
+  vidar:
+    type: openai-compat
+    base_url: `+healthy.baseURL()+`
+    api_key: test
+  openrouter:
+    type: openai-compat
+    base_url: `+expensive.baseURL()+`
+    api_key: test
+`)
+
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--model", "qwen3.5-27b", "--json")
+	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
+
+	var parsed struct {
+		RouteKey         string `json:"route_key"`
+		SelectedProvider string `json:"selected_provider"`
+		Candidates       []struct {
+			Provider string  `json:"provider"`
+			Model    string  `json:"model"`
+			Healthy  bool    `json:"healthy"`
+			Reason   string  `json:"reason"`
+			Score    float64 `json:"score"`
+		} `json:"candidates"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
+	assert.Equal(t, "qwen3.5-27b", parsed.RouteKey)
+	assert.Equal(t, "vidar", parsed.SelectedProvider)
+	require.Len(t, parsed.Candidates, 3)
+	assert.Equal(t, "vidar", parsed.Candidates[0].Provider)
+	assert.True(t, parsed.Candidates[0].Healthy)
+	assert.Equal(t, "openrouter", parsed.Candidates[1].Provider)
+	assert.True(t, parsed.Candidates[1].Healthy)
+	assert.Equal(t, "bragi", parsed.Candidates[2].Provider)
+	assert.False(t, parsed.Candidates[2].Healthy)
+	assert.NotZero(t, parsed.Candidates[0].Score)
+	assert.Contains(t, parsed.Candidates[2].Reason, "status code")
+}
+
 func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
@@ -356,10 +594,10 @@ default_backend: code-pool
 	assert.Equal(t, "success", firstResult.Status)
 	assert.Equal(t, "code-pool", firstResult.SelectedRoute)
 	assert.Equal(t, "vidar", firstResult.SelectedProvider)
-	assert.Equal(t, "qwen3-coder-next", firstResult.ResolvedModelRef)
-	assert.Equal(t, "qwen/qwen3-coder-next", firstResult.ResolvedModel)
-	assert.Equal(t, "qwen/qwen3-coder-next", firstResult.Model)
-	assert.Equal(t, "qwen/qwen3-coder-next", vidar.requestedModel())
+	assert.Equal(t, "code-medium", firstResult.ResolvedModelRef)
+	assert.Equal(t, "gpt-5.4-mini", firstResult.ResolvedModel)
+	assert.Equal(t, "gpt-5.4-mini", firstResult.Model)
+	assert.Equal(t, "gpt-5.4-mini", vidar.requestedModel())
 
 	firstSessionPath := latestSessionLogPath(t, workDir)
 	firstEvents, err := session.ReadEvents(firstSessionPath)
@@ -367,13 +605,13 @@ default_backend: code-pool
 	firstStart := eventDataByType(t, firstEvents, agent.EventSessionStart)
 	assert.Equal(t, "vidar", firstStart["selected_provider"])
 	assert.Equal(t, "code-pool", firstStart["selected_route"])
-	assert.Equal(t, "qwen3-coder-next", firstStart["resolved_model_ref"])
-	assert.Equal(t, "qwen/qwen3-coder-next", firstStart["resolved_model"])
+	assert.Equal(t, "code-medium", firstStart["resolved_model_ref"])
+	assert.Equal(t, "gpt-5.4-mini", firstStart["resolved_model"])
 	firstEnd := eventDataByType(t, firstEvents, agent.EventSessionEnd)
 	assert.Equal(t, "vidar", firstEnd["selected_provider"])
 	assert.Equal(t, "code-pool", firstEnd["selected_route"])
-	assert.Equal(t, "qwen3-coder-next", firstEnd["resolved_model_ref"])
-	assert.Equal(t, "qwen/qwen3-coder-next", firstEnd["resolved_model"])
+	assert.Equal(t, "code-medium", firstEnd["resolved_model_ref"])
+	assert.Equal(t, "gpt-5.4-mini", firstEnd["resolved_model"])
 
 	second := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "-p", "second request")
 	require.Equal(t, 0, second.exitCode, "stderr=%s", second.stderr)
@@ -382,10 +620,10 @@ default_backend: code-pool
 	assert.Equal(t, "success", secondResult.Status)
 	assert.Equal(t, "code-pool", secondResult.SelectedRoute)
 	assert.Equal(t, "bragi", secondResult.SelectedProvider)
-	assert.Equal(t, "qwen3-coder-next", secondResult.ResolvedModelRef)
-	assert.Equal(t, "qwen/qwen3-coder-next", secondResult.ResolvedModel)
-	assert.Equal(t, "qwen/qwen3-coder-next", secondResult.Model)
-	assert.Equal(t, "qwen/qwen3-coder-next", bragi.requestedModel())
+	assert.Equal(t, "code-medium", secondResult.ResolvedModelRef)
+	assert.Equal(t, "gpt-5.4-mini", secondResult.ResolvedModel)
+	assert.Equal(t, "gpt-5.4-mini", secondResult.Model)
+	assert.Equal(t, "gpt-5.4-mini", bragi.requestedModel())
 
 	secondSessionPath := latestSessionLogPath(t, workDir)
 	secondEvents, err := session.ReadEvents(secondSessionPath)
@@ -393,13 +631,13 @@ default_backend: code-pool
 	secondStart := eventDataByType(t, secondEvents, agent.EventSessionStart)
 	assert.Equal(t, "bragi", secondStart["selected_provider"])
 	assert.Equal(t, "code-pool", secondStart["selected_route"])
-	assert.Equal(t, "qwen3-coder-next", secondStart["resolved_model_ref"])
-	assert.Equal(t, "qwen/qwen3-coder-next", secondStart["resolved_model"])
+	assert.Equal(t, "code-medium", secondStart["resolved_model_ref"])
+	assert.Equal(t, "gpt-5.4-mini", secondStart["resolved_model"])
 	secondEnd := eventDataByType(t, secondEvents, agent.EventSessionEnd)
 	assert.Equal(t, "bragi", secondEnd["selected_provider"])
 	assert.Equal(t, "code-pool", secondEnd["selected_route"])
-	assert.Equal(t, "qwen3-coder-next", secondEnd["resolved_model_ref"])
-	assert.Equal(t, "qwen/qwen3-coder-next", secondEnd["resolved_model"])
+	assert.Equal(t, "code-medium", secondEnd["resolved_model_ref"])
+	assert.Equal(t, "gpt-5.4-mini", secondEnd["resolved_model"])
 
 	assert.Equal(t, 1, vidar.chatCallCount())
 	assert.Equal(t, 1, bragi.chatCallCount())

@@ -18,7 +18,7 @@ cost control. Following the ghostty model — great library, proven by a usable
 app — DDX Agent ships as a Go package plus a thin standalone CLI that showcases the
 library and serves as the DDx harness backend. DDX Agent also owns a reusable
 shared model catalog and updateable manifest so DDx and related tooling can
-resolve aliases, tiers/profiles, canonical targets, and deprecations without
+resolve aliases, tiers/profiles, canonical policy targets, and deprecations without
 copying model policy into each consumer. Every LLM interaction and tool call is
 logged and replayable, with per-model cost tracking built in. Success means DDx
 can run a HELIX build pass where 70%+ of routine tasks use local models at
@@ -56,9 +56,10 @@ task the same: spawn a process, send to cloud, parse the result.
    cost-tracked. Pattern off DDx's session logging (JSONL + per-session detail)
 5. **Prove it with an app** — standalone `ddx-agent` CLI that showcases the library
    and serves as a DDx harness, following the ghostty pattern
-6. **Own reusable model policy** — provide a agent-owned shared model catalog
-   and updateable manifest so aliases, tiers/profiles, canonical targets, and
-   deprecations are maintained once and consumed by DDx and other clients
+6. **Own reusable model policy** — provide a agent-owned shared model catalog,
+   publishable updateable manifest, and explicit refresh workflow so aliases,
+   tiers/profiles, canonical policy targets, and deprecations are maintained
+   once and consumed by DDx and other clients
 
 ### Success Metrics
 
@@ -160,9 +161,11 @@ task the same: spawn a process, send to cloud, parse the result.
    the standard.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
-10. **Shared model catalog** — a agent-owned catalog and updateable manifest
-    for model aliases, tiers/profiles (`smart`, `fast`, `cheap`), canonical
-    targets, and deprecation metadata, kept separate from prompt presets
+10. **Shared model catalog** — a agent-owned catalog and publishable
+    updateable manifest for model aliases, tiers/profiles (`code-high`,
+    `code-medium`, `code-economy`, with compatibility aliases such as
+    `smart`, `fast`, `cheap`), canonical policy targets, and deprecation
+    metadata, kept separate from prompt presets
 
 ### Nice to Have (P2)
 
@@ -216,12 +219,15 @@ task the same: spawn a process, send to cloud, parse the result.
 ### Model Catalog
 
 - DDX Agent MUST define a reusable shared model catalog for aliases, model
-  families, tiers/profiles, canonical current targets, and deprecation/stale
+  families, tiers/profiles, canonical policy targets, and deprecation/stale
   metadata
 - The shared catalog MUST be distinct from system prompt presets and use its
   own naming/config surface
 - DDX Agent MUST ship an embedded release snapshot of the catalog and support an
   updateable external manifest for faster policy/data refresh where practical
+- DDX Agent MUST support publishing catalog manifests outside normal binary
+  releases and an explicit local refresh/install flow that does not introduce
+  network access into ordinary request execution
 - DDx and other consumers MUST be able to resolve model references through the
   agent-owned catalog without duplicating model policy in their own repos
 - HELIX stage intent MUST remain above this layer; HELIX selects intent, DDx

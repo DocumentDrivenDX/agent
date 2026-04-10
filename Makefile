@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks check clean coverage coverage-ratchet coverage-bump coverage-history
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -7,6 +7,13 @@ LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) 
 
 build:
 	go build $(LDFLAGS) ./cmd/ddx-agent
+
+catalog-dist:
+	go run ./cmd/catalogdist \
+		--manifest modelcatalog/catalog/models.yaml \
+		--out website/static/catalog \
+		--channel stable \
+		--min-agent-version "$${MIN_AGENT_VERSION:-$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo dev)}"
 
 build-ci:
 	go build ./...
