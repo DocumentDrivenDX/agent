@@ -150,6 +150,12 @@ func (p *Provider) SessionStartMetadata() (string, string) {
 	return p.providerName, p.model
 }
 
+// ChatStartMetadata reports the resolved provider system and upstream server
+// identity known when the provider is constructed.
+func (p *Provider) ChatStartMetadata() (string, string, int) {
+	return p.providerSystem, p.serverAddress, p.serverPort
+}
+
 func convertMessages(msgs []agent.Message) []ant.MessageParam {
 	var result []ant.MessageParam
 	for _, m := range msgs {

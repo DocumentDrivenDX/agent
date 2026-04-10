@@ -65,6 +65,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	// Emit session start
 	sessionProvider, sessionModel := sessionStartIdentity(req.Provider)
+	chatProviderSystem, chatServerAddress, chatServerPort := chatStartIdentity(req.Provider)
 	emitCallback(req.Callback, Event{
 		SessionID: sessionID,
 		Seq:       0,
@@ -178,8 +179,10 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				TurnIndex:      iteration + 1,
 				AttemptIndex:   attempt,
 				ProviderName:   sessionProvider,
-				ProviderSystem: sessionProvider,
+				ProviderSystem: chatProviderSystem,
 				RequestedModel: sessionModel,
+				ServerAddress:  chatServerAddress,
+				ServerPort:     chatServerPort,
 			})
 			// Emit LLM request event with full message bodies and tool definitions.
 			emitCallback(req.Callback, Event{
@@ -446,6 +449,10 @@ type sessionStartIdentityProvider interface {
 	SessionStartMetadata() (provider, model string)
 }
 
+type chatStartIdentityProvider interface {
+	ChatStartMetadata() (providerSystem, serverAddress string, serverPort int)
+}
+
 func sessionStartIdentity(provider Provider) (string, string) {
 	if provider == nil {
 		return "unknown", "unknown"
@@ -464,6 +471,26 @@ func sessionStartIdentity(provider Provider) (string, string) {
 		modelName = "unknown"
 	}
 	return providerName, modelName
+}
+
+func chatStartIdentity(provider Provider) (string, string, int) {
+	if provider == nil {
+		return "unknown", "unknown", 0
+	}
+
+	metaProvider, ok := provider.(chatStartIdentityProvider)
+	if !ok {
+		return "unknown", "unknown", 0
+	}
+
+	providerSystem, serverAddress, serverPort := metaProvider.ChatStartMetadata()
+	if providerSystem == "" {
+		providerSystem = "unknown"
+	}
+	if serverAddress == "" {
+		serverAddress = "unknown"
+	}
+	return providerSystem, serverAddress, serverPort
 }
 
 func attemptCostUSD(attempt *AttemptMetadata) (float64, bool) {
