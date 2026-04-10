@@ -164,7 +164,7 @@ func run() int {
 
 	// Session logger
 	sessionID := fmt.Sprintf("s-%d", os.Getpid())
-	logger := session.NewLogger(cfg.SessionLogDir, sessionID)
+	logger := session.NewLogger(sessionLogDir(wd, cfg), sessionID)
 	defer logger.Close()
 
 	// Build request

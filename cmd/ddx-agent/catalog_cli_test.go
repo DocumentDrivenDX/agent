@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -83,6 +84,71 @@ func writeTempConfig(t *testing.T, workDir, configBody string) {
 func writeTempManifest(t *testing.T, path, body string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+}
+
+func TestCLI_SessionLogs_UseWorkDirWhenRelative(t *testing.T) {
+	workDir := t.TempDir()
+	callerDir := t.TempDir()
+	fake := newFakeOpenAIServer(t)
+
+	writeTempConfig(t, workDir, `
+providers:
+  local:
+    type: openai-compat
+    base_url: `+fake.baseURL()+`
+    api_key: test
+    model: gpt-4o
+default: local
+session_log_dir: sessions
+`)
+
+	exe := buildAgentCLI(t)
+	run := func(args ...string) ([]byte, error) {
+		t.Helper()
+		cmd := exec.Command(exe, args...)
+		cmd.Dir = callerDir
+		home := t.TempDir()
+		cmd.Env = append(os.Environ(),
+			"HOME="+home,
+			"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		)
+		return cmd.CombinedOutput()
+	}
+
+	out, err := run("--work-dir", workDir, "-p", "hello")
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "[success]")
+
+	workSessions, err := filepath.Glob(filepath.Join(workDir, "sessions", "*.jsonl"))
+	require.NoError(t, err)
+	require.Len(t, workSessions, 1)
+
+	callerSessions, err := filepath.Glob(filepath.Join(callerDir, "sessions", "*.jsonl"))
+	require.NoError(t, err)
+	assert.Len(t, callerSessions, 0)
+
+	sessionID := strings.TrimSuffix(filepath.Base(workSessions[0]), ".jsonl")
+
+	out, err = run("--work-dir", workDir, "log")
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), sessionID)
+
+	out, err = run("--work-dir", workDir, "usage", "--json")
+	require.NoError(t, err, string(out))
+	var report struct {
+		Rows []struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+		} `json:"rows"`
+	}
+	require.NoError(t, json.Unmarshal(out, &report))
+	require.NotEmpty(t, report.Rows)
+	assert.Equal(t, "unknown", report.Rows[0].Provider)
+	assert.Equal(t, "gpt-4o", report.Rows[0].Model)
+
+	out, err = run("--work-dir", workDir, "replay", sessionID)
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "hello")
 }
 
 func TestCLI_ModelRef_ResolvesThroughExternalManifest(t *testing.T) {
