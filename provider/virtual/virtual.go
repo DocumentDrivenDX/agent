@@ -109,6 +109,11 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	return entry.Response, nil
 }
 
+// SessionStartMetadata reports a stable identity for replay-driven runs.
+func (p *Provider) SessionStartMetadata() (string, string) {
+	return "virtual", ""
+}
+
 // RecordEntry saves a message→response pair to the dictionary directory.
 func RecordEntry(dictDir string, messages []agent.Message, response agent.Response, patterns []NormalizePattern) error {
 	if err := os.MkdirAll(dictDir, 0o755); err != nil {

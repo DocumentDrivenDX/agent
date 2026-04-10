@@ -143,11 +143,13 @@ session_log_dir: sessions
 	}
 	require.NoError(t, json.Unmarshal(out, &report))
 	require.NotEmpty(t, report.Rows)
-	assert.Equal(t, "unknown", report.Rows[0].Provider)
+	assert.Equal(t, "openai-compat", report.Rows[0].Provider)
 	assert.Equal(t, "gpt-4o", report.Rows[0].Model)
 
 	out, err = run("--work-dir", workDir, "replay", sessionID)
 	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Provider: openai-compat | Model: gpt-4o")
+	assert.Contains(t, string(out), "Work dir: "+workDir)
 	assert.Contains(t, string(out), "hello")
 }
 

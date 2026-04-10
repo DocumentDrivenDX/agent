@@ -112,6 +112,12 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	return resp, nil
 }
 
+// SessionStartMetadata reports the broad provider identity and configured model
+// that should be recorded on session.start events.
+func (p *Provider) SessionStartMetadata() (string, string) {
+	return "openai-compat", p.model
+}
+
 func convertMessages(msgs []agent.Message) []oai.ChatCompletionMessageParamUnion {
 	var result []oai.ChatCompletionMessageParamUnion
 	for _, m := range msgs {

@@ -68,6 +68,16 @@ func (r *retryProvider) Chat(ctx context.Context, messages []Message, tools []To
 	return outcome.response, nil
 }
 
+type identityProvider struct {
+	mockProvider
+	provider string
+	model    string
+}
+
+func (p *identityProvider) SessionStartMetadata() (string, string) {
+	return p.provider, p.model
+}
+
 func findResponseAttempt(t *testing.T, data []byte) map[string]any {
 	t.Helper()
 
@@ -277,6 +287,36 @@ func TestRun_EventCallback(t *testing.T) {
 	assert.Equal(t, EventLLMRequest, events[1].Type)
 	assert.Equal(t, EventLLMResponse, events[2].Type)
 	assert.Equal(t, EventSessionEnd, events[3].Type)
+}
+
+func TestRun_SessionStartEventIncludesMetadata(t *testing.T) {
+	provider := &identityProvider{
+		mockProvider: mockProvider{
+			responses: []Response{
+				{Content: "done", Usage: TokenUsage{Total: 10}},
+			},
+		},
+		provider: "openai-compat",
+		model:    "gpt-4o",
+	}
+
+	var startPayload map[string]any
+	_, err := Run(context.Background(), Request{
+		Prompt:   "test",
+		Provider: provider,
+		WorkDir:  "/tmp/project",
+		Callback: func(e Event) {
+			if e.Type != EventSessionStart {
+				return
+			}
+			require.NoError(t, json.Unmarshal(e.Data, &startPayload))
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, startPayload)
+	assert.Equal(t, "openai-compat", startPayload["provider"])
+	assert.Equal(t, "gpt-4o", startPayload["model"])
+	assert.Equal(t, "/tmp/project", startPayload["work_dir"])
 }
 
 func TestRun_NonStreamingProviderPreservesAttemptMetadata(t *testing.T) {

@@ -42,12 +42,16 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	messages = append(messages, Message{Role: RoleUser, Content: req.Prompt})
 
 	// Emit session start
+	sessionProvider, sessionModel := sessionStartIdentity(req.Provider)
 	emitCallback(req.Callback, Event{
 		SessionID: sessionID,
 		Seq:       0,
 		Type:      EventSessionStart,
 		Timestamp: time.Now().UTC(),
 		Data: mustMarshal(map[string]any{
+			"provider":       sessionProvider,
+			"model":          sessionModel,
+			"work_dir":       req.WorkDir,
 			"prompt":         req.Prompt,
 			"system_prompt":  req.SystemPrompt,
 			"max_iterations": req.MaxIterations,
@@ -373,6 +377,30 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result,
 func mustMarshal(v any) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return data
+}
+
+type sessionStartIdentityProvider interface {
+	SessionStartMetadata() (provider, model string)
+}
+
+func sessionStartIdentity(provider Provider) (string, string) {
+	if provider == nil {
+		return "unknown", "unknown"
+	}
+
+	metaProvider, ok := provider.(sessionStartIdentityProvider)
+	if !ok {
+		return "unknown", "unknown"
+	}
+
+	providerName, modelName := metaProvider.SessionStartMetadata()
+	if providerName == "" {
+		providerName = "unknown"
+	}
+	if modelName == "" {
+		modelName = "unknown"
+	}
+	return providerName, modelName
 }
 
 func attemptCostUSD(attempt *AttemptMetadata) (float64, bool) {
