@@ -248,12 +248,12 @@ targets:
 
 ### Storage and Update Workflow
 
-- Canonical source file: `catalog/models.yaml`
+- Canonical source file: `modelcatalog/catalog/models.yaml`
 - Embedded release snapshot: bundled from that file into `modelcatalog/`
 - Optional override file: configured by path in `.agent/config.yaml` or by a
   downstream consumer such as DDx
 - Update workflow:
-  1. edit `catalog/models.yaml`
+  1. edit `modelcatalog/catalog/models.yaml`
   2. run catalog validation tests
   3. commit manifest changes independently of unrelated runtime logic when
      possible

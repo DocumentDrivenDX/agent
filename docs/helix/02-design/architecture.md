@@ -50,7 +50,8 @@ agent/                          # root module: github.com/your-org/agent
 ├── loop.go                     # agent loop implementation
 ├── modelcatalog/               # shared model catalog loader/resolver
 │   ├── catalog.go              # catalog API and resolution helpers
-│   └── manifest.go             # manifest loading/validation
+│   ├── manifest.go             # manifest loading/validation
+│   └── catalog/models.yaml     # embedded manifest snapshot and default catalog data
 ├── provider/
 │   ├── openai/
 │   │   └── openai.go           # OpenAI-compatible provider (LM Studio, Ollama, OpenAI, etc.)
@@ -74,8 +75,6 @@ agent/                          # root module: github.com/your-org/agent
 │   ├── replay.go               # session replay renderer
 │   ├── pricing.go              # cost attribution policy and runtime pricing
 │   └── usage.go                # usage aggregation (P1)
-├── catalog/
-│   └── models.yaml             # externally maintained model manifest snapshot
 └── cmd/
     └── ddx-agent/
         └── main.go             # standalone CLI binary
@@ -107,9 +106,9 @@ agent/                          # root module: github.com/your-org/agent
       │  Impls        │ │  Impls │ │  Services   │ │  Services     │
       │              │ │        │ │             │ │               │
       │ openai/      │ │ read   │ │ logger      │ │ modelcatalog/ │
-      │ anthropic/   │ │ write  │ │ replay      │ │ catalog/*.yaml│
-      │ virtual/     │ │ edit   │ │ pricing     │ │               │
-      │              │ │ bash   │ │ usage       │ │               │
+      │ anthropic/   │ │ write  │ │ replay      │ │ catalog.go    │
+      │ virtual/     │ │ edit   │ │ pricing     │ │ manifest.go   │
+      │              │ │ bash   │ │ usage       │ │ catalog/models.yaml |
       │              │ │ glob   │ │             │ │               │
       │              │ │ grep   │ │             │ │               │
       │              │ │ ls     │ │             │ │               │
