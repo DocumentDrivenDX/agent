@@ -698,19 +698,21 @@ func applySessionCostAttributes(span trace.Span, observed, known bool, source st
 		return
 	}
 
-	if !known || !stable || source == "" {
+	if !known {
 		span.SetAttributes(attribute.String(telemetry.KeyCostSource, string(CostSourceUnknown)))
 		return
 	}
 
 	attrs := []attribute.KeyValue{
-		attribute.String(telemetry.KeyCostSource, source),
 		attribute.Float64(telemetry.KeyCostAmount, amount),
 	}
-	if currency != "" {
+	if stable && source != "" {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostSource, source))
+	}
+	if stable && currency != "" {
 		attrs = append(attrs, attribute.String(telemetry.KeyCostCurrency, currency))
 	}
-	if pricingRef != "" {
+	if stable && pricingRef != "" {
 		attrs = append(attrs, attribute.String(telemetry.KeyCostPricingRef, pricingRef))
 	}
 	span.SetAttributes(attrs...)

@@ -824,6 +824,92 @@ func TestRun_EmitsCostAttributesOnChatAndRootSpans(t *testing.T) {
 		assert.Equal(t, "openai/gpt-4o", attrString(t, root.Attributes(), telemetry.KeyCostPricingRef))
 	})
 
+	t.Run("mixed-known-cost-provenance", func(t *testing.T) {
+		recorder := tracetest.NewSpanRecorder()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+		providerCost := 0.01
+		configuredCost := 0.02
+		tel := telemetry.New(telemetry.Config{
+			TracerProvider: tp,
+			Pricing: telemetry.RuntimePricing{
+				"openai": {
+					"gpt-4o": {
+						Amount:     &configuredCost,
+						Currency:   "USD",
+						PricingRef: "openai/gpt-4o",
+					},
+				},
+			},
+		})
+
+		readTool := &mockTool{name: "read", result: "package main\n"}
+		provider := &mockProvider{
+			responses: []Response{
+				{
+					ToolCalls: []ToolCall{
+						{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{"path":"main.go"}`)},
+					},
+					Usage: TokenUsage{Input: 20, Output: 10, Total: 30},
+					Model: "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source:     CostSourceProviderReported,
+							Currency:   "USD",
+							Amount:     &providerCost,
+							PricingRef: "openai/billed",
+						},
+					},
+				},
+				{
+					Content: "done",
+					Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+					Model:   "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+			},
+		}
+
+		result, err := Run(context.Background(), Request{
+			Prompt:    "read main.go and finish",
+			Provider:  provider,
+			Tools:     []Tool{readTool},
+			Telemetry: tel,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		assert.InDelta(t, 0.03, result.CostUSD, 1e-9)
+
+		ended := recorder.Ended()
+		require.Len(t, ended, 4)
+		root := spanByName(t, ended, "invoke_agent agent")
+		chatOne := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
+		chatTwo := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 2, telemetry.KeyAttemptIndex, 1)
+
+		assert.Equal(t, string(CostSourceProviderReported), attrString(t, chatOne.Attributes(), telemetry.KeyCostSource))
+		assert.InDelta(t, providerCost, attrFloat(t, chatOne.Attributes(), telemetry.KeyCostAmount), 1e-9)
+		assert.Equal(t, string(CostSourceConfigured), attrString(t, chatTwo.Attributes(), telemetry.KeyCostSource))
+		assert.InDelta(t, configuredCost, attrFloat(t, chatTwo.Attributes(), telemetry.KeyCostAmount), 1e-9)
+
+		assert.InDelta(t, 0.03, attrFloat(t, root.Attributes(), telemetry.KeyCostAmount), 1e-9)
+		assert.False(t, hasAttr(root.Attributes(), telemetry.KeyCostSource))
+		assert.False(t, hasAttr(root.Attributes(), telemetry.KeyCostCurrency))
+		assert.False(t, hasAttr(root.Attributes(), telemetry.KeyCostPricingRef))
+	})
+
 	t.Run("unknown-cost", func(t *testing.T) {
 		recorder := tracetest.NewSpanRecorder()
 		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
