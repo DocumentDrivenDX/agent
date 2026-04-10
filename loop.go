@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -92,10 +93,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	}
 
 	// runCompaction handles the compaction logic and event emission.
-	// Returns true if compaction occurred.
-	runCompaction := func() (bool, *CompactionResult) {
+	// Returns true if compaction occurred; returns ErrCompactionNoFit when the
+	// compactor could not produce an in-budget history.
+	runCompaction := func() (bool, *CompactionResult, error) {
 		if req.Compactor == nil {
-			return false, nil
+			return false, nil, nil
 		}
 
 		// Emit compaction start event
@@ -120,12 +122,18 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				Type:      EventCompactionEnd,
 				Timestamp: time.Now().UTC(),
 				Data: mustMarshal(map[string]any{
-					"error":   compErr.Error(),
-					"success": false,
+					"error":           compErr.Error(),
+					"success":         false,
+					"no_compaction":   true,
+					"messages_before": len(messages),
+					"messages_after":  len(messages),
 				}),
 			})
 			seq++
-			return false, nil
+			if errors.Is(compErr, ErrCompactionNoFit) {
+				return false, nil, compErr
+			}
+			return false, nil, nil
 		}
 
 		if compResult != nil {
@@ -147,7 +155,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			})
 			seq++
 			messages = compacted
-			return true, compResult
+			return true, compResult, nil
 		}
 
 		// No compaction happened - still close the event pair so callbacks stay balanced.
@@ -164,7 +172,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			}),
 		})
 		seq++
-		return false, nil
+		return false, nil, nil
 	}
 
 	for iteration := 0; ; iteration++ {
@@ -187,7 +195,14 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		}
 
 		// Run compaction before iteration (pre-iteration check)
-		runCompaction()
+		if _, _, compErr := runCompaction(); compErr != nil {
+			result.Status = StatusError
+			result.Error = compErr
+			result.Duration = time.Since(start)
+			snapshotMessages()
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			return result, compErr
+		}
 
 		providerMessages := append([]Message(nil), messages...)
 		if req.SystemPrompt != "" {

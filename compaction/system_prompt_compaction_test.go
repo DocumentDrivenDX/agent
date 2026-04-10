@@ -200,7 +200,7 @@ func TestCompactor_SystemPromptPrefixNoFitFailsClosed(t *testing.T) {
 	}
 
 	newMsgs, result, err := NewCompactor(cfg)(ctx, messages, provider, nil)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, agent.ErrCompactionNoFit)
 	assert.Nil(t, result, "compaction should fail closed when the prefix leaves no fit")
 	assert.Equal(t, messages, newMsgs)
 }

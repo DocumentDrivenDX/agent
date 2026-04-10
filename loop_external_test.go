@@ -81,7 +81,7 @@ func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) 
 	}
 }
 
-func TestRun_EmitsBalancedCompactionEventsForNoFitPrefixCompaction(t *testing.T) {
+func TestRun_FailsClosedForNoFitPrefixCompaction(t *testing.T) {
 	provider := &externalMockProvider{
 		responses: []agent.Response{
 			{Content: "done", Usage: agent.TokenUsage{Total: 10}},
@@ -110,8 +110,9 @@ func TestRun_EmitsBalancedCompactionEventsForNoFitPrefixCompaction(t *testing.T)
 			events = append(events, e)
 		},
 	})
-	require.NoError(t, err)
-	assert.Equal(t, agent.StatusSuccess, result.Status)
+	require.ErrorIs(t, err, agent.ErrCompactionNoFit)
+	assert.Equal(t, agent.StatusError, result.Status)
+	assert.Equal(t, 0, provider.callCount)
 
 	var startEvent, endEvent *agent.Event
 	for i := range events {

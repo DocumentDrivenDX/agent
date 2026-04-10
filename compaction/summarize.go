@@ -2,6 +2,7 @@ package compaction
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -316,16 +317,23 @@ func compactMessages(
 	var (
 		bestMessages []agent.Message
 		bestResult   *CompactionResult
+		sawNoFit     bool
 	)
 
 	for {
 		newMessages, result, err := compactAtCutIndex(ctx, provider, messages, toolCalls, previousSummary, previousFileOps, cfg, cutIndex, tokensBefore, prefixTokens, effectiveWindow)
 		if err != nil {
-			return messages, nil, err
+			if !errors.Is(err, agent.ErrCompactionNoFit) {
+				return messages, nil, err
+			}
+			sawNoFit = true
 		}
 		if result == nil {
 			nextCut := nextValidBoundary(messages, cutIndex)
 			if nextCut <= cutIndex || (lastUserIndex >= 0 && nextCut > lastUserIndex) {
+				if sawNoFit {
+					return messages, nil, agent.ErrCompactionNoFit
+				}
 				return messages, nil, nil
 			}
 			cutIndex = nextCut
@@ -347,10 +355,13 @@ func compactMessages(
 	}
 
 	if bestResult == nil {
+		if sawNoFit {
+			return messages, nil, agent.ErrCompactionNoFit
+		}
 		return messages, nil, nil
 	}
 	if prefixTokens > 0 && bestResult.TokensAfter+prefixTokens > effectiveWindow {
-		return messages, nil, nil
+		return messages, nil, agent.ErrCompactionNoFit
 	}
 	return bestMessages, bestResult, nil
 }
@@ -386,7 +397,7 @@ func compactAtCutIndex(
 		keptTokens := EstimateConversationTokens(messages[cutIndex:])
 		availableTokens := effectiveWindow - prefixTokens - keptTokens
 		if availableTokens <= 0 {
-			return nil, nil, nil
+			return nil, nil, agent.ErrCompactionNoFit
 		}
 
 		budgetedOps := ExtractFileOps(toolCalls)
@@ -399,7 +410,7 @@ func compactAtCutIndex(
 		staticTokens := EstimateTokens(SummaryInjectionPrefix + summaryXML + SummaryInjectionSuffix)
 		summaryBudgetTokens = contentBudgetTokens - staticTokens
 		if summaryBudgetTokens < 0 {
-			return nil, nil, nil
+			return nil, nil, agent.ErrCompactionNoFit
 		}
 	}
 
@@ -420,7 +431,7 @@ func compactAtCutIndex(
 		availableTokens := effectiveWindow - prefixTokens - EstimateConversationTokens(messages[cutIndex:])
 		trimmedSummary, ok := fitSummaryToBudget(summaryBody, ops.FormatXML(), availableTokens)
 		if !ok {
-			return nil, nil, nil
+			return nil, nil, agent.ErrCompactionNoFit
 		}
 		summary = trimmedSummary
 	} else {
