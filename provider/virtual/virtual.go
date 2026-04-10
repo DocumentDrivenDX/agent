@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // Entry is a recorded message→response pair stored on disk.
@@ -89,7 +90,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	hash := PromptHash(normalized)
 	path := filepath.Join(p.cfg.DictDir, hash+".json")
 
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if os.IsNotExist(err) {
 		return agent.Response{}, fmt.Errorf("virtual: no recorded response for prompt (hash %s, dir %s)", hash, p.cfg.DictDir)
 	}
@@ -116,7 +117,7 @@ func (p *Provider) SessionStartMetadata() (string, string) {
 
 // RecordEntry saves a message→response pair to the dictionary directory.
 func RecordEntry(dictDir string, messages []agent.Message, response agent.Response, patterns []NormalizePattern) error {
-	if err := os.MkdirAll(dictDir, 0o755); err != nil {
+	if err := safefs.MkdirAll(dictDir, 0o750); err != nil {
 		return fmt.Errorf("virtual: creating dictionary dir: %w", err)
 	}
 
@@ -137,7 +138,7 @@ func RecordEntry(dictDir string, messages []agent.Message, response agent.Respon
 	}
 
 	path := filepath.Join(dictDir, hash+".json")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := safefs.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("virtual: writing entry: %w", err)
 	}
 	return nil

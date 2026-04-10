@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // ReadParams are the parameters for the read tool.
@@ -47,7 +47,7 @@ func (t *ReadTool) Execute(ctx context.Context, params json.RawMessage) (string,
 
 	resolved := resolvePath(t.WorkDir, p.Path)
 
-	data, err := os.ReadFile(resolved)
+	data, err := safefs.ReadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("read: %w", err)
 	}

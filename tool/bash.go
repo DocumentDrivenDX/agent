@@ -56,6 +56,7 @@ func (t *BashTool) Execute(ctx context.Context, params json.RawMessage) (string,
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// #nosec G204 -- the shell command is an explicit user-provided tool input.
 	cmd := exec.CommandContext(ctx, "sh", "-c", p.Command)
 	cmd.Dir = t.WorkDir
 	cmd.Stdin = nil             // /dev/null

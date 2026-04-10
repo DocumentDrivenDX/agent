@@ -18,6 +18,7 @@ import (
 
 	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/config"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"github.com/DocumentDrivenDX/agent/occompat"
 	"github.com/DocumentDrivenDX/agent/picompat"
 	"github.com/DocumentDrivenDX/agent/prompt"
@@ -273,7 +274,7 @@ func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
 
 	// Read existing counter; treat missing file as counter 0.
 	var counter int
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := safefs.ReadFile(path); err == nil {
 		if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &counter); err != nil {
 			counter = 0
 		}
@@ -281,7 +282,7 @@ func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
 
 	// Write incremented counter.
 	next := counter + 1
-	_ = os.WriteFile(path, []byte(fmt.Sprintf("%d\n", next)), 0600)
+	_ = safefs.WriteFile(path, []byte(fmt.Sprintf("%d\n", next)), 0o600)
 
 	return counter, nil
 }
@@ -300,7 +301,7 @@ func resolvePrompt(p string) (string, map[string]string, error) {
 	var raw string
 	if p != "" {
 		if strings.HasPrefix(p, "@") {
-			data, err := os.ReadFile(p[1:])
+			data, err := safefs.ReadFile(p[1:])
 			if err != nil {
 				return "", nil, fmt.Errorf("reading prompt file: %w", err)
 			}
@@ -831,12 +832,17 @@ func cmdImport(workDir string, args []string) int {
 		fmt.Fprintln(os.Stderr, "ddx-agent: ensure .agent/config.yaml is in .gitignore before committing")
 		fmt.Fprint(os.Stderr, "Proceed? [y/N] ")
 		var response string
-		fmt.Scanln(&response)
+		if _, err := fmt.Scanln(&response); err != nil {
+			response = ""
+		}
 		if strings.ToLower(response) != "y" {
 			return 0
 		}
 		configPath = filepath.Join(workDir, ".agent", "config.yaml")
-		os.MkdirAll(filepath.Join(workDir, ".agent"), 0755)
+		if err := safefs.MkdirAll(filepath.Join(workDir, ".agent"), 0o750); err != nil {
+			fmt.Fprintf(os.Stderr, "error: cannot create .agent directory: %v\n", err)
+			return 1
+		}
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -844,7 +850,10 @@ func cmdImport(workDir string, args []string) int {
 			return 1
 		}
 		configPath = filepath.Join(home, ".config", "agent", "config.yaml")
-		os.MkdirAll(filepath.Dir(configPath), 0755)
+		if err := safefs.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
+			fmt.Fprintf(os.Stderr, "error: cannot create config directory: %v\n", err)
+			return 1
+		}
 	}
 
 	// Import based on source
@@ -1096,7 +1105,7 @@ func writeConfig(path string, cfg *agentConfig.Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	return safefs.WriteFile(path, data, 0o600)
 }
 
 // checkZeroConfigDiscovery emits a notice if no config exists but pi/opencode configs do.
@@ -1180,7 +1189,7 @@ func shouldCheckDrift(source string) bool {
 	}
 
 	// Update check file
-	os.WriteFile(checkFile, []byte(time.Now().Format(time.RFC3339)), 0644)
+	_ = safefs.WriteFile(checkFile, []byte(time.Now().Format(time.RFC3339)), 0o600)
 	return true
 }
 

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // FloorConfig represents the coverage floor configuration.
@@ -194,7 +196,7 @@ func findProjectRoot() (string, error) {
 }
 
 func loadFloorConfig(path string) (*FloorConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +325,7 @@ func bumpFloors() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(floorPath, data, 0644)
+	return safefs.WriteFile(floorPath, data, 0o600)
 }
 
 func getCurrentCommit(projectRoot string) string {

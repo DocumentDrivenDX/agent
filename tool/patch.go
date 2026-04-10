@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // PatchParams are the parameters for the patch tool.
@@ -16,9 +16,9 @@ import (
 // prepend, or append depending on the operation field.
 type PatchParams struct {
 	Path      string `json:"path"`
-	Search    string `json:"search,omitempty"`     // unique text to locate; must appear exactly once
-	Content   string `json:"content"`              // replacement text, or text to prepend/append
-	Operation string `json:"operation,omitempty"`  // "replace" (default), "replace_all", "prepend", "append"
+	Search    string `json:"search,omitempty"`    // unique text to locate; must appear exactly once
+	Content   string `json:"content"`             // replacement text, or text to prepend/append
+	Operation string `json:"operation,omitempty"` // "replace" (default), "replace_all", "prepend", "append"
 }
 
 // PatchTool performs search-and-replace edits on files with robust line-ending
@@ -60,7 +60,7 @@ func (t *PatchTool) Execute(_ context.Context, params json.RawMessage) (string, 
 
 	resolved := resolvePath(t.WorkDir, p.Path)
 
-	data, err := os.ReadFile(resolved)
+	data, err := safefs.ReadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("patch: %w", err)
 	}
@@ -122,7 +122,7 @@ func (t *PatchTool) replace(path, original, search, content string) (string, err
 	}
 
 	newContent := searchReplace(original, search, content)
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := safefs.WriteFile(path, []byte(newContent), 0o600); err != nil {
 		return "", fmt.Errorf("patch: writing: %w", err)
 	}
 	return fmt.Sprintf("Replaced 1 occurrence in %s", path), nil
@@ -139,7 +139,7 @@ func (t *PatchTool) replaceAll(path, original, search, content string) (string, 
 	}
 
 	newContent := strings.ReplaceAll(original, search, content)
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := safefs.WriteFile(path, []byte(newContent), 0o600); err != nil {
 		return "", fmt.Errorf("patch: writing: %w", err)
 	}
 	return fmt.Sprintf("Replaced %d occurrences in %s", count, path), nil
@@ -158,7 +158,7 @@ func (t *PatchTool) prepend(path, original, search, content, lineEnding string) 
 	} else {
 		newContent = content + lineEnding + original
 	}
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := safefs.WriteFile(path, []byte(newContent), 0o600); err != nil {
 		return "", fmt.Errorf("patch: writing: %w", err)
 	}
 	return fmt.Sprintf("Prepended content to %s", path), nil
@@ -177,7 +177,7 @@ func (t *PatchTool) append(path, original, search, content, lineEnding string) (
 	} else {
 		newContent = original + lineEnding + content
 	}
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := safefs.WriteFile(path, []byte(newContent), 0o600); err != nil {
 		return "", fmt.Errorf("patch: writing: %w", err)
 	}
 	return fmt.Sprintf("Appended content to %s", path), nil

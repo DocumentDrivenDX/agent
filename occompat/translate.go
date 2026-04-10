@@ -7,6 +7,7 @@ import (
 	"os"
 
 	agentConfig "github.com/DocumentDrivenDX/agent/config"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // TranslationResult contains the result of translating opencode config to agent config.
@@ -68,11 +69,11 @@ func ComputeSourceHash(opencodeDir string) (string, error) {
 		configPath = home + "/.config/opencode/opencode.json"
 	}
 
-	authData, err := os.ReadFile(authPath)
+	authData, err := safefs.ReadFile(authPath)
 	if err != nil {
 		return "", err
 	}
-	configData, err := os.ReadFile(configPath)
+	configData, err := safefs.ReadFile(configPath)
 	if err != nil {
 		return "", err
 	}

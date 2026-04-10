@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // OpenCodeConfig represents the opencode.json configuration file.
@@ -24,7 +26,7 @@ type OpenCodeOptions struct {
 func LoadConfig(projectDir string) (*OpenCodeConfig, error) {
 	// Try project config first
 	path := filepath.Join(projectDir, "opencode.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		// Fall back to global config
 		home, errHome := os.UserHomeDir()
@@ -32,7 +34,7 @@ func LoadConfig(projectDir string) (*OpenCodeConfig, error) {
 			return nil, err
 		}
 		path = filepath.Join(home, ".config", "opencode", "opencode.json")
-		data, err = os.ReadFile(path)
+		data, err = safefs.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +55,7 @@ func LoadGlobalConfig() (*OpenCodeConfig, error) {
 		return nil, err
 	}
 	path := filepath.Join(home, ".config", "opencode", "opencode.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

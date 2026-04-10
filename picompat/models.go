@@ -2,8 +2,9 @@ package picompat
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // ProviderDefinition represents a provider in models.json.
@@ -35,7 +36,7 @@ type ModelDefinition struct {
 // LoadModels reads the pi models.json file.
 func LoadModels(piDir string) (*ModelsConfig, error) {
 	path := filepath.Join(piDir, "agent", "models.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

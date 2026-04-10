@@ -3,8 +3,9 @@ package picompat
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // AuthEntry represents a single credential entry in auth.json.
@@ -21,7 +22,7 @@ type AuthCredentials map[string]AuthEntry
 // LoadAuth reads the pi auth.json file.
 func LoadAuth(piDir string) (AuthCredentials, error) {
 	path := filepath.Join(piDir, "agent", "auth.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

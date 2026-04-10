@@ -3,8 +3,9 @@ package occompat
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // AuthEntry represents a credential entry in opencode auth.json.
@@ -19,7 +20,7 @@ type AuthCredentials map[string]AuthEntry
 // LoadAuth reads the opencode auth.json file.
 func LoadAuth(opencodeDir string) (AuthCredentials, error) {
 	path := filepath.Join(opencodeDir, "auth.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

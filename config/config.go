@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"github.com/DocumentDrivenDX/agent/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/provider/anthropic"
 	oaiProvider "github.com/DocumentDrivenDX/agent/provider/openai"
@@ -135,7 +136,7 @@ func Load(workDir string) (*Config, error) {
 	paths = append(paths, filepath.Join(workDir, projectConfigDir, "config.yaml"))
 
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		data, err := safefs.ReadFile(p)
 		if err != nil {
 			continue
 		}

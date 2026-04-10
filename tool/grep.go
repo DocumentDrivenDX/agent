@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 const (
@@ -23,10 +23,10 @@ const (
 
 // GrepParams are the parameters for the grep tool.
 type GrepParams struct {
-	Pattern         string   `json:"pattern"`
-	Dir             string   `json:"dir,omitempty"`
-	Glob            string   `json:"glob,omitempty"`
-	CaseInsensitive bool     `json:"case_insensitive,omitempty"`
+	Pattern         string    `json:"pattern"`
+	Dir             string    `json:"dir,omitempty"`
+	Glob            string    `json:"glob,omitempty"`
+	CaseInsensitive bool      `json:"case_insensitive,omitempty"`
 	ExcludeDirs     *[]string `json:"exclude_dirs,omitempty"` // override default skip dirs; nil uses defaults, empty slice means no skips
 }
 
@@ -123,7 +123,7 @@ func (t *GrepTool) Execute(_ context.Context, params json.RawMessage) (string, e
 
 		rel, _ := filepath.Rel(baseDir, path)
 
-		data, readErr := os.ReadFile(path)
+		data, readErr := safefs.ReadFile(path)
 		if readErr != nil {
 			return nil
 		}

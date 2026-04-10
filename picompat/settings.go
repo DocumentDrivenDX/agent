@@ -2,8 +2,9 @@ package picompat
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // Settings represents the pi settings.json file.
@@ -17,7 +18,7 @@ type Settings struct {
 // LoadSettings reads the pi settings.json file.
 func LoadSettings(piDir string) (*Settings, error) {
 	path := filepath.Join(piDir, "settings.json")
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

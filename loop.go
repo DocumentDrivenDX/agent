@@ -232,7 +232,8 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				}
 
 				if attempt < maxProviderAttempts {
-					delay := time.Second * time.Duration(1<<uint(attempt-1))
+					delaySeconds := time.Duration(1 << min(attempt-1, 10))
+					delay := time.Second * delaySeconds
 					select {
 					case <-ctx.Done():
 						result.Status = StatusCancelled
@@ -407,6 +408,13 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		// This handles cases where large bash output increases token count
 		runCompaction()
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func emitCallback(cb EventCallback, e Event) {

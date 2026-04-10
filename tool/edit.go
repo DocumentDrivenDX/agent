@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // EditEntry is a single oldText→newText replacement.
@@ -83,7 +83,7 @@ func (t *EditTool) Execute(ctx context.Context, params json.RawMessage) (string,
 
 	resolved := resolvePath(t.WorkDir, p.Path)
 
-	data, err := os.ReadFile(resolved)
+	data, err := safefs.ReadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("edit: %w", err)
 	}
@@ -146,7 +146,7 @@ func (t *EditTool) Execute(ctx context.Context, params json.RawMessage) (string,
 		content = content[:pe.pos] + pe.edit.NewText + content[pe.pos+len(pe.edit.OldText):]
 	}
 
-	if err := os.WriteFile(resolved, []byte(content), 0o644); err != nil {
+	if err := safefs.WriteFile(resolved, []byte(content), 0o600); err != nil {
 		return "", fmt.Errorf("edit: writing: %w", err)
 	}
 

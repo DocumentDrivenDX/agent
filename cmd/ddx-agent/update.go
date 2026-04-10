@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 const (
@@ -59,9 +61,15 @@ func ParseSemVer(v string) (SemVer, error) {
 	}
 
 	var major, minor, patch int
-	fmt.Sscanf(nums[0], "%d", &major)
-	fmt.Sscanf(nums[1], "%d", &minor)
-	fmt.Sscanf(nums[2], "%d", &patch)
+	if _, err := fmt.Sscanf(nums[0], "%d", &major); err != nil {
+		return SemVer{}, fmt.Errorf("invalid version number: %s", v)
+	}
+	if _, err := fmt.Sscanf(nums[1], "%d", &minor); err != nil {
+		return SemVer{}, fmt.Errorf("invalid version number: %s", v)
+	}
+	if _, err := fmt.Sscanf(nums[2], "%d", &patch); err != nil {
+		return SemVer{}, fmt.Errorf("invalid version number: %s", v)
+	}
 
 	return SemVer{Major: major, Minor: minor, Patch: patch, PreRelease: prerelease}, nil
 }
@@ -127,7 +135,9 @@ func GetLatestRelease(repo string, cacheFile string) (*GitHubRelease, error) {
 	}
 
 	// Cache the result
-	saveCachedVersion(cacheFile, release.TagName)
+	if err := saveCachedVersion(cacheFile, release.TagName); err != nil {
+		return nil, err
+	}
 
 	return &release, nil
 }
@@ -138,7 +148,7 @@ type cachedVersion struct {
 }
 
 func loadCachedVersion(path string) (*cachedVersion, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +165,7 @@ func saveCachedVersion(path, version string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return safefs.WriteFile(path, data, 0o600)
 }
 
 // FindBinaryPath finds the path to the ddx-agent binary.
@@ -212,20 +222,22 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return "", fmt.Errorf("closing temp file: %w", err)
+	}
 
 	// Download to temp file
 	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Get(url)
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = safefs.Remove(tmpPath)
 		return "", fmt.Errorf("downloading binary: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		os.Remove(tmpPath)
+		_ = safefs.Remove(tmpPath)
 		return "", fmt.Errorf("download failed (%s): %s", resp.Status, string(body))
 	}
 
@@ -247,11 +259,11 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 			if err == io.EOF {
 				break
 			}
-			os.Remove(tmpPath)
+			_ = safefs.Remove(tmpPath)
 			return "", fmt.Errorf("download interrupted: %w", err)
 		}
 		if _, writeErr := tmpFile.Write(buf[:n]); writeErr != nil {
-			os.Remove(tmpPath)
+			_ = safefs.Remove(tmpPath)
 			return "", fmt.Errorf("writing temp file: %w", writeErr)
 		}
 	}
@@ -261,17 +273,17 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 	// Verify download
 	info, err := os.Stat(tmpPath)
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = safefs.Remove(tmpPath)
 		return "", fmt.Errorf("checking downloaded file: %w", err)
 	}
 	if info.Size() < 10*1024 { // At least 10KB for a binary
-		os.Remove(tmpPath)
+		_ = safefs.Remove(tmpPath)
 		return "", fmt.Errorf("downloaded file too small (%d bytes)", info.Size())
 	}
 
 	// Make executable
-	if err := os.Chmod(tmpPath, 0755); err != nil {
-		os.Remove(tmpPath)
+	if err := safefs.Chmod(tmpPath, 0o755); err != nil {
+		_ = safefs.Remove(tmpPath)
 		return "", fmt.Errorf("setting permissions: %w", err)
 	}
 
@@ -294,21 +306,21 @@ func ReplaceBinary(oldPath, newPath string, w io.Writer) error {
 		fmt.Fprintf(w, "  Note: Using fallback copy method...\n")
 
 		// Read new binary
-		data, readErr := os.ReadFile(newPath)
+		data, readErr := safefs.ReadFile(newPath)
 		if readErr != nil {
-			os.Remove(newPath)
+			_ = safefs.Remove(newPath)
 			return fmt.Errorf("reading new binary: %w", readErr)
 		}
 
 		// Write to old path (atomic on most systems for small files)
-		writeErr := os.WriteFile(oldPath, data, info.Mode())
+		writeErr := safefs.WriteFile(oldPath, data, info.Mode())
 		if writeErr != nil {
-			os.Remove(newPath)
+			_ = safefs.Remove(newPath)
 			return fmt.Errorf("writing new binary: %w", writeErr)
 		}
 
 		// Clean up temp file
-		os.Remove(newPath)
+		_ = safefs.Remove(newPath)
 	}
 
 	fmt.Fprintf(w, "Successfully updated ddx-agent\n")

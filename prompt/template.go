@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // Template is a prompt template loaded from a markdown file.
@@ -19,7 +21,7 @@ type Template struct {
 
 // LoadTemplate reads a prompt template from a file, parsing YAML frontmatter.
 func LoadTemplate(path string) (*Template, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("prompt: reading template: %w", err)
 	}

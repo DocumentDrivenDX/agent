@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // WriteParams are the parameters for the write tool.
@@ -45,11 +45,11 @@ func (t *WriteTool) Execute(ctx context.Context, params json.RawMessage) (string
 	resolved := resolvePath(t.WorkDir, p.Path)
 
 	dir := filepath.Dir(resolved)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := safefs.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("write: creating directories: %w", err)
 	}
 
-	if err := os.WriteFile(resolved, []byte(p.Content), 0o644); err != nil {
+	if err := safefs.WriteFile(resolved, []byte(p.Content), 0o600); err != nil {
 		return "", fmt.Errorf("write: %w", err)
 	}
 

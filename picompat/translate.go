@@ -4,9 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
 
 	agentConfig "github.com/DocumentDrivenDX/agent/config"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // ProviderMapping maps pi provider names to agent configurations.
@@ -181,11 +181,11 @@ func ComputeSourceHash(piDir string) (string, error) {
 	authPath := piDir + "/agent/auth.json"
 	modelsPath := piDir + "/agent/models.json"
 
-	authData, err := os.ReadFile(authPath)
+	authData, err := safefs.ReadFile(authPath)
 	if err != nil {
 		return "", err
 	}
-	modelsData, err := os.ReadFile(modelsPath)
+	modelsData, err := safefs.ReadFile(modelsPath)
 	if err != nil {
 		return "", err
 	}

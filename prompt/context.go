@@ -1,8 +1,9 @@
 package prompt
 
 import (
-	"os"
 	"path/filepath"
+
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // contextFilenames are the filenames to look for as project context files.
@@ -27,7 +28,7 @@ func LoadContextFiles(workDir string) []ContextFile {
 			if seen[path] {
 				continue
 			}
-			data, err := os.ReadFile(path)
+			data, err := safefs.ReadFile(path)
 			if err != nil {
 				continue
 			}

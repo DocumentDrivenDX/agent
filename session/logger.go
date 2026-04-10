@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // Logger writes session events to a JSONL file.
@@ -29,13 +30,13 @@ func NewLogger(dir, sessionID string) *Logger {
 		dir:       dir,
 		sessionID: sessionID,
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := safefs.MkdirAll(dir, 0o750); err != nil {
 		slog.Warn("session logger: cannot create directory", "dir", dir, "err", err)
 		l.warned = true
 		return l
 	}
 	path := filepath.Join(dir, sessionID+".jsonl")
-	f, err := os.Create(path)
+	f, err := safefs.Create(path)
 	if err != nil {
 		slog.Warn("session logger: cannot create file", "path", path, "err", err)
 		l.warned = true
@@ -101,7 +102,7 @@ func (l *Logger) Close() error {
 
 // ReadEvents reads all events from a session log file.
 func ReadEvents(path string) ([]agent.Event, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("session: reading log: %w", err)
 	}
