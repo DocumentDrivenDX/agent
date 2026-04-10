@@ -18,7 +18,8 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 		t.Fatalf("getwd: %v", err)
 	}
 
-	cmd := exec.Command("go", append([]string{"run", "./cmd/ddx-agent"}, args...)...)
+	exe := buildAgentCLI(t)
+	cmd := exec.Command(exe, args...)
 	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
 	home := t.TempDir()
 	cmd.Env = append(os.Environ(),

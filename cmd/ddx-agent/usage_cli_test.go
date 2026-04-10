@@ -3,10 +3,12 @@ package main_test
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,12 @@ import (
 	"github.com/DocumentDrivenDX/agent/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	buildCLIOnce sync.Once
+	buildCLIPath string
+	buildCLIErr  error
 )
 
 func seedMixedUsageLogs(t *testing.T, logDir string) {
@@ -202,16 +210,30 @@ func TestCLI_Usage_InvalidSince_ExitCode(t *testing.T) {
 func buildAgentCLI(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	exe := filepath.Join(dir, "ddx-agent")
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	cmd := exec.Command("go", "build", "-o", exe, "./cmd/ddx-agent")
-	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, string(out))
-	return exe
+	buildCLIOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "ddx-agent-cli-*")
+		if err != nil {
+			buildCLIErr = err
+			return
+		}
+		exe := filepath.Join(dir, "ddx-agent")
+		wd, err := os.Getwd()
+		if err != nil {
+			buildCLIErr = err
+			return
+		}
+		cmd := exec.Command("go", "build", "-o", exe, "./cmd/ddx-agent")
+		cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			buildCLIErr = fmt.Errorf("build ddx-agent CLI: %w\n%s", err, strings.TrimSpace(string(out)))
+			return
+		}
+		buildCLIPath = exe
+	})
+	require.NoError(t, buildCLIErr)
+	return buildCLIPath
 }
 
 func usageFloat64Ptr(v float64) *float64 {
