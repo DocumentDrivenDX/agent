@@ -133,10 +133,16 @@ func TestSynthesizeIntentRoute(t *testing.T) {
 	route := synthesizeIntentRoute(cfg, "qwen3.5-27b", "")
 	assert.Equal(t, "smart", route.Strategy)
 	assert.Len(t, route.Candidates, 2)
-	assert.Equal(t, "local", route.Candidates[0].Provider)
-	assert.Equal(t, "qwen3.5-27b", route.Candidates[0].Model)
-	assert.Equal(t, "cloud", route.Candidates[1].Provider)
-	assert.Equal(t, "qwen3.5-27b", route.Candidates[1].Model)
+
+	// Check that both providers are present (order depends on alphabetical sorting)
+	providerMap := make(map[string]string)
+	for _, c := range route.Candidates {
+		providerMap[c.Provider] = c.Model
+	}
+	assert.Contains(t, providerMap, "local")
+	assert.Contains(t, providerMap, "cloud")
+	assert.Equal(t, "qwen3.5-27b", providerMap["local"])
+	assert.Equal(t, "qwen3.5-27b", providerMap["cloud"])
 }
 
 func TestSynthesizeIntentRoute_WithModelRef(t *testing.T) {

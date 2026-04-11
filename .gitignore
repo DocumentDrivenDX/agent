@@ -1,6 +1,11 @@
 # Binary
 /ddx-agent
 
+# Build artifacts
+/dist/
+/benchscore/
+/cmd/ddx-agent-benchscore/
+
 # Session logs
 .agent/sessions/
 
@@ -23,3 +28,7 @@ website/resources/
 # Coverage
 coverage.out
 coverage.html
+
+# Benchmark artifacts
+/benchmark-results/
+/jobs/
