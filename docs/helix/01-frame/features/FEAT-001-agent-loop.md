@@ -87,6 +87,9 @@ reached. This implements PRD P0 requirements 1, 8, 10, and 11.
 | AC-FEAT-001-04 | Session lifecycle events are emitted in `seq` order with `session.start`, `llm.request`, optional `llm.delta`, `llm.response`, optional `tool.call`, and `session.end`; correlation metadata, accumulated usage, and known-vs-unknown cost semantics are preserved in emitted event payloads. | `go test ./...` |
 | AC-FEAT-001-05 | Streaming providers support delta assembly, `NoStream` fallback, attempt metadata propagation, and timing capture for request start, first token, and completion without counting callback latency toward provider timing windows. | `go test ./...` |
 | AC-FEAT-001-06 | Concurrent `Run()` calls do not share mutable state, and compaction no-fit paths fail closed without issuing an over-budget provider call. | `go test ./...` |
+| AC-FEAT-001-07 | When accumulated `reasoning_content` exceeds 32 k chars with no `content` or `tool_call` delta seen, the stream is aborted and the loop exits with a non-retryable `ErrReasoningOverflow` error. | `TestConsumeStream_ReasoningOverflow` |
+| AC-FEAT-001-08 | When only `reasoning_content` deltas arrive for longer than the stall timeout (120 s) with no `content` or `tool_call` delta, the stream is aborted and the loop exits with a non-retryable `ErrReasoningStall` error. | `TestConsumeStream_ReasoningStall` |
+| AC-FEAT-001-09 | When the agent produces identical tool calls (same name + args fingerprint) for 3 or more consecutive turns, the loop exits with a non-retryable `ErrToolCallLoop` error. | `TestRun_ToolCallLoopDetection` |
 
 ## Constraints and Assumptions
 

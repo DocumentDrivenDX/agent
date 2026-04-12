@@ -481,6 +481,8 @@ func TestConsumeStream_StreamErrorAfterToolCall(t *testing.T) {
 }
 
 func TestConsumeStream_ReasoningOverflow(t *testing.T) {
+	// AC-FEAT-001-07: stream aborted with ErrReasoningOverflow when reasoning_content
+	// exceeds 32k chars with no content or tool_call delta.
 	// Build a stream of pure reasoning_content deltas that exceeds the byte limit.
 	chunk := strings.Repeat("x", 4096)
 	var deltas []StreamDelta
@@ -520,6 +522,9 @@ func TestConsumeStream_ReasoningOverflow_NotTriggeredAfterContent(t *testing.T) 
 }
 
 func TestConsumeStream_ReasoningStall(t *testing.T) {
+	// AC-FEAT-001-08: stream aborted with ErrReasoningStall when only reasoning_content
+	// deltas arrive for longer than the stall timeout with no content or tool_call delta.
+	//
 	// Use a custom stall timeout smaller than the default to keep the test fast.
 	// We test the time.Since path by manipulating reasoningStallStart indirectly:
 	// the easiest approach is to set a very old stall start by making the first

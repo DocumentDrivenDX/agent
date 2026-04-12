@@ -1927,6 +1927,9 @@ func TestRun_OverflowCompactionSuccessRetryStillOverflowsReturnsError(t *testing
 }
 
 func TestRun_ToolCallLoopDetection(t *testing.T) {
+	// AC-FEAT-001-09: loop exits with ErrToolCallLoop when the agent produces identical
+	// tool calls (same name + args fingerprint) for 3 or more consecutive turns.
+	//
 	// Provider returns the same tool call 4 times in a row.
 	// Loop should abort after 3 identical consecutive turns with ErrToolCallLoop.
 	loopCall := ToolCall{
