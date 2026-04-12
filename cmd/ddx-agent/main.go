@@ -1043,8 +1043,8 @@ func printUsageReport(report *session.UsageReport, since string) {
 		fmt.Printf("Window: %s\n", since)
 	}
 
-	fmt.Printf("%-16s %-24s %8s %10s %10s %10s %14s %10s %12s %12s\n",
-		"PROVIDER", "MODEL", "SESSIONS", "INPUT", "OUTPUT", "TOTAL", "COST", "UNKNOWN", "IN tok/s", "OUT tok/s")
+	fmt.Printf("%-16s %-24s %8s %10s %10s %10s %14s %10s %10s %8s %10s %12s %12s\n",
+		"PROVIDER", "MODEL", "SESSIONS", "INPUT", "OUTPUT", "TOTAL", "COST", "UNKNOWN", "CACHE-HIT%", "SUCCESS%", "COST/OK", "IN tok/s", "OUT tok/s")
 	for _, row := range report.Rows {
 		printUsageRow(row)
 	}
@@ -1065,7 +1065,19 @@ func printUsageRow(row session.UsageRow) {
 	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
 		cost = fmt.Sprintf("$%.4f", *row.KnownCostUSD)
 	}
-	fmt.Printf("%-16s %-24s %8d %10d %10d %10d %14s %10d %12.1f %12.1f\n",
+	cacheHit := "-"
+	if row.CacheReadTokens > 0 || row.InputTokens > 0 {
+		cacheHit = fmt.Sprintf("%.1f%%", row.CacheHitRate()*100)
+	}
+	successRate := "-"
+	if row.Sessions > 0 {
+		successRate = fmt.Sprintf("%.1f%%", row.SuccessRate()*100)
+	}
+	costPerOK := "-"
+	if cps := row.CostPerSuccess(); cps != nil {
+		costPerOK = fmt.Sprintf("$%.4f", *cps)
+	}
+	fmt.Printf("%-16s %-24s %8d %10d %10d %10d %14s %10d %10s %8s %10s %12.1f %12.1f\n",
 		row.Provider,
 		row.Model,
 		row.Sessions,
@@ -1074,13 +1086,16 @@ func printUsageRow(row session.UsageRow) {
 		row.TotalTokens,
 		cost,
 		row.UnknownCostSessions,
+		cacheHit,
+		successRate,
+		costPerOK,
 		row.InputTokensPerSecond(),
 		row.OutputTokensPerSecond(),
 	)
 }
 
 func printUsageCSV(report *session.UsageReport) {
-	fmt.Println("provider,model,sessions,input_tokens,output_tokens,total_tokens,duration_ms,known_cost_usd,unknown_cost_sessions,input_tokens_per_second,output_tokens_per_second")
+	fmt.Println("provider,model,sessions,success_sessions,failed_sessions,input_tokens,output_tokens,total_tokens,duration_ms,known_cost_usd,unknown_cost_sessions,success_rate,cost_per_success,input_tokens_per_second,output_tokens_per_second,cache_read_tokens,cache_write_tokens")
 	for _, row := range report.Rows {
 		printUsageCSVRow(row)
 	}
@@ -1094,18 +1109,29 @@ func printUsageCSVRow(row session.UsageRow) {
 	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
 		cost = fmt.Sprintf("%.4f", *row.KnownCostUSD)
 	}
-	fmt.Printf("%s,%s,%d,%d,%d,%d,%d,%s,%d,%.1f,%.1f\n",
+	successRate := fmt.Sprintf("%.4f", row.SuccessRate())
+	costPerOK := ""
+	if cps := row.CostPerSuccess(); cps != nil {
+		costPerOK = fmt.Sprintf("%.4f", *cps)
+	}
+	fmt.Printf("%s,%s,%d,%d,%d,%d,%d,%d,%d,%s,%d,%s,%s,%.1f,%.1f,%d,%d\n",
 		csvEscape(row.Provider),
 		csvEscape(row.Model),
 		row.Sessions,
+		row.SuccessSessions,
+		row.FailedSessions,
 		row.InputTokens,
 		row.OutputTokens,
 		row.TotalTokens,
 		row.DurationMs,
 		cost,
 		row.UnknownCostSessions,
+		successRate,
+		costPerOK,
 		row.InputTokensPerSecond(),
 		row.OutputTokensPerSecond(),
+		row.CacheReadTokens,
+		row.CacheWriteTokens,
 	)
 }
 

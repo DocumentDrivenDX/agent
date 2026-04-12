@@ -45,12 +45,34 @@ type UsageRow struct {
 	Provider            string   `json:"provider"`
 	Model               string   `json:"model"`
 	Sessions            int      `json:"sessions"`
+	SuccessSessions     int      `json:"success_sessions"`
+	FailedSessions      int      `json:"failed_sessions"`
 	InputTokens         int      `json:"input_tokens"`
 	OutputTokens        int      `json:"output_tokens"`
 	TotalTokens         int      `json:"total_tokens"`
 	DurationMs          int64    `json:"duration_ms"`
 	KnownCostUSD        *float64 `json:"known_cost_usd"`
 	UnknownCostSessions int      `json:"unknown_cost_sessions"`
+	CacheReadTokens     int      `json:"cache_read_tokens"`
+	CacheWriteTokens    int      `json:"cache_write_tokens"`
+}
+
+// SuccessRate returns the fraction of sessions that succeeded (0 if no sessions).
+func (r UsageRow) SuccessRate() float64 {
+	if r.Sessions == 0 {
+		return 0
+	}
+	return float64(r.SuccessSessions) / float64(r.Sessions)
+}
+
+// CostPerSuccess returns the known cost divided by successful sessions,
+// or nil if there are no successes or cost is unknown.
+func (r UsageRow) CostPerSuccess() *float64 {
+	if r.SuccessSessions == 0 || r.KnownCostUSD == nil {
+		return nil
+	}
+	v := *r.KnownCostUSD / float64(r.SuccessSessions)
+	return &v
 }
 
 // InputTokensPerSecond returns the average input-token throughput.
@@ -69,6 +91,15 @@ func (r UsageRow) OutputTokensPerSecond() float64 {
 	return float64(r.OutputTokens) / (float64(r.DurationMs) / 1000)
 }
 
+// CacheHitRate returns the fraction of input tokens served from cache (0..1).
+func (r UsageRow) CacheHitRate() float64 {
+	total := r.InputTokens + r.CacheReadTokens + r.CacheWriteTokens
+	if total == 0 {
+		return 0
+	}
+	return float64(r.CacheReadTokens) / float64(total)
+}
+
 // UsageReport is the aggregate output for a session log scan.
 type UsageReport struct {
 	Window *UsageWindow `json:"window,omitempty"`
@@ -85,6 +116,7 @@ type usageSession struct {
 	Tokens      agent.TokenUsage
 	KnownCost   float64
 	UnknownCost bool
+	Status      agent.Status
 }
 
 // AggregateUsage scans JSONL session logs in logDir and aggregates token and
@@ -138,17 +170,31 @@ func AggregateUsage(logDir string, opts UsageOptions) (*UsageReport, error) {
 		}
 
 		row.Sessions++
+		if session.Status == agent.StatusSuccess {
+			row.SuccessSessions++
+		} else {
+			row.FailedSessions++
+		}
 		row.InputTokens += session.Tokens.Input
 		row.OutputTokens += session.Tokens.Output
 		row.TotalTokens += effectiveTotalTokens(session.Tokens)
 		row.DurationMs += session.DurationMs
+		row.CacheReadTokens += session.Tokens.CacheRead
+		row.CacheWriteTokens += session.Tokens.CacheWrite
 		accumulateUsageCost(row, session)
 
 		report.Totals.Sessions++
+		if session.Status == agent.StatusSuccess {
+			report.Totals.SuccessSessions++
+		} else {
+			report.Totals.FailedSessions++
+		}
 		report.Totals.InputTokens += session.Tokens.Input
 		report.Totals.OutputTokens += session.Tokens.Output
 		report.Totals.TotalTokens += effectiveTotalTokens(session.Tokens)
 		report.Totals.DurationMs += session.DurationMs
+		report.Totals.CacheReadTokens += session.Tokens.CacheRead
+		report.Totals.CacheWriteTokens += session.Tokens.CacheWrite
 		accumulateUsageCost(&report.Totals, session)
 	}
 
@@ -287,6 +333,7 @@ func summarizeUsageSession(events []agent.Event) (usageSession, bool) {
 			result.EndedAt = e.Timestamp.UTC()
 			result.DurationMs = data.DurationMs
 			result.Tokens = data.Tokens
+			result.Status = data.Status
 			if data.CostUSD == nil || *data.CostUSD < 0 {
 				result.UnknownCost = true
 				result.KnownCost = 0

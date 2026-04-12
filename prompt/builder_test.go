@@ -138,6 +138,28 @@ func TestBuilder_EmptyBase(t *testing.T) {
 	assert.Contains(t, result, "Current date: 2026-04-06")
 }
 
+func TestBuilderDeterminism(t *testing.T) {
+	b1 := New("base").
+		WithDate("2026-04-12").
+		WithWorkDir("/work").
+		WithMetadata("z-key", "z-val").
+		WithMetadata("a-key", "a-val").
+		WithContextFiles([]ContextFile{
+			{Path: "z.md", Content: "z content"},
+			{Path: "a.md", Content: "a content"},
+		})
+	b2 := New("base").
+		WithDate("2026-04-12").
+		WithWorkDir("/work").
+		WithMetadata("a-key", "a-val").
+		WithMetadata("z-key", "z-val").
+		WithContextFiles([]ContextFile{
+			{Path: "a.md", Content: "a content"},
+			{Path: "z.md", Content: "z content"},
+		})
+	assert.Equal(t, b1.Build(), b2.Build(), "Build() must be deterministic regardless of insertion order")
+}
+
 func indexOf(s, substr string) int {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

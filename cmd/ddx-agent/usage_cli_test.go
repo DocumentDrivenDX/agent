@@ -158,6 +158,8 @@ func TestCLI_Usage_CSV_MixedCost(t *testing.T) {
 		"unknown_cost_sessions",
 		"input_tokens_per_second",
 		"output_tokens_per_second",
+		"cache_read_tokens",
+		"cache_write_tokens",
 	}, rows[0])
 
 	assert.Equal(t, "openai-compat", rows[1][0])

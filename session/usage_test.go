@@ -173,6 +173,58 @@ func TestAggregateUsage(t *testing.T) {
 	assert.Equal(t, 0, empty.Totals.Sessions)
 }
 
+func TestUsageRowSuccessTracking(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+
+	writeSession := func(t *testing.T, id string, startAt time.Time, status agent.Status, costUSD *float64) {
+		t.Helper()
+		logger := NewLogger(dir, id)
+		startEvent := NewEvent(id, 0, agent.EventSessionStart, SessionStartData{
+			Provider: "test-provider",
+			Model:    "test-model",
+			Prompt:   "test",
+		})
+		startEvent.Timestamp = startAt
+		logger.Write(startEvent)
+		endEvent := NewEvent(id, 1, agent.EventSessionEnd, SessionEndData{
+			Status:     status,
+			Tokens:     agent.TokenUsage{Input: 10, Output: 5, Total: 15},
+			CostUSD:    costUSD,
+			DurationMs: 1000,
+			Model:      "test-model",
+		})
+		endEvent.Timestamp = startAt.Add(time.Second)
+		logger.Write(endEvent)
+		require.NoError(t, logger.Close())
+	}
+
+	base := time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC)
+	writeSession(t, "s1", base, agent.StatusSuccess, usageFloat64Ptr(0.20))
+	writeSession(t, "s2", base.Add(time.Minute), agent.StatusSuccess, usageFloat64Ptr(0.40))
+	writeSession(t, "s3", base.Add(2*time.Minute), agent.StatusError, usageFloat64Ptr(0.10))
+
+	report, err := AggregateUsage(dir, UsageOptions{Now: now})
+	require.NoError(t, err)
+	require.Len(t, report.Rows, 1)
+
+	row := report.Rows[0]
+	assert.Equal(t, 3, row.Sessions)
+	assert.Equal(t, 2, row.SuccessSessions)
+	assert.Equal(t, 1, row.FailedSessions)
+	assert.InDelta(t, 2.0/3.0, row.SuccessRate(), 0.0001)
+
+	cps := row.CostPerSuccess()
+	require.NotNil(t, cps)
+	// known_cost = 0.70, success_sessions = 2, so cost_per_success = 0.35
+	assert.InDelta(t, 0.35, *cps, 0.0001)
+
+	// Zero sessions case
+	var empty UsageRow
+	assert.Equal(t, 0.0, empty.SuccessRate())
+	assert.Nil(t, empty.CostPerSuccess())
+}
+
 func usageFloat64Ptr(v float64) *float64 {
 	return &v
 }

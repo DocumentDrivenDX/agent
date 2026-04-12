@@ -5,6 +5,7 @@ package prompt
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -115,7 +116,13 @@ func (b *Builder) Build() string {
 	if len(b.contextFiles) > 0 {
 		var contextParts []string
 		contextParts = append(contextParts, "# Project Context\n\nProject-specific instructions and guidelines:")
-		for _, cf := range b.contextFiles {
+		// Sort context files by path for stable output
+		sortedFiles := make([]ContextFile, len(b.contextFiles))
+		copy(sortedFiles, b.contextFiles)
+		sort.Slice(sortedFiles, func(i, j int) bool {
+			return sortedFiles[i].Path < sortedFiles[j].Path
+		})
+		for _, cf := range sortedFiles {
 			contextParts = append(contextParts, fmt.Sprintf("## %s\n\n%s", cf.Path, cf.Content))
 		}
 		sections = append(sections, strings.Join(contextParts, "\n\n"))
@@ -130,8 +137,14 @@ func (b *Builder) Build() string {
 	if b.workDir != "" {
 		dynamic += fmt.Sprintf("\nCurrent working directory: %s", b.workDir)
 	}
-	for k, v := range b.metadata {
-		dynamic += fmt.Sprintf("\n%s: %s", k, v)
+	// Sort metadata keys for stable output
+	metaKeys := make([]string, 0, len(b.metadata))
+	for k := range b.metadata {
+		metaKeys = append(metaKeys, k)
+	}
+	sort.Strings(metaKeys)
+	for _, k := range metaKeys {
+		dynamic += fmt.Sprintf("\n%s: %s", k, b.metadata[k])
 	}
 	sections = append(sections, dynamic)
 
