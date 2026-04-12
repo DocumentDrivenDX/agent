@@ -55,6 +55,9 @@ def _render_provider_config() -> str:
     api_key_env = _bench_env("DDX_BENCH_PROVIDER_API_KEY_ENV", "ANTHROPIC_API_KEY")
     base_url = _bench_env("DDX_BENCH_PROVIDER_BASE_URL", "")
 
+    thinking_level = _bench_env("DDX_BENCH_PROVIDER_THINKING_LEVEL", "")
+    thinking_budget = _bench_env("DDX_BENCH_PROVIDER_THINKING_BUDGET", "")
+
     lines = [
         "providers:",
         f"  {provider_name}:",
@@ -64,6 +67,10 @@ def _render_provider_config() -> str:
     ]
     if base_url:
         lines.append(f"    base_url: {base_url}")
+    if thinking_level:
+        lines.append(f"    thinking_level: {thinking_level}")
+    elif thinking_budget:
+        lines.append(f"    thinking_budget: {thinking_budget}")
     headers_yaml = _provider_headers_yaml().rstrip()
     if headers_yaml:
         lines.append(headers_yaml)
