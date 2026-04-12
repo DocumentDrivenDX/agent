@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -112,6 +113,70 @@ func newSlowOpenAIServer(t *testing.T, delay time.Duration) *httptest.Server {
 			http.NotFound(w, r)
 		}
 	}))
+}
+
+// newToolLoopStreamingServer returns a fake SSE streaming server that always
+// responds with a bash tool call, forcing the agent to exhaust its iteration
+// limit when max-iter is small.
+func newToolLoopStreamingServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"stub-model"}]}`))
+		case "/v1/chat/completions":
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Transfer-Encoding", "chunked")
+			flusher, _ := w.(http.Flusher)
+			// Emit SSE chunks that assemble a bash tool call.
+			chunks := []string{
+				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call1","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}`,
+				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"echo hi\"}"}}]},"finish_reason":null}]}`,
+				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
+			}
+			for _, chunk := range chunks {
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", chunk)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+			if flusher != nil {
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// TestCLI_IterationLimit_ExitsZero verifies that when the agent exhausts its
+// iteration limit (StatusIterationLimit), the process exits with code 0.
+// This is the benchmark harness case: the agent completes work within N turns
+// and the harness should not see a NonZeroAgentExitCodeError.
+func TestCLI_IterationLimit_ExitsZero(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+	loop := newToolLoopStreamingServer(t)
+	defer loop.Close()
+
+	writeTempConfig(t, workDir, `
+providers:
+  local:
+    type: openai-compat
+    base_url: `+loop.URL+`/v1
+    api_key: test
+    model: stub-model
+default: local
+`)
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil),
+		"--work-dir", workDir, "--max-iter", "1", "-p", "do something")
+	assert.Equal(t, 0, res.exitCode, "iteration_limit should exit 0; stderr=%s", res.stderr)
+	assert.Contains(t, res.stderr, "[iteration_limit]")
 }
 
 func TestCLI_Run_StrictStdoutStderrAndExitCode(t *testing.T) {
