@@ -236,7 +236,7 @@ func run() int {
 	fmt.Fprintln(os.Stderr)
 
 	switch result.Status {
-	case agent.StatusSuccess:
+	case agent.StatusSuccess, agent.StatusIterationLimit:
 		return 0
 	default:
 		return 1
