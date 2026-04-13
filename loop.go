@@ -124,22 +124,29 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	}
 
 	// runCompaction handles the compaction logic and event emission.
+	// midTurn should be true when called after tool results within a turn (as
+	// opposed to pre-turn or overflow-triggered compaction), so event consumers
+	// can distinguish the trigger source.
 	// Returns true if compaction occurred; returns ErrCompactionNoFit when the
 	// compactor could not produce an in-budget history.
-	runCompaction := func() (bool, *CompactionResult, error) {
+	runCompaction := func(midTurn bool) (bool, *CompactionResult, error) {
 		if req.Compactor == nil {
 			return false, nil, nil
 		}
 
 		// Emit compaction start event
+		startData := map[string]any{
+			"messages_before": len(messages),
+		}
+		if midTurn {
+			startData["mid_turn"] = true
+		}
 		emitCallback(req.Callback, Event{
 			SessionID: sessionID,
 			Seq:       seq,
 			Type:      EventCompactionStart,
 			Timestamp: time.Now().UTC(),
-			Data: mustMarshal(map[string]any{
-				"messages_before": len(messages),
-			}),
+			Data:      mustMarshal(startData),
 		})
 		seq++
 
@@ -147,18 +154,22 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		compacted, compResult, compErr := req.Compactor(compactionCtx, messages, req.Provider, result.ToolCalls)
 		if compErr != nil {
 			// Compaction failure is non-fatal — continue with uncompacted messages
+			endErrData := map[string]any{
+				"error":           compErr.Error(),
+				"success":         false,
+				"no_compaction":   true,
+				"messages_before": len(messages),
+				"messages_after":  len(messages),
+			}
+			if midTurn {
+				endErrData["mid_turn"] = true
+			}
 			emitCallback(req.Callback, Event{
 				SessionID: sessionID,
 				Seq:       seq,
 				Type:      EventCompactionEnd,
 				Timestamp: time.Now().UTC(),
-				Data: mustMarshal(map[string]any{
-					"error":           compErr.Error(),
-					"success":         false,
-					"no_compaction":   true,
-					"messages_before": len(messages),
-					"messages_after":  len(messages),
-				}),
+				Data:      mustMarshal(endErrData),
 			})
 			seq++
 			if errors.Is(compErr, ErrCompactionNoFit) {
@@ -169,20 +180,24 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 		if compResult != nil {
 			// Compaction happened — emit end with full result
+			endOkData := map[string]any{
+				"success":        true,
+				"summary":        compResult.Summary,
+				"file_ops":       compResult.FileOps,
+				"tokens_before":  compResult.TokensBefore,
+				"tokens_after":   compResult.TokensAfter,
+				"warning":        compResult.Warning,
+				"messages_after": len(compacted),
+			}
+			if midTurn {
+				endOkData["mid_turn"] = true
+			}
 			emitCallback(req.Callback, Event{
 				SessionID: sessionID,
 				Seq:       seq,
 				Type:      EventCompactionEnd,
 				Timestamp: time.Now().UTC(),
-				Data: mustMarshal(map[string]any{
-					"success":        true,
-					"summary":        compResult.Summary,
-					"file_ops":       compResult.FileOps,
-					"tokens_before":  compResult.TokensBefore,
-					"tokens_after":   compResult.TokensAfter,
-					"warning":        compResult.Warning,
-					"messages_after": len(compacted),
-				}),
+				Data:      mustMarshal(endOkData),
 			})
 			seq++
 			messages = compacted
@@ -190,17 +205,21 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		}
 
 		// No compaction happened - still close the event pair so callbacks stay balanced.
+		endNoopData := map[string]any{
+			"success":         false,
+			"no_compaction":   true,
+			"messages_before": len(messages),
+			"messages_after":  len(messages),
+		}
+		if midTurn {
+			endNoopData["mid_turn"] = true
+		}
 		emitCallback(req.Callback, Event{
 			SessionID: sessionID,
 			Seq:       seq,
 			Type:      EventCompactionEnd,
 			Timestamp: time.Now().UTC(),
-			Data: mustMarshal(map[string]any{
-				"success":         false,
-				"no_compaction":   true,
-				"messages_before": len(messages),
-				"messages_after":  len(messages),
-			}),
+			Data:      mustMarshal(endNoopData),
 		})
 		seq++
 		return false, nil, nil
@@ -226,7 +245,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		}
 
 		// Run compaction before iteration (pre-iteration check)
-		if _, _, compErr := runCompaction(); compErr != nil {
+		if _, _, compErr := runCompaction(false); compErr != nil {
 			result.Status = StatusError
 			result.Error = compErr
 			result.Duration = time.Since(start)
@@ -404,7 +423,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				// per turn to prevent infinite loops.
 				if IsContextOverflowError(err) && !overflowCompacted && req.Compactor != nil {
 					overflowCompacted = true
-					compacted, _, compErr := runCompaction()
+					compacted, _, compErr := runCompaction(false)
 					if compErr != nil {
 						// ErrCompactionNoFit or other fatal compaction error.
 						result.Status = StatusError
@@ -661,7 +680,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 		// Mid-iteration compaction check (after tool results)
 		// This handles cases where large bash output increases token count.
-		if _, _, compErr := runCompaction(); compErr != nil {
+		if _, _, compErr := runCompaction(true); compErr != nil {
 			result.Status = StatusError
 			result.Error = compErr
 			result.Duration = time.Since(start)

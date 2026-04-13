@@ -21,6 +21,10 @@ const DefaultMaxToolResultChars = 2000
 // DefaultEffectivePercent is the safety margin on the context window.
 const DefaultEffectivePercent = 95
 
+// DefaultUserMessageTailTokens is the default token budget for re-including
+// recent real user messages alongside the compaction summary.
+const DefaultUserMessageTailTokens = 20000
+
 // Config configures automatic conversation compaction.
 type Config struct {
 	// Enabled controls whether automatic compaction runs. Default: true.
@@ -49,17 +53,24 @@ type Config struct {
 
 	// SummarizationFocus is optional text appended to the summarization prompt.
 	SummarizationFocus string
+
+	// UserMessageTailTokens is the token budget for re-including recent real
+	// user messages after compaction alongside the summary. This gives the model
+	// actual request context rather than only the summary.
+	// Default: 20000. Zero means disabled.
+	UserMessageTailTokens int
 }
 
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:            true,
-		ContextWindow:      DefaultContextWindow,
-		ReserveTokens:      DefaultReserveTokens,
-		KeepRecentTokens:   DefaultKeepRecentTokens,
-		MaxToolResultChars: DefaultMaxToolResultChars,
-		EffectivePercent:   DefaultEffectivePercent,
+		Enabled:               true,
+		ContextWindow:         DefaultContextWindow,
+		ReserveTokens:         DefaultReserveTokens,
+		KeepRecentTokens:      DefaultKeepRecentTokens,
+		MaxToolResultChars:    DefaultMaxToolResultChars,
+		EffectivePercent:      DefaultEffectivePercent,
+		UserMessageTailTokens: DefaultUserMessageTailTokens,
 	}
 }
 

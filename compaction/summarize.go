@@ -438,8 +438,30 @@ func compactAtCutIndex(
 		summary = summaryBody + ops.FormatXML()
 	}
 
-	// Build new message list: kept messages + summary LAST (per SD-006 for prompt cache optimization)
+	// Compute token budget available for tail user-message re-inclusion.
+	// After fitting the summary and kept messages, any remaining window space
+	// (up to cfg.UserMessageTailTokens) can be used to re-include real user
+	// messages from the compacted section.
+	var tailBudget int
+	if cfg.UserMessageTailTokens > 0 {
+		tailBudget = cfg.UserMessageTailTokens
+		if budgetingEnabled {
+			summaryTokens := EstimateMessageTokens(InjectSummary(summary))
+			keptTokens := EstimateConversationTokens(messages[cutIndex:])
+			leftover := effectiveWindow - prefixTokens - summaryTokens - keptTokens
+			if leftover < tailBudget {
+				tailBudget = leftover
+			}
+		}
+	}
+
+	// Collect real user messages from the compacted section for re-inclusion.
+	tailMessages := collectUserMessageTail(messages[:cutIndex], tailBudget)
+
+	// Build new message list: tail user messages (oldest first), then kept recent
+	// messages, then summary LAST (per SD-006 for prompt cache optimization).
 	var newMessages []agent.Message
+	newMessages = append(newMessages, tailMessages...)
 	newMessages = append(newMessages, messages[cutIndex:]...)
 	newMessages = append(newMessages, InjectSummary(summary))
 
@@ -481,6 +503,65 @@ func fitSummaryToBudget(summaryBody, summaryXML string, availableTokens int) (st
 	}
 
 	return summaryBody + summaryXML, true
+}
+
+// collectUserMessageTail returns real user-role messages from the tail of
+// messages, subject to a token budget. Messages are accumulated newest-to-oldest
+// and returned in chronological order (oldest first). A message that would exceed
+// the remaining budget is truncated rather than dropped entirely.
+//
+// Excluded: system messages, compaction summary messages, and tool-result messages.
+// Only genuine user-role messages (role == RoleUser without <summary> tags) are kept.
+func collectUserMessageTail(messages []agent.Message, budgetTokens int) []agent.Message {
+	if budgetTokens <= 0 {
+		return nil
+	}
+
+	var collected []agent.Message
+	remaining := budgetTokens
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		if remaining <= 0 {
+			break
+		}
+
+		msg := messages[i]
+
+		// Only include real user messages — exclude system, tool, and summary messages.
+		if msg.Role != agent.RoleUser {
+			continue
+		}
+		if IsCompactionSummary(msg) {
+			continue
+		}
+
+		msgTokens := EstimateMessageTokens(msg)
+		if msgTokens <= remaining {
+			collected = append(collected, msg)
+			remaining -= msgTokens
+		} else {
+			// Truncate the message content to fit the remaining budget.
+			// Subtract role overhead to get the content-only budget.
+			roleTokens := EstimateTokens(string(msg.Role))
+			contentBudget := remaining - roleTokens
+			if contentBudget > 0 {
+				maxChars := contentBudget * charsPerToken
+				truncated := msg
+				if len(msg.Content) > maxChars {
+					truncated.Content = msg.Content[:maxChars]
+				}
+				collected = append(collected, truncated)
+			}
+			remaining = 0
+		}
+	}
+
+	// Reverse to restore chronological order (oldest first).
+	for i, j := 0, len(collected)-1; i < j; i, j = i+1, j-1 {
+		collected[i], collected[j] = collected[j], collected[i]
+	}
+
+	return collected
 }
 
 func nextValidBoundary(messages []agent.Message, index int) int {

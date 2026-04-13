@@ -314,3 +314,59 @@ func TestRun_ResumedHistoryPreservesCompactionStateAcrossFreshCompactors(t *test
 	assert.Contains(t, carriedSummary, "Seeded prior work")
 	assert.Contains(t, carriedSummary, "first.go")
 }
+
+func TestCompact_UserMessageTailReInclusion(t *testing.T) {
+	provider := &multiTurnProvider{toolRounds: 0}
+
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 500
+	cfg.ReserveTokens = 50
+	cfg.KeepRecentTokens = 80
+	cfg.EffectivePercent = 100
+	cfg.UserMessageTailTokens = 500 // generous budget to include tail messages
+
+	// Build a history with several distinct user messages followed by assistant/tool turns.
+	// The compacted section (before the cut) should contain real user messages that
+	// get re-included alongside the summary.
+	var messages []agent.Message
+	messages = append(messages, agent.Message{Role: agent.RoleUser, Content: "Initial request: process all files"})
+	for i := 0; i < 8; i++ {
+		messages = append(messages, agent.Message{
+			Role:    agent.RoleAssistant,
+			Content: fmt.Sprintf("Working on step %d: reading file and processing it now.", i) + string(make([]byte, 200)),
+		})
+		messages = append(messages, agent.Message{
+			Role:    agent.RoleUser,
+			Content: fmt.Sprintf("User follow-up %d: continue with next file", i),
+		})
+	}
+	// The last user message will be kept verbatim in the recent section.
+	messages = append(messages, agent.Message{Role: agent.RoleUser, Content: "Final step: wrap up"})
+
+	compactor := NewCompactor(cfg)
+	newMsgs, result, err := compactor(context.Background(), messages, provider, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result, "compaction should have triggered")
+
+	// Verify a summary is present.
+	hasSummary := false
+	for _, msg := range newMsgs {
+		if IsCompactionSummary(msg) {
+			hasSummary = true
+			break
+		}
+	}
+	assert.True(t, hasSummary, "compacted history must contain a summary message")
+
+	// Verify that at least one real user message from the compacted section was
+	// re-included alongside the summary (the tail re-inclusion feature).
+	reIncludedUserCount := 0
+	for _, msg := range newMsgs {
+		if msg.Role == agent.RoleUser && !IsCompactionSummary(msg) {
+			reIncludedUserCount++
+		}
+	}
+	assert.Greater(t, reIncludedUserCount, 0, "at least one real user message should be re-included after compaction")
+
+	t.Logf("Total messages after compaction: %d, re-included user messages: %d", len(newMsgs), reIncludedUserCount)
+}
