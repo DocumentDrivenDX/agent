@@ -537,11 +537,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 		// toolResult holds the per-call output collected during (possibly parallel) execution.
 		type toolResult struct {
-			output      string
-			toolErr     error
+			output       string
+			toolErr      error
 			toolDuration time.Duration
-			log         ToolCallLog
-			toolSpan    trace.Span
+			log          ToolCallLog
+			toolSpan     trace.Span
 		}
 		results := make([]toolResult, len(resp.ToolCalls))
 
@@ -579,11 +579,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 						recordSpanError(toolSpan, toolErr)
 					}
 					results[toolExecutionIndex] = toolResult{
-						output:      output,
-						toolErr:     toolErr,
+						output:       output,
+						toolErr:      toolErr,
 						toolDuration: toolDuration,
-						log:         log,
-						toolSpan:    toolSpan,
+						log:          log,
+						toolSpan:     toolSpan,
 					}
 				}()
 			}
@@ -635,11 +635,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					recordSpanError(toolSpan, toolErr)
 				}
 				results[toolExecutionIndex] = toolResult{
-					output:      output,
-					toolErr:     toolErr,
+					output:       output,
+					toolErr:      toolErr,
 					toolDuration: toolDuration,
-					log:         log,
-					toolSpan:    toolSpan,
+					log:          log,
+					toolSpan:     toolSpan,
 				}
 			}
 		}

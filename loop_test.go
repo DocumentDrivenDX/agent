@@ -2080,3 +2080,87 @@ func TestRun_ParallelToolExecution(t *testing.T) {
 	// would never be released (deadlock / timeout) because each tool blocks until
 	// all 3 have arrived. If we reach here without deadlock, they ran concurrently.
 }
+
+// TestRun_MidTurnOverflowRetry verifies that when the provider returns a
+// context-overflow error mid-turn (after at least one tool call has already
+// occurred), the agent runs compaction, rebuilds providerMessages from the
+// compacted history, retries the provider call, and completes the turn
+// normally with no error returned to the caller.
+func TestRun_MidTurnOverflowRetry(t *testing.T) {
+	toolCall := ToolCall{
+		ID:        "tc1",
+		Name:      "bash",
+		Arguments: json.RawMessage(`{"command":"echo hello"}`),
+	}
+
+	outcomes := []providerOutcome{
+		// Iteration 0: return a tool call so we enter the tool-execution path.
+		{response: Response{
+			ToolCalls: []ToolCall{toolCall},
+			Usage:     TokenUsage{Total: 10},
+		}},
+		// Iteration 1, attempt 1: context overflow after tool output.
+		{err: errors.New("context length exceeded: reduce your message length")},
+		// Iteration 1, attempt 2 (after compaction): final text response.
+		{response: Response{
+			Content: "done after mid-turn overflow recovery",
+			Usage:   TokenUsage{Total: 5},
+		}},
+	}
+
+	rp := &retryProvider{outcomes: outcomes}
+
+	compactionCalls := 0
+	compactor := func(ctx context.Context, msgs []Message, prov Provider, toolCalls []ToolCallLog) ([]Message, *CompactionResult, error) {
+		compactionCalls++
+		// Calls 1, 2, 3 are pre-turn iter 0, mid-turn iter 0, and pre-turn iter 1
+		// respectively — all no-ops. Call 4 is the overflow-triggered compaction
+		// in iteration 1 and is where we actually compact.
+		if compactionCalls < 4 {
+			return msgs, nil, nil
+		}
+		// Overflow-triggered compaction: shorten the history.
+		if len(msgs) <= 1 {
+			return msgs, nil, nil
+		}
+		shortened := msgs[:1]
+		return shortened, &CompactionResult{Summary: "overflow compaction", TokensBefore: 200, TokensAfter: 10}, nil
+	}
+
+	// Capture compaction end events to verify at least one was emitted.
+	var compactionEndEvents []map[string]any
+	callback := func(e Event) {
+		if e.Type == EventCompactionEnd {
+			var payload map[string]any
+			if err := json.Unmarshal(e.Data, &payload); err == nil {
+				compactionEndEvents = append(compactionEndEvents, payload)
+			}
+		}
+	}
+
+	tool := &mockTool{name: "bash", result: "hello"}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "run bash and report",
+		Provider:  rp,
+		Tools:     []Tool{tool},
+		Compactor: compactor,
+		Callback:  callback,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "done after mid-turn overflow recovery", result.Output)
+
+	// Provider should be called 3 times:
+	//   call 1 — iteration 0, returns tool call
+	//   call 2 — iteration 1, overflow error
+	//   call 3 — iteration 1 retry after compaction, returns final text
+	assert.Equal(t, 3, rp.callCount, "provider should be called 3 times: tool-call turn, overflow, then retry")
+
+	// Compaction must have run at least once for the overflow recovery.
+	assert.GreaterOrEqual(t, compactionCalls, 1, "compaction should have been triggered by overflow")
+
+	// At least one compaction end event should have been emitted.
+	require.NotEmpty(t, compactionEndEvents, "at least one compaction end event should have been emitted")
+}
