@@ -78,22 +78,15 @@ func cmdCatalogShow(workDir string, args []string) int {
 	return 0
 }
 
-// modelEntryJSON is the JSON representation of a catalog model entry.
-type modelEntryJSON struct {
-	ID                 string            `json:"id"`
-	Family             string            `json:"family,omitempty"`
-	Status             string            `json:"status"`
-	Replacement        string            `json:"replacement,omitempty"`
-	Surfaces           map[string]string `json:"surfaces,omitempty"`
-	CostInputPerM      float64           `json:"cost_input_per_m,omitempty"`
-	CostOutputPerM     float64           `json:"cost_output_per_m,omitempty"`
-	CostCacheReadPerM  float64           `json:"cost_cache_read_per_m,omitempty"`
-	CostCacheWritePerM float64           `json:"cost_cache_write_per_m,omitempty"`
-	ContextWindow      int               `json:"context_window,omitempty"`
-	SWEBenchVerified   float64           `json:"swe_bench_verified,omitempty"`
-	LiveCodeBench      float64           `json:"live_code_bench,omitempty"`
-	BenchmarkAsOf      string            `json:"benchmark_as_of,omitempty"`
-	OpenRouterRefID    string            `json:"openrouter_ref_id,omitempty"`
+// catalogModelRow is the JSON representation of one v4 models: map entry.
+type catalogModelRow struct {
+	ID                string  `json:"id"`
+	ProviderSystem    string  `json:"provider_system,omitempty"`
+	CostInputPerMTok  float64 `json:"cost_input_per_mtok,omitempty"`
+	CostOutputPerMTok float64 `json:"cost_output_per_mtok,omitempty"`
+	SWEBenchVerified  float64 `json:"swe_bench_verified,omitempty"`
+	OpenRouterRefID   string  `json:"openrouter_ref_id,omitempty"`
+	SpeedTokensPerSec float64 `json:"speed_tokens_per_sec,omitempty"`
 }
 
 func cmdCatalogModels(workDir string, args []string) int {
@@ -111,47 +104,38 @@ func cmdCatalogModels(workDir string, args []string) int {
 		return 1
 	}
 
-	entries := catalog.AllTargets()
-
-	// Filter by model flag.
-	if *modelFlag != "" {
-		var filtered []modelcatalog.ModelEntry
-		for _, e := range entries {
-			if e.ID == *modelFlag {
-				filtered = append(filtered, e)
-				break
-			}
-		}
-		if len(filtered) == 0 {
-			fmt.Fprintf(os.Stderr, "error: model %q not found in catalog\n", *modelFlag)
-			return 1
-		}
-		entries = filtered
+	modelsMap := catalog.AllModels()
+	if len(modelsMap) == 0 {
+		fmt.Println("no model entries in catalog (requires v4+ manifest)")
+		return 0
 	}
 
-	// Sort by ID for deterministic output.
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].ID < entries[j].ID
-	})
+	// Collect model IDs.
+	ids := make([]string, 0, len(modelsMap))
+	for id := range modelsMap {
+		if *modelFlag != "" && id != *modelFlag {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if *modelFlag != "" && len(ids) == 0 {
+		fmt.Fprintf(os.Stderr, "error: model %q not found in catalog\n", *modelFlag)
+		return 1
+	}
+	sort.Strings(ids)
 
 	if *formatFlag == "json" {
-		rows := make([]modelEntryJSON, 0, len(entries))
-		for _, e := range entries {
-			rows = append(rows, modelEntryJSON{
-				ID:                 e.ID,
-				Family:             e.Family,
-				Status:             e.Status,
-				Replacement:        e.Replacement,
-				Surfaces:           e.Surfaces,
-				CostInputPerM:      e.CostInputPerM,
-				CostOutputPerM:     e.CostOutputPerM,
-				CostCacheReadPerM:  e.CostCacheReadPerM,
-				CostCacheWritePerM: e.CostCacheWritePerM,
-				ContextWindow:      e.ContextWindow,
-				SWEBenchVerified:   e.SWEBenchVerified,
-				LiveCodeBench:      e.LiveCodeBench,
-				BenchmarkAsOf:      e.BenchmarkAsOf,
-				OpenRouterRefID:    e.OpenRouterRefID,
+		rows := make([]catalogModelRow, 0, len(ids))
+		for _, id := range ids {
+			e := modelsMap[id]
+			rows = append(rows, catalogModelRow{
+				ID:                id,
+				ProviderSystem:    e.ProviderSystem,
+				CostInputPerMTok:  e.CostInputPerMTok,
+				CostOutputPerMTok: e.CostOutputPerMTok,
+				SWEBenchVerified:  e.SWEBenchVerified,
+				OpenRouterRefID:   e.OpenRouterRefID,
+				SpeedTokensPerSec: e.SpeedTokensPerSec,
 			})
 		}
 		data, err := json.MarshalIndent(rows, "", "  ")
@@ -163,101 +147,49 @@ func cmdCatalogModels(workDir string, args []string) int {
 		return 0
 	}
 
-	// Human-readable table.
-	// Determine provider from the first surface.
-	provider := func(e modelcatalog.ModelEntry) string {
-		// Prefer agent.anthropic, then agent.openai, then first alphabetically.
-		for _, k := range []string{"agent.anthropic", "agent.openai"} {
-			if _, ok := e.Surfaces[k]; ok {
-				parts := strings.SplitN(k, ".", 2)
-				if len(parts) == 2 {
-					return parts[1]
-				}
-				return k
-			}
-		}
-		// Fallback: first surface key alphabetically.
-		keys := make([]string, 0, len(e.Surfaces))
-		for k := range e.Surfaces {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		if len(keys) > 0 {
-			parts := strings.SplitN(keys[0], ".", 2)
-			if len(parts) == 2 {
-				return parts[1]
-			}
-			return keys[0]
-		}
-		return "-"
-	}
-
-	if *modelFlag != "" && len(entries) == 1 {
+	if *modelFlag != "" && len(ids) == 1 {
 		// Detailed view for a single model.
-		e := entries[0]
-		fmt.Printf("id:                  %s\n", e.ID)
-		fmt.Printf("family:              %s\n", e.Family)
-		fmt.Printf("status:              %s\n", e.Status)
-		if e.Replacement != "" {
-			fmt.Printf("replacement:         %s\n", e.Replacement)
+		id := ids[0]
+		e := modelsMap[id]
+		fmt.Printf("id:                    %s\n", id)
+		if e.ProviderSystem != "" {
+			fmt.Printf("provider_system:       %s\n", e.ProviderSystem)
 		}
-		if e.CostInputPerM > 0 {
-			fmt.Printf("cost_input_per_m:    $%.2f\n", e.CostInputPerM)
-			fmt.Printf("cost_output_per_m:   $%.2f\n", e.CostOutputPerM)
-		}
-		if e.CostCacheReadPerM > 0 {
-			fmt.Printf("cost_cache_read_per_m:  $%.3f\n", e.CostCacheReadPerM)
-		}
-		if e.CostCacheWritePerM > 0 {
-			fmt.Printf("cost_cache_write_per_m: $%.3f\n", e.CostCacheWritePerM)
-		}
-		if e.ContextWindow > 0 {
-			fmt.Printf("context_window:      %d\n", e.ContextWindow)
+		if e.CostInputPerMTok > 0 {
+			fmt.Printf("cost_input_per_mtok:   $%.2f\n", e.CostInputPerMTok)
+			fmt.Printf("cost_output_per_mtok:  $%.2f\n", e.CostOutputPerMTok)
 		}
 		if e.SWEBenchVerified > 0 {
-			fmt.Printf("swe_bench_verified:  %.1f\n", e.SWEBenchVerified)
+			fmt.Printf("swe_bench_verified:    %.1f\n", e.SWEBenchVerified)
 		}
-		if e.LiveCodeBench > 0 {
-			fmt.Printf("live_code_bench:     %.1f\n", e.LiveCodeBench)
-		}
-		if e.BenchmarkAsOf != "" {
-			fmt.Printf("benchmark_as_of:     %s\n", e.BenchmarkAsOf)
+		if e.SpeedTokensPerSec > 0 {
+			fmt.Printf("speed_tokens_per_sec:  %.1f\n", e.SpeedTokensPerSec)
 		}
 		if e.OpenRouterRefID != "" {
-			fmt.Printf("openrouter_ref_id:   %s\n", e.OpenRouterRefID)
-		}
-		if len(e.Surfaces) > 0 {
-			fmt.Println("surfaces:")
-			surfaceKeys := make([]string, 0, len(e.Surfaces))
-			for k := range e.Surfaces {
-				surfaceKeys = append(surfaceKeys, k)
-			}
-			sort.Strings(surfaceKeys)
-			for _, sk := range surfaceKeys {
-				fmt.Printf("  %s: %s\n", sk, e.Surfaces[sk])
-			}
+			fmt.Printf("openrouter_ref_id:     %s\n", e.OpenRouterRefID)
 		}
 		return 0
 	}
 
 	// Table view.
 	fmt.Printf("%-28s %-12s %-12s %-12s %s\n", "MODEL", "PROVIDER", "INPUT/MTok", "OUTPUT/MTok", "SWE-bench")
-	for _, e := range entries {
+	for _, id := range ids {
+		e := modelsMap[id]
 		inputStr := "-"
 		outputStr := "-"
 		sweStr := "-"
-		if e.CostInputPerM > 0 {
-			inputStr = fmt.Sprintf("$%.2f", e.CostInputPerM)
+		if e.CostInputPerMTok > 0 {
+			inputStr = fmt.Sprintf("$%.2f", e.CostInputPerMTok)
 		}
-		if e.CostOutputPerM > 0 {
-			outputStr = fmt.Sprintf("$%.2f", e.CostOutputPerM)
+		if e.CostOutputPerMTok > 0 {
+			outputStr = fmt.Sprintf("$%.2f", e.CostOutputPerMTok)
 		}
 		if e.SWEBenchVerified > 0 {
 			sweStr = fmt.Sprintf("%.1f", e.SWEBenchVerified)
 		}
 		fmt.Printf("%-28s %-12s %-12s %-12s %s\n",
-			e.ID,
-			provider(e),
+			id,
+			e.ProviderSystem,
 			inputStr,
 			outputStr,
 			sweStr,

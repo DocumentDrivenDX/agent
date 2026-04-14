@@ -159,7 +159,7 @@ func TestCatalogObservations_ProviderFilter(t *testing.T) {
 }
 
 // TestCatalogModels_ListsModels verifies that 'catalog models' lists at least
-// the targets present in the embedded v3 catalog.
+// the model entries present in the embedded v4 catalog.
 func TestCatalogModels_ListsModels(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
@@ -169,12 +169,12 @@ func TestCatalogModels_ListsModels(t *testing.T) {
 	output := string(out)
 	assert.Contains(t, output, "MODEL")
 	assert.Contains(t, output, "PROVIDER")
-	// The embedded catalog has code-high, code-medium, code-economy targets.
+	// The embedded v4 catalog has model entries like haiku-5.5, sonnet-4.6, opus-4.6.
 	assert.True(t,
-		strings.Contains(output, "code-high") ||
-			strings.Contains(output, "code-economy") ||
-			strings.Contains(output, "code-medium"),
-		"expected at least one catalog target in output, got: %s", output,
+		strings.Contains(output, "haiku-5.5") ||
+			strings.Contains(output, "sonnet-4.6") ||
+			strings.Contains(output, "opus-4.6"),
+		"expected at least one v4 catalog model entry in output, got: %s", output,
 	)
 }
 
@@ -187,8 +187,9 @@ func TestCatalogModels_JSONOutput(t *testing.T) {
 	require.NoError(t, err, string(out))
 
 	var rows []struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
+		ID             string  `json:"id"`
+		ProviderSystem string  `json:"provider_system"`
+		CostInput      float64 `json:"cost_input_per_mtok"`
 	}
 	require.NoError(t, json.Unmarshal(out, &rows), "stdout=%s", string(out))
 	require.NotEmpty(t, rows)
@@ -198,14 +199,14 @@ func TestCatalogModels_JSONOutput(t *testing.T) {
 	}
 }
 
-// TestCatalogModels_SingleModel verifies --model returns detail for a known target.
+// TestCatalogModels_SingleModel verifies --model returns detail for a known v4 model ID.
 func TestCatalogModels_SingleModel(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 
-	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "models", "--model", "code-economy")
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "models", "--model", "haiku-5.5")
 	require.NoError(t, err, string(out))
 	output := string(out)
 	assert.Contains(t, output, "id:")
-	assert.Contains(t, output, "code-economy")
+	assert.Contains(t, output, "haiku-5.5")
 }

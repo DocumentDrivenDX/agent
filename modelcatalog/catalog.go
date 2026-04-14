@@ -2,6 +2,7 @@ package modelcatalog
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -159,15 +160,39 @@ func (c *Catalog) Resolve(ref string, opts ResolveOptions) (ResolvedTarget, erro
 // for every active target that has a mapping for the given surface. The map is
 // safe to use as a membership set for ranking discovered models.
 // All candidate model IDs (not just the primary) are included.
+// When multiple targets share the same concrete model ID, single-string surface
+// entries take priority over candidates-list entries. Among entries of equal
+// priority, the first target ID in lexicographic order wins.
 func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
+	// Sort target IDs for deterministic iteration.
+	targetIDs := make([]string, 0, len(c.manifest.Targets))
+	for targetID := range c.manifest.Targets {
+		targetIDs = append(targetIDs, targetID)
+	}
+	sort.Strings(targetIDs)
+
 	out := make(map[string]string)
-	for targetID, entry := range c.manifest.Targets {
+	// First pass: single-string surfaces (higher priority).
+	for _, targetID := range targetIDs {
+		entry := c.manifest.Targets[targetID]
 		if normalizedStatus(entry.Status) != statusActive {
 			continue
 		}
-		if sv, ok := entry.Surfaces[string(surface)]; ok {
-			for _, candidate := range sv.allCandidates() {
-				if candidate != "" {
+		if sv, ok := entry.Surfaces[string(surface)]; ok && sv.model != "" {
+			if sv.model != "" && out[sv.model] == "" {
+				out[sv.model] = targetID
+			}
+		}
+	}
+	// Second pass: candidates-list entries (lower priority, don't overwrite).
+	for _, targetID := range targetIDs {
+		entry := c.manifest.Targets[targetID]
+		if normalizedStatus(entry.Status) != statusActive {
+			continue
+		}
+		if sv, ok := entry.Surfaces[string(surface)]; ok && len(sv.candidates) > 0 {
+			for _, candidate := range sv.candidates {
+				if candidate != "" && out[candidate] == "" {
 					out[candidate] = targetID
 				}
 			}
@@ -204,48 +229,15 @@ type CatalogModelPricing struct {
 	OutputPerMTok float64
 }
 
-// ModelEntry is a public view of a catalog target entry.
-type ModelEntry struct {
-	ID                 string
-	Family             string
-	Status             string
-	Replacement        string
-	Surfaces           map[string]string
-	CostInputPerM      float64
-	CostOutputPerM     float64
-	CostCacheReadPerM  float64
-	CostCacheWritePerM float64
-	ContextWindow      int
-	SWEBenchVerified   float64
-	LiveCodeBench      float64
-	BenchmarkAsOf      string
-	OpenRouterRefID    string
-}
-
-// AllTargets returns all targets in the catalog (active and deprecated).
-func (c *Catalog) AllTargets() []ModelEntry {
-	out := make([]ModelEntry, 0, len(c.manifest.Targets))
-	for id, t := range c.manifest.Targets {
-		surfaces := make(map[string]string, len(t.Surfaces))
-		for k, v := range t.Surfaces {
-			surfaces[k] = v
-		}
-		out = append(out, ModelEntry{
-			ID:                 id,
-			Family:             t.Family,
-			Status:             normalizedStatus(t.Status),
-			Replacement:        t.Replacement,
-			Surfaces:           surfaces,
-			CostInputPerM:      t.CostInputPerM,
-			CostOutputPerM:     t.CostOutputPerM,
-			CostCacheReadPerM:  t.CostCacheReadPerM,
-			CostCacheWritePerM: t.CostCacheWritePerM,
-			ContextWindow:      t.ContextWindow,
-			SWEBenchVerified:   t.SWEBenchVerified,
-			LiveCodeBench:      t.LiveCodeBench,
-			BenchmarkAsOf:      t.BenchmarkAsOf,
-			OpenRouterRefID:    t.OpenRouterRefID,
-		})
+// AllModels returns all per-model entries from the top-level models: map
+// (manifest v4+), keyed by model ID. Returns an empty map for older manifests.
+func (c *Catalog) AllModels() map[string]ModelEntry {
+	if len(c.manifest.Models) == 0 {
+		return make(map[string]ModelEntry)
+	}
+	out := make(map[string]ModelEntry, len(c.manifest.Models))
+	for id, e := range c.manifest.Models {
+		out[id] = e
 	}
 	return out
 }
