@@ -26,7 +26,7 @@ const defaultCatalogBaseURL = "https://documentdrivendx.github.io/agent/catalog"
 
 func cmdCatalog(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent catalog <show|check|update|update-pricing> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: ddx-agent catalog <show|check|update|update-pricing|observations> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -38,10 +38,19 @@ func cmdCatalog(workDir string, args []string) int {
 		return cmdCatalogUpdate(workDir, args[1:])
 	case "update-pricing":
 		return cmdCatalogUpdatePricing(workDir, args[1:])
+	case "observations":
+		return cmdCatalogObservations(workDir, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown catalog subcommand %q\n", args[0])
 		return 2
 	}
+}
+
+// cmdCatalogObservations is a placeholder for the observations CLI.
+// Full implementation comes in bead agent-a6b7c8d9.
+func cmdCatalogObservations(_ string, _ []string) int {
+	fmt.Println("not yet implemented")
+	return 0
 }
 
 func cmdCatalogShow(workDir string, args []string) int {
