@@ -44,21 +44,21 @@ func (h smartRouteHistory) ReliabilityScore() float64 {
 }
 
 type smartRouteCandidate struct {
-	Provider              string    `json:"provider"`
-	Model                 string    `json:"model,omitempty"`
-	Healthy               bool      `json:"healthy"`
-	Reason                string    `json:"reason,omitempty"`
-	Priority              int       `json:"priority,omitempty"`
-	Reliability           float64   `json:"reliability"`
-	AvgDurationMs         float64   `json:"avg_duration_ms,omitempty"`
-	OutputTokensPerS      float64   `json:"output_tokens_per_second,omitempty"`
-	RecentSelections      int       `json:"recent_selections,omitempty"`
-	AvgCostPer1KTok       *float64  `json:"avg_cost_per_1k_tokens,omitempty"`
-	Score                 float64   `json:"score,omitempty"`
-	LastSelectedAt        time.Time `json:"last_selected_at,omitempty"`
-	SWEBenchVerified      float64   `json:"swe_bench_verified,omitempty"`
-	ObservedTokensPerSec  float64   `json:"observed_tokens_per_sec,omitempty"`
-	CapabilityScore       float64   `json:"capability_score,omitempty"`
+	Provider             string    `json:"provider"`
+	Model                string    `json:"model,omitempty"`
+	Healthy              bool      `json:"healthy"`
+	Reason               string    `json:"reason,omitempty"`
+	Priority             int       `json:"priority,omitempty"`
+	Reliability          float64   `json:"reliability"`
+	AvgDurationMs        float64   `json:"avg_duration_ms,omitempty"`
+	OutputTokensPerS     float64   `json:"output_tokens_per_second,omitempty"`
+	RecentSelections     int       `json:"recent_selections,omitempty"`
+	AvgCostPer1KTok      *float64  `json:"avg_cost_per_1k_tokens,omitempty"`
+	Score                float64   `json:"score,omitempty"`
+	LastSelectedAt       time.Time `json:"last_selected_at,omitempty"`
+	SWEBenchVerified     float64   `json:"swe_bench_verified,omitempty"`
+	ObservedTokensPerSec float64   `json:"observed_tokens_per_sec,omitempty"`
+	CapabilityScore      float64   `json:"capability_score,omitempty"`
 }
 
 type smartRoutePlan struct {
