@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
@@ -168,6 +169,16 @@ type Config struct {
 	// MaxIterations limits agent loop iterations.
 	MaxIterations int `yaml:"max_iterations"`
 
+	// ReasoningByteLimit is the maximum bytes of pure reasoning_content
+	// allowed before the stream is aborted. Default is 256KB.
+	// Set to 0 for unlimited (same pattern as max_iterations).
+	ReasoningByteLimit int `yaml:"reasoning_byte_limit"`
+
+	// ReasoningStallTimeout is the maximum duration (e.g. "5m", "300s")
+	// that only reasoning tokens may arrive before the stream is aborted.
+	// Default is 300s. Set to "0s" for unlimited.
+	ReasoningStallTimeout string `yaml:"reasoning_stall_timeout"`
+
 	// SessionLogDir is where session logs are written.
 	SessionLogDir string `yaml:"session_log_dir"`
 
@@ -190,10 +201,26 @@ type Config struct {
 // Defaults returns a Config with sensible defaults.
 func Defaults() Config {
 	return Config{
-		MaxIterations: 20,
-		SessionLogDir: filepath.Join(projectConfigDir, "sessions"),
-		Preset:        "agent",
+		MaxIterations:         20,
+		SessionLogDir:         filepath.Join(projectConfigDir, "sessions"),
+		Preset:                "agent",
+		ReasoningByteLimit:    agent.DefaultReasoningByteLimit,
+		ReasoningStallTimeout: agent.DefaultReasoningStallTimeout.String(),
 	}
+}
+
+// ParseReasoningStallTimeout parses the ReasoningStallTimeout string into a
+// time.Duration. Returns 0 if the string is empty (caller should apply default).
+func (c *Config) ParseReasoningStallTimeout() (time.Duration, error) {
+	s := strings.TrimSpace(c.ReasoningStallTimeout)
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("config: invalid reasoning_stall_timeout %q: %w", s, err)
+	}
+	return d, nil
 }
 
 // Load reads configuration from .agent/config.yaml (project) and

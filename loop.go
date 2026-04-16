@@ -298,7 +298,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 			llmStart := time.Now()
 			if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
-				resp, err = consumeStream(chatCtx, sp, providerMessages, toolDefs, opts, req.Callback, sessionID, chatStart, &seq)
+				resp, err = consumeStream(chatCtx, sp, providerMessages, toolDefs, opts, req.Callback, sessionID, chatStart, &seq, streamThresholds{
+					reasoningByteLimit:    req.ReasoningByteLimit,
+					reasoningStallTimeout: req.ReasoningStallTimeout,
+					modelName:             sessionModel,
+				})
 			} else {
 				resp, err = req.Provider.Chat(chatCtx, providerMessages, toolDefs, opts)
 			}
@@ -414,7 +418,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				// looping — this is non-retryable and should not count as an error
 				// in benchmark mode.
 				if errors.Is(err, ErrReasoningOverflow) || errors.Is(err, ErrReasoningStall) {
-					slog.Warn("reasoning overflow: aborting stream", "reasoning_bytes", reasoningByteLimit, "err", err)
+					slog.Warn("reasoning overflow: aborting stream", "err", err)
 					result.Status = StatusError
 					result.Error = fmt.Errorf("agent: %w", err)
 					result.Duration = time.Since(start)

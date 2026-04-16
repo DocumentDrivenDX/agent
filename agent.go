@@ -264,6 +264,14 @@ type Request struct {
 	// MaxIterations limits the number of tool-call rounds. Zero means no limit.
 	MaxIterations int
 
+	// ReasoningByteLimit is the maximum bytes of pure reasoning_content
+	// allowed before the stream is aborted. Zero means unlimited (no limit).
+	ReasoningByteLimit int
+
+	// ReasoningStallTimeout is the maximum duration that only reasoning
+	// tokens may arrive before the stream is aborted. Zero means unlimited.
+	ReasoningStallTimeout time.Duration
+
 	// WorkDir is the working directory for file operations and bash commands.
 	WorkDir string
 

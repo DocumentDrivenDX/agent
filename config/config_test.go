@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent/modelcatalog"
 	"github.com/stretchr/testify/assert"
@@ -1071,4 +1072,74 @@ func TestBuildProvider_ThinkingBudgetWinsOverLevel(t *testing.T) {
 	p, err := cfg.BuildProvider("both")
 	require.NoError(t, err)
 	assert.NotNil(t, p)
+}
+
+func TestLoad_ReasoningThresholds(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+reasoning_byte_limit: 524288
+reasoning_stall_timeout: "5m"
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	assert.Equal(t, 524288, cfg.ReasoningByteLimit)
+	assert.Equal(t, "5m", cfg.ReasoningStallTimeout)
+
+	d, err := cfg.ParseReasoningStallTimeout()
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, d)
+}
+
+func TestLoad_ReasoningThresholds_ZeroUnlimited(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+reasoning_byte_limit: 0
+reasoning_stall_timeout: "0s"
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, cfg.ReasoningByteLimit)
+	assert.Equal(t, "0s", cfg.ReasoningStallTimeout)
+
+	d, err := cfg.ParseReasoningStallTimeout()
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(0), d)
+}
+
+func TestLoad_ReasoningThresholds_Defaults(t *testing.T) {
+	isolateHome(t)
+	cfg, err := Load(t.TempDir())
+	require.NoError(t, err)
+
+	// Defaults should be applied
+	assert.Equal(t, 256*1024, cfg.ReasoningByteLimit)
+	assert.Equal(t, "5m0s", cfg.ReasoningStallTimeout)
+}
+
+func TestParseReasoningStallTimeout_Invalid(t *testing.T) {
+	cfg := Defaults()
+	cfg.ReasoningStallTimeout = "not-a-duration"
+	_, err := cfg.ParseReasoningStallTimeout()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid reasoning_stall_timeout")
 }

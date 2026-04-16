@@ -79,7 +79,7 @@ func TestConsumeStream_TextStreaming(t *testing.T) {
 	seq := 0
 	start := time.Now()
 
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "Hello, world!", resp.Content)
@@ -107,7 +107,7 @@ func TestConsumeStream_ToolCallAssembly(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 
 	require.Len(t, resp.ToolCalls, 1)
@@ -130,7 +130,7 @@ func TestConsumeStream_MultipleToolCalls(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	require.Len(t, resp.ToolCalls, 2)
 	assert.Equal(t, "tc1", resp.ToolCalls[0].ID)
@@ -148,7 +148,7 @@ func TestConsumeStream_ContentAndToolCalls(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	assert.Equal(t, "I'll read that. ", resp.Content)
 	require.Len(t, resp.ToolCalls, 1)
@@ -175,7 +175,7 @@ func TestConsumeStream_CapturesTimingWhenStreamingOutputArrives(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	require.NotNil(t, resp.Attempt.Timing)
@@ -205,7 +205,7 @@ func TestConsumeStream_CapturesTimingFromChatStreamSetup(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	require.NotNil(t, resp.Attempt.Timing)
@@ -244,7 +244,7 @@ func TestConsumeStream_IgnoresCallbackLatencyForTiming(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	require.NotNil(t, resp.Attempt.Timing)
@@ -275,7 +275,7 @@ func TestConsumeStream_OmitsTimingWhenNoOutputBearingDeltaArrives(t *testing.T) 
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	assert.Nil(t, resp.Attempt.Timing)
@@ -460,7 +460,7 @@ func TestConsumeStream_StreamError(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.ErrorIs(t, err, netErr)
 }
 
@@ -476,17 +476,16 @@ func TestConsumeStream_StreamErrorAfterToolCall(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{})
 	require.ErrorIs(t, err, netErr)
 }
 
 func TestConsumeStream_ReasoningOverflow(t *testing.T) {
-	// AC-FEAT-001-07: stream aborted with ErrReasoningOverflow when reasoning_content
-	// exceeds 32k chars with no content or tool_call delta.
-	// Build a stream of pure reasoning_content deltas that exceeds the byte limit.
+	// Stream aborted with ErrReasoningOverflow when reasoning_content
+	// exceeds the configured byte limit with no content or tool_call delta.
 	chunk := strings.Repeat("x", 4096)
 	var deltas []StreamDelta
-	// 9 chunks = 36k bytes > reasoningByteLimit (32k)
+	// 9 chunks = 36k bytes > custom limit (32k)
 	for i := 0; i < 9; i++ {
 		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
 	}
@@ -496,8 +495,13 @@ func TestConsumeStream_ReasoningOverflow(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningByteLimit: 32 * 1024,
+		modelName:          "test-model",
+	})
 	require.ErrorIs(t, err, ErrReasoningOverflow)
+	assert.Contains(t, err.Error(), "test-model")
+	assert.Contains(t, err.Error(), "32KB")
 }
 
 func TestConsumeStream_ReasoningOverflow_NotTriggeredAfterContent(t *testing.T) {
@@ -516,7 +520,9 @@ func TestConsumeStream_ReasoningOverflow_NotTriggeredAfterContent(t *testing.T) 
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningByteLimit: 32 * 1024,
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "hello", resp.Content)
 }
@@ -578,8 +584,13 @@ func TestConsumeStream_ReasoningStall(t *testing.T) {
 
 		seq := 0
 		start := time.Now()
-		_, err := consumeStreamWithStallTimeout(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, shortStall)
+		_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+			reasoningStallTimeout: shortStall,
+			modelName:             "test-stall-model",
+		})
 		require.ErrorIs(t, err, ErrReasoningStall)
+		assert.Contains(t, err.Error(), "test-stall-model")
+		assert.Contains(t, err.Error(), "50ms")
 	})
 }
 
@@ -599,7 +610,116 @@ func TestConsumeStream_ReasoningStall_NotTriggeredAfterToolCall(t *testing.T) {
 
 	seq := 0
 	start := time.Now()
-	resp, err := consumeStreamWithStallTimeout(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, shortStall)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{reasoningStallTimeout: shortStall})
 	require.NoError(t, err)
 	require.Len(t, resp.ToolCalls, 1)
+}
+
+func TestConsumeStream_UnlimitedReasoningByteLimit(t *testing.T) {
+	// When reasoningByteLimit is 0, overflow detection is disabled (unlimited).
+	chunk := strings.Repeat("x", 4096)
+	var deltas []StreamDelta
+	for i := 0; i < 100; i++ { // 400KB — well past default 256KB
+		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+	}
+	deltas = append(deltas, StreamDelta{Content: "done", Done: true})
+
+	sp := &mockStreamingProvider{deltas: deltas}
+	seq := 0
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningByteLimit:    0, // unlimited
+		reasoningStallTimeout: 10 * time.Minute, // high to avoid stall
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "done", resp.Content)
+}
+
+func TestConsumeStream_UnlimitedReasoningStallTimeout(t *testing.T) {
+	// When reasoningStallTimeout is 0, stall detection is disabled (unlimited).
+	sp := &mockStreamingProvider{
+		delayBetween: 30 * time.Millisecond,
+		deltas: []StreamDelta{
+			{ReasoningContent: "thinking..."},
+			{ReasoningContent: "still thinking..."},
+			{Content: "done", Done: true},
+		},
+	}
+
+	seq := 0
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningStallTimeout: 0, // unlimited
+		reasoningByteLimit:    10 * 1024 * 1024, // high to avoid overflow
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "done", resp.Content)
+}
+
+func TestConsumeStream_CustomByteLimit(t *testing.T) {
+	// Custom byte limit is respected — 8KB limit, 12KB of reasoning triggers overflow.
+	chunk := strings.Repeat("x", 4096)
+	deltas := []StreamDelta{
+		{ReasoningContent: chunk},
+		{ReasoningContent: chunk},
+		{ReasoningContent: chunk}, // 12KB > 8KB limit
+		{Done: true},
+	}
+
+	sp := &mockStreamingProvider{deltas: deltas}
+	seq := 0
+	start := time.Now()
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningByteLimit: 8 * 1024,
+		modelName:          "custom-model",
+	})
+	require.ErrorIs(t, err, ErrReasoningOverflow)
+	assert.Contains(t, err.Error(), "custom-model")
+	assert.Contains(t, err.Error(), "8KB")
+}
+
+func TestConsumeStream_DefaultThresholds(t *testing.T) {
+	// With DefaultReasoningByteLimit (256KB), 200KB of reasoning does NOT
+	// trigger overflow but 300KB does.
+	chunk := strings.Repeat("x", 4096)
+
+	t.Run("under limit", func(t *testing.T) {
+		var deltas []StreamDelta
+		for i := 0; i < 50; i++ { // 200KB < 256KB
+			deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+		}
+		deltas = append(deltas, StreamDelta{Content: "done", Done: true})
+
+		sp := &mockStreamingProvider{deltas: deltas}
+		seq := 0
+		start := time.Now()
+		resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+			reasoningByteLimit:    DefaultReasoningByteLimit,
+			reasoningStallTimeout: DefaultReasoningStallTimeout,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "done", resp.Content)
+	})
+
+	t.Run("over limit", func(t *testing.T) {
+		var deltas []StreamDelta
+		for i := 0; i < 70; i++ { // 280KB > 256KB
+			deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+		}
+		deltas = append(deltas, StreamDelta{Done: true})
+
+		sp := &mockStreamingProvider{deltas: deltas}
+		seq := 0
+		start := time.Now()
+		_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+			reasoningByteLimit:    DefaultReasoningByteLimit,
+			reasoningStallTimeout: DefaultReasoningStallTimeout,
+		})
+		require.ErrorIs(t, err, ErrReasoningOverflow)
+	})
+}
+
+func TestDefaultConstants(t *testing.T) {
+	assert.Equal(t, 256*1024, DefaultReasoningByteLimit)
+	assert.Equal(t, 300*time.Second, DefaultReasoningStallTimeout)
 }

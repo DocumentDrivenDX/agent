@@ -187,24 +187,33 @@ func run() int {
 	logger := session.NewLogger(sessionLogDir(wd, cfg), sessionID)
 	defer logger.Close()
 
+	// Parse reasoning stall timeout
+	reasoningStallTimeout, err := cfg.ParseReasoningStallTimeout()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 2
+	}
+
 	// Build request
 	req := agent.Request{
-		Prompt:            promptText,
-		SystemPrompt:      sysPrompt.Build(),
-		Provider:          p,
-		Tools:             tools,
-		MaxIterations:     iterations,
-		WorkDir:           wd,
-		Metadata:          promptMetadata,
-		SelectedProvider:  selection.Provider,
-		SelectedRoute:     selection.Route,
-		RequestedModel:    selection.RequestedModel,
-		RequestedModelRef: selection.RequestedModelRef,
-		ResolvedModelRef:  selection.ResolvedModelRef,
-		ResolvedModel:     selection.ResolvedModel,
-		NoStream:          selection.NoStream,
-		Callback:          logger.Callback(),
-		Telemetry:         cfg.BuildTelemetry(),
+		Prompt:                promptText,
+		SystemPrompt:          sysPrompt.Build(),
+		Provider:              p,
+		Tools:                 tools,
+		MaxIterations:         iterations,
+		WorkDir:               wd,
+		Metadata:              promptMetadata,
+		SelectedProvider:      selection.Provider,
+		SelectedRoute:         selection.Route,
+		RequestedModel:        selection.RequestedModel,
+		RequestedModelRef:     selection.RequestedModelRef,
+		ResolvedModelRef:      selection.ResolvedModelRef,
+		ResolvedModel:         selection.ResolvedModel,
+		NoStream:              selection.NoStream,
+		Callback:              logger.Callback(),
+		Telemetry:             cfg.BuildTelemetry(),
+		ReasoningByteLimit:    cfg.ReasoningByteLimit,
+		ReasoningStallTimeout: reasoningStallTimeout,
 	}
 
 	// Run with signal handling
