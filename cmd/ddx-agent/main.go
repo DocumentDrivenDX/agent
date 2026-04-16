@@ -221,6 +221,9 @@ func run() int {
 			compactionCfg.ReserveTokens = resolvedMaxTokens
 		}
 	}
+	if cfg.CompactionPercent > 0 {
+		compactionCfg.EffectivePercent = cfg.CompactionPercent
+	}
 	compactor := compaction.NewCompactor(compactionCfg)
 
 	// Build request

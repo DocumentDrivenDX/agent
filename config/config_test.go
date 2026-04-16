@@ -1143,3 +1143,62 @@ func TestParseReasoningStallTimeout_Invalid(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid reasoning_stall_timeout")
 }
+
+func TestCompactionPercent_Parsed(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+default: local
+compaction_percent: 80
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 80, cfg.CompactionPercent)
+}
+
+func TestCompactionPercent_AbsentUsesZero(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+default: local
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.CompactionPercent) // 0 means "use compaction default (95%)"
+}
+
+func TestCompactionPercent_OutOfRangeRejected(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+default: local
+compaction_percent: 101
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compaction_percent")
+}

@@ -186,6 +186,11 @@ type Config struct {
 	// Default is 300s. Set to "0s" for unlimited.
 	ReasoningStallTimeout string `yaml:"reasoning_stall_timeout"`
 
+	// CompactionPercent scales the effective context window used to trigger
+	// automatic compaction. Range 1-100. 0 or absent = use default (95%).
+	// The actual trigger threshold = context_window × percent/100 - reserve_tokens.
+	CompactionPercent int `yaml:"compaction_percent,omitempty"`
+
 	// SessionLogDir is where session logs are written.
 	SessionLogDir string `yaml:"session_log_dir"`
 
@@ -762,6 +767,10 @@ func (c *Config) finalize() error {
 	}
 	if err := c.validateModelRoutes(); err != nil {
 		return err
+	}
+
+	if c.CompactionPercent != 0 && (c.CompactionPercent < 1 || c.CompactionPercent > 100) {
+		return fmt.Errorf("config: compaction_percent must be 1-100, got %d", c.CompactionPercent)
 	}
 
 	return nil
