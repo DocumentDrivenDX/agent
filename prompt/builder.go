@@ -23,11 +23,18 @@ type Builder struct {
 	base         string
 	tools        []agent.Tool
 	guidelines   []string
+	sections     []namedSection
 	contextFiles []ContextFile
 	appendText   string
 	date         string
 	workDir      string
 	metadata     map[string]string
+}
+
+// namedSection is a caller-injected section with a heading and body.
+type namedSection struct {
+	name string
+	body string
 }
 
 // New creates a Builder with a base system prompt.
@@ -53,6 +60,15 @@ func (b *Builder) WithGuidelines(guidelines ...string) *Builder {
 // WithContextFiles adds project context files (AGENTS.md, etc.).
 func (b *Builder) WithContextFiles(files []ContextFile) *Builder {
 	b.contextFiles = files
+	return b
+}
+
+// WithSection adds a named section to the system prompt. Callers (like DDx)
+// use this to inject workflow-specific guidance (bead contracts, commit rules,
+// evidence requirements) into the system prompt rather than only in the user
+// message. Sections appear after guidelines and before project context.
+func (b *Builder) WithSection(name, body string) *Builder {
+	b.sections = append(b.sections, namedSection{name: name, body: body})
 	return b
 }
 
@@ -107,12 +123,17 @@ func (b *Builder) Build() string {
 		sections = append(sections, "Guidelines:\n"+strings.Join(guideLines, "\n"))
 	}
 
-	// 4. Append text
+	// 4. Named sections (caller-injected, e.g. DDx workflow rules)
+	for _, s := range b.sections {
+		sections = append(sections, fmt.Sprintf("# %s\n\n%s", s.name, s.body))
+	}
+
+	// 5. Append text
 	if b.appendText != "" {
 		sections = append(sections, b.appendText)
 	}
 
-	// 5. Project context files
+	// 7. Project context files
 	if len(b.contextFiles) > 0 {
 		var contextParts []string
 		contextParts = append(contextParts, "# Project Context\n\nProject-specific instructions and guidelines:")
@@ -128,7 +149,7 @@ func (b *Builder) Build() string {
 		sections = append(sections, strings.Join(contextParts, "\n\n"))
 	}
 
-	// 6. Dynamic context
+	// 8. Dynamic context
 	date := b.date
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
