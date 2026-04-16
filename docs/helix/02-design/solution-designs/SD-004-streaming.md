@@ -40,10 +40,10 @@ type StreamDelta struct {
     // ReasoningContent holds thinking/reasoning tokens emitted by models that
     // separate their internal reasoning from the final response (e.g. Qwen3,
     // DeepSeek-R1). Captured from choices[0].delta.reasoning_content in the
-    // OpenAI-compatible streaming format. Distinct from Content — consumers
-    // that only care about the final answer should ignore this field, but
-    // consumeStream uses it for the pure-reasoning loop guards described below
-    // ("Reasoning Overflow Detection" and "Reasoning Stall Detection").
+    // OpenAI-compatible streaming format. Distinct from Content: callers that
+    // only care about user-visible output should ignore it, while consumeStream
+    // counts these deltas during pure-reasoning mode to trigger the
+    // ErrReasoningOverflow and ErrReasoningStall guards described below.
     ReasoningContent string
 
     // ToolCallID is set when a new tool call starts.
@@ -136,14 +136,20 @@ checks that are active only while the model is in _pure-reasoning mode_ (no
 `content` or `tool_call` deltas have arrived yet). Once real output appears,
 both guards are disabled for that response.
 
+This behavior depends on `StreamDelta.ReasoningContent`: each delta carrying
+only reasoning tokens contributes to the cumulative byte counter and extends the
+reasoning-only window until either normal output arrives or one of the guards
+fires.
+
 | Error | Trigger | Threshold |
 |-------|---------|-----------|
-| `ErrReasoningOverflow` | Cumulative `reasoning_content` bytes exceed the limit with no content output | 32 KiB |
-| `ErrReasoningStall` | Only `reasoning_content` deltas arrive for longer than the stall timeout | 120 s |
+| `ErrReasoningOverflow` | Cumulative `reasoning_content` bytes exceed the configured limit with no content output | default 256 KiB |
+| `ErrReasoningStall` | Only `reasoning_content` deltas arrive for longer than the configured stall timeout | default 300 s |
 
 When either condition fires, `consumeStream` aborts the stream and returns the
 corresponding sentinel error to the agent loop. The caller may retry with a
-different model or surface the error to the user.
+different model or surface the error to the user. See `stream_consume.go` and
+`errors.go` for the shipped heuristics and sentinel definitions.
 
 ### Provider Implementation
 
