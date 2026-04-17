@@ -1202,3 +1202,135 @@ compaction_percent: 101
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "compaction_percent")
 }
+
+func TestLoad_Flavor_ParsedFromYAML(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  vidar-omlx:
+    type: openai-compat
+    base_url: http://vidar:1235/v1
+    model: Qwen3.5-27B-4bit
+    flavor: omlx
+default: vidar-omlx
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("vidar-omlx")
+	require.True(t, ok)
+	assert.Equal(t, "omlx", pc.Flavor)
+}
+
+func TestLoad_ContextWindow_ParsedFromYAML(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+    model: qwen3.5-27b
+    context_window: 262144
+default: local
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("local")
+	require.True(t, ok)
+	assert.Equal(t, 262144, pc.ContextWindow)
+}
+
+func TestLoad_MaxTokens_ParsedFromYAML(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+    model: qwen3.5-27b
+    max_tokens: 8192
+default: local
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("local")
+	require.True(t, ok)
+	assert.Equal(t, 8192, pc.MaxTokens)
+}
+
+func TestLoad_NewFields_AllTogether(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  vidar-omlx:
+    type: openai-compat
+    base_url: http://vidar:1235/v1
+    model: Qwen3.5-27B-4bit
+    flavor: omlx
+    context_window: 262144
+    max_tokens: 32768
+    thinking_level: medium
+default: vidar-omlx
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("vidar-omlx")
+	require.True(t, ok)
+	assert.Equal(t, "omlx", pc.Flavor)
+	assert.Equal(t, 262144, pc.ContextWindow)
+	assert.Equal(t, 32768, pc.MaxTokens)
+	assert.Equal(t, "medium", pc.ThinkingLevel)
+
+	// Building the provider succeeds — validates that no field breaks wiring.
+	p, err := cfg.BuildProvider("vidar-omlx")
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+}
+
+func TestLoad_NewFields_AbsentUseZeroDefaults(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  plain:
+    type: openai-compat
+    base_url: http://localhost:1234/v1
+    model: qwen3.5-27b
+default: plain
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("plain")
+	require.True(t, ok)
+	assert.Empty(t, pc.Flavor)
+	assert.Zero(t, pc.ContextWindow)
+	assert.Zero(t, pc.MaxTokens)
+}
