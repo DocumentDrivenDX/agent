@@ -1,5 +1,15 @@
 package main
 
+// routing_provider.go implements the per-Chat failover wrapper that the
+// standalone CLI uses to retry a request across the candidate list of an
+// explicit `agentConfig.ModelRouteConfig`. It is a downstream consumer of
+// the routing decision (not a routing engine itself).
+//
+// The cross-harness routing engine lives in `internal/routing` (see
+// agent-1a486c2e). After ResolveRoute (or buildSmartRoutePlan for legacy
+// CLI flows) returns a ranked candidate list, this file's `routeProvider`
+// wraps the chosen provider with failover-on-transient-error semantics.
+
 import (
 	"context"
 	"encoding/json"

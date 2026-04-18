@@ -66,10 +66,11 @@ var readOnlyTools = map[string]bool{
 //   - Metadata bidirectional echo (events + session log)
 //   - SessionLogDir per-request override
 //
-// Routing (ResolveRoute) is not yet implemented (agent-1a486c2e); callers
-// must pass either PreResolved or a fully-specified (Provider, Model,
-// Harness) triple. NativeProvider must be supplied for the native path
-// until provider construction lands.
+// Routing: under-specified requests (no PreResolved, no Harness) are
+// dispatched through internal/routing.Resolve via ResolveRoute. Callers
+// can run with bare Profile/ModelRef/Model/Provider — the engine picks.
+// NativeProvider must still be supplied for the native path until
+// provider construction lands in a follow-up.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
@@ -115,15 +116,20 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 }
 
 // resolveExecuteRoute reduces the request to a concrete RouteDecision.
-// PreResolved wins outright; otherwise the fields must be fully specified
-// because ResolveRoute is not yet implemented.
+// PreResolved wins outright; otherwise the request is dispatched through
+// the routing engine (internal/routing.Resolve) when under-specified, or
+// accepted verbatim when Harness is set explicitly.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
 	if req.PreResolved != nil {
 		return req.PreResolved, nil
 	}
-	// Fully-specified shortcut path while routing (agent-1a486c2e) is pending.
+	// If Harness is omitted but the engine has enough hints (Profile/ModelRef/
+	// Model/Provider) to disambiguate, route through ResolveRoute.
 	if req.Harness == "" {
-		return nil, fmt.Errorf("routing not implemented; pass PreResolved or set Harness explicitly")
+		if req.ModelRef == "" && req.Model == "" && req.Provider == "" {
+			return nil, fmt.Errorf("routing under-specified: pass PreResolved or set at least one of Harness/ModelRef/Model/Provider")
+		}
+		return s.resolveExecuteRouteWithEngine(req)
 	}
 	canonical := harnesses.ResolveHarnessAlias(req.Harness)
 	if !s.registry.Has(canonical) {

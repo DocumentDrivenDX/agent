@@ -379,10 +379,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 
 // ListModels is implemented in service_models.go.
 
-// ResolveRoute is a stub; to be implemented in a future bead.
-func (s *service) ResolveRoute(_ context.Context, _ RouteRequest) (*RouteDecision, error) {
-	return nil, nil
-}
+// ResolveRoute is implemented in service_routing.go.
 
 // RouteStatus is a stub; to be implemented in a future bead.
 func (s *service) RouteStatus(_ context.Context) (*RouteStatusReport, error) {

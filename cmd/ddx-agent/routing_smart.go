@@ -1,5 +1,20 @@
 package main
 
+// routing_smart.go implements the legacy per-route smart routing used by the
+// standalone `ddx-agent` CLI to rank providers within an explicit route key.
+//
+// As of agent-1a486c2e, the canonical cross-harness routing engine lives in
+// `internal/routing` and is reachable via `agent.DdxAgent.ResolveRoute`. The
+// engine ranks `(harness, provider, model)` tuples uniformly and replaces
+// what used to be a parallel implementation here.
+//
+// This file is retained because the standalone CLI's `route-status` and
+// `buildRouteSelection` flows operate over an `agentConfig.Config`'s
+// model_routes — a per-route candidate list that is concept-specific to
+// the CLI binary, not the contract-facing service. New consumers should call
+// `internal/routing.Resolve` (via `service.ResolveRoute`) rather than
+// `buildSmartRoutePlan` directly.
+
 import (
 	"context"
 	"encoding/json"

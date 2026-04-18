@@ -1,0 +1,95 @@
+package routing
+
+// costClassRank maps cost class to numeric rank (lower = cheaper).
+var costClassRank = map[string]int{
+	"local":     0,
+	"cheap":     1,
+	"medium":    2,
+	"expensive": 3,
+	"":          2, // unknown = medium
+}
+
+// scorePolicy returns a score for a candidate under the named profile.
+// Higher is better.
+//
+// Routing priority policy (ported from DDx routing.go):
+//   - cheap: local + low-cost preferred; subscription-within-quota next.
+//   - standard: balanced; light local/subscription preference to avoid spend.
+//   - smart: quality first; cloud capability wins; no local bonus.
+//
+// The policy is profile-aware AND provider-aware via providerBias hooks
+// supplied by the caller (cooldown demotion, observation perf bias,
+// provider-affinity bias).
+func scorePolicy(profile string, cand candidateInternal) float64 {
+	base := 100.0
+	cr := costClassRank[cand.CostClass]
+	withinQuota := cand.IsSubscription && cand.QuotaOK
+
+	switch profile {
+	case "cheap":
+		if cand.CostClass == "local" {
+			base += 40
+		} else if withinQuota {
+			base += 20
+		}
+		base -= float64(cr) * 30
+
+	case "standard":
+		if cand.CostClass == "local" {
+			base += 25
+		} else if withinQuota {
+			base += 15
+		}
+		base -= float64(cr) * 10
+
+	case "smart":
+		// Quality first; higher cost rank approximates higher capability.
+		base += float64(cr) * 20
+		if withinQuota {
+			base += 5
+		}
+
+	default:
+		// Treat unspecified as standard.
+		if cand.CostClass == "local" {
+			base += 25
+		} else if withinQuota {
+			base += 15
+		}
+		base -= float64(cr) * 10
+	}
+
+	// Quota near-limit penalty (>= 80% used).
+	if cand.QuotaPercentUsed >= 80 {
+		base -= float64(cand.QuotaPercentUsed-80) * 2
+	}
+
+	// Historical success-rate adjustment (only when sufficient samples).
+	if cand.HistoricalSuccessRate >= 0 {
+		switch {
+		case cand.HistoricalSuccessRate >= 0.8:
+			base += 20
+		case cand.HistoricalSuccessRate < 0.5:
+			base -= 30
+		}
+	}
+
+	// Cooldown demotion: candidate has had recent failures.
+	if cand.InCooldown {
+		base -= 50
+	}
+
+	// Provider-affinity soft preference (fixes ddx-8610020e):
+	// when req.Provider matches the candidate's provider, give a bonus.
+	if cand.ProviderAffinityMatch {
+		base += 15
+	}
+
+	// Observation-derived perf bias.
+	if cand.ObservedTokensPerSec > 0 {
+		// Small additive bonus, scaled.
+		base += cand.ObservedTokensPerSec / 100.0
+	}
+
+	return base
+}
