@@ -60,6 +60,7 @@ func resolveDebugSink() *debugSink {
 			return
 		}
 		if path := strings.TrimSpace(os.Getenv(envDebugWireFile)); path != "" {
+			// #nosec G304 G703 -- path comes from operator-set env var; intentional.
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "agent: AGENT_DEBUG_WIRE_FILE open failed: %v — falling back to stderr\n", err)
