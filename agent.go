@@ -96,7 +96,11 @@ func ResolveThinkingBudget(level ThinkingLevel) int {
 }
 
 // Options configures a single provider Chat call.
+// SeamOptions is embedded to carry test injection seams when the testseam
+// build tag is set; in production builds it is an empty struct with no fields.
 type Options struct {
+	SeamOptions
+
 	Model       string   `json:"model,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	MaxTokens   int      `json:"max_tokens,omitempty"`
