@@ -3,6 +3,33 @@
 All notable changes to ddx-agent are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.3.13] — 2026-04-18
+
+### Fixed
+- **Strip `thinking` field from non-Anthropic openai-compat requests.**
+  Wire capture (via `AGENT_DEBUG_WIRE=1`) from DocumentDrivenDX/ddx
+  `ddx-6a5dfe35` confirmed that `provider/openai/openai.go` was
+  unconditionally injecting the non-standard `thinking` body field
+  whenever `ThinkingBudget > 0`, regardless of destination flavor.
+  omlx silently terminates the SSE stream after the first delta when
+  `thinking` is present — client-side OpenAI Go SDK then surfaces
+  `unexpected end of JSON input`. Fix gates the field injection on
+  a new `Provider.SupportsThinking()` capability flag, backed by a
+  flavor-keyed table in `protocol_support.go`. Stripping is automatic
+  for `omlx`, `openrouter`, `openai`, and `ollama`; `lmstudio`
+  (original target of the field) is unchanged. (`agent-04639431`)
+
+### Added
+- **`Provider.SupportsThinking()`** — capability accessor matching the
+  existing `SupportsTools` / `SupportsStream` /
+  `SupportsStructuredOutput` pattern. Returns `false` for unknown
+  flavors (conservative). Extends `protocolCapabilities` with a
+  `Thinking bool` field. (`agent-04639431`)
+
+### Specs evolved
+- SD-005 (flavor-keyed protocol capability) — add `Thinking` to the
+  capability matrix.
+
 ## [v0.3.12] — 2026-04-18
 
 ### Added

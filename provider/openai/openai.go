@@ -356,8 +356,13 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	}
 
 	// Build per-request options. For thinking models (Qwen3, DeepSeek-R1 etc.)
-	// apply a budget cap via the non-standard `thinking` body field that
-	// LM Studio and compatible servers recognise.
+	// apply a budget cap via the non-standard `thinking` body field. Only
+	// include it for flavors that actually tolerate it — sending it to omlx
+	// causes silent SSE termination after the first delta (agent-04639431
+	// wire evidence from DocumentDrivenDX/ddx ddx-6a5dfe35). Other flavors
+	// either ignore it (OpenAI, Ollama) or pass it through to backends that
+	// don't know it (OpenRouter). Gate on p.SupportsThinking() which reads
+	// the flavor-keyed capability table in protocol_support.go.
 	thinkingBudget := p.thinkingBudget
 	if opts.ThinkingBudget > 0 {
 		thinkingBudget = opts.ThinkingBudget
@@ -366,7 +371,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		thinkingBudget = agent.ResolveThinkingBudget(opts.ThinkingLevel)
 	}
 	var streamReqOpts []option.RequestOption
-	if thinkingBudget > 0 {
+	if thinkingBudget > 0 && p.SupportsThinking() {
 		streamReqOpts = append(streamReqOpts, option.WithJSONSet("thinking", map[string]interface{}{
 			"type":          "enabled",
 			"budget_tokens": thinkingBudget,

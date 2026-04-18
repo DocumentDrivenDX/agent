@@ -20,15 +20,25 @@ var protocolCapabilities = map[string]struct {
 	Tools            bool
 	Stream           bool
 	StructuredOutput bool
+	// Thinking reports whether the flavor accepts the non-standard `thinking`
+	// body field (openai-go WithJSONSet) that LM Studio and a few compatible
+	// servers tolerate. See openai.go ~line 358 for the injection site.
+	// Wire evidence (agent-04639431, DocumentDrivenDX/ddx ddx-6a5dfe35)
+	// shows omlx opens an SSE stream then silently terminates after the
+	// first delta when `thinking` is present — hard-off for omlx.
+	Thinking bool
 }{
-	"openai":     {Tools: true, Stream: true, StructuredOutput: true},
-	"openrouter": {Tools: true, Stream: true, StructuredOutput: true},
-	"lmstudio":   {Tools: true, Stream: true, StructuredOutput: true},
-	// omlx: server-side tool-call translation is documented. Streaming and
-	// structured output are documented. Revisit if ddx-6a5dfe35 surfaces
-	// wire evidence against any of these.
-	"omlx":   {Tools: true, Stream: true, StructuredOutput: true},
-	"ollama": {Tools: true, Stream: true, StructuredOutput: false},
+	// OpenAI proper uses reasoning_effort, not `thinking`. Keep off.
+	"openai":     {Tools: true, Stream: true, StructuredOutput: true, Thinking: false},
+	"openrouter": {Tools: true, Stream: true, StructuredOutput: true, Thinking: false},
+	// LM Studio: the field was originally added for this flavor (openai.go
+	// comment "LM Studio and compatible servers recognise"). Keep on.
+	"lmstudio": {Tools: true, Stream: true, StructuredOutput: true, Thinking: true},
+	// omlx: Tools/Stream/StructuredOutput are documented. Thinking is NOT
+	// — wire evidence (agent-04639431) shows silent SSE termination when
+	// `thinking` is present. Strip it.
+	"omlx":   {Tools: true, Stream: true, StructuredOutput: true, Thinking: false},
+	"ollama": {Tools: true, Stream: true, StructuredOutput: false, Thinking: false},
 	// "local" and "" fall through to zero-value (all false) by design.
 }
 
@@ -50,4 +60,15 @@ func (p *Provider) SupportsStream() bool {
 // structured (JSON-shaped) response.
 func (p *Provider) SupportsStructuredOutput() bool {
 	return protocolCapabilities[p.DetectedFlavor()].StructuredOutput
+}
+
+// SupportsThinking reports whether the flavor accepts the non-standard
+// `thinking` request-body field used to cap reasoning-token budgets on
+// LM Studio and compatible servers. Flavors returning false MUST have the
+// field stripped at serialization time — see openai.go for the injection
+// gate. Omlx and openrouter return false because including `thinking`
+// causes either a silent stream termination (omlx, agent-04639431) or a
+// rejection / passthrough-to-unsupporting-backend (openrouter).
+func (p *Provider) SupportsThinking() bool {
+	return protocolCapabilities[p.DetectedFlavor()].Thinking
 }
