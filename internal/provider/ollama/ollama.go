@@ -7,6 +7,13 @@ import (
 
 const DefaultBaseURL = "http://localhost:11434/v1"
 
+var ProtocolCapabilities = openai.ProtocolCapabilities{
+	Tools:            true,
+	Stream:           true,
+	StructuredOutput: false,
+	Thinking:         false,
+}
+
 type Config struct {
 	BaseURL      string
 	APIKey       string
@@ -32,6 +39,7 @@ func New(cfg Config) *openai.Provider {
 		KnownModels:    cfg.KnownModels,
 		Headers:        cfg.Headers,
 		Reasoning:      cfg.Reasoning,
+		Capabilities:   &ProtocolCapabilities,
 		Flavor:         "ollama",
 	})
 }

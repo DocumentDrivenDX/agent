@@ -1,19 +1,48 @@
 //go:build integration
 
-package openai
+package openai_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
+	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
+	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func getAndDecode(ctx context.Context, timeout time.Duration, endpoint string, out any) error {
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
 
 func lmStudioURLForDiscovery(t *testing.T) string {
 	t.Helper()
@@ -60,7 +89,7 @@ func providerReachable(t *testing.T, baseURL string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err := DiscoverModels(ctx, baseURL, "")
+	_, err := openai.DiscoverModels(ctx, baseURL, "")
 	return err == nil
 }
 
@@ -69,7 +98,7 @@ func firstDiscoveredModel(t *testing.T, baseURL string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ids, err := DiscoverModels(ctx, baseURL, "")
+	ids, err := openai.DiscoverModels(ctx, baseURL, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, ids)
 	return ids[0]
@@ -82,7 +111,7 @@ func TestIntegration_LookupModelLimits_LMStudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	limits := LookupModelLimits(ctx, baseURL, "", "lmstudio", nil, model)
+	limits := lmstudio.LookupModelLimits(ctx, baseURL, model)
 	require.Greater(t, limits.ContextLength, 0)
 
 	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
@@ -90,7 +119,7 @@ func TestIntegration_LookupModelLimits_LMStudio(t *testing.T) {
 		LoadedContextLength int `json:"loaded_context_length"`
 		MaxContextLength    int `json:"max_context_length"`
 	}
-	err := getAndDecode(ctx, 5*time.Second, root+"/api/v0/models/"+url.PathEscape(model), "", nil, &info)
+	err := getAndDecode(ctx, 5*time.Second, root+"/api/v0/models/"+url.PathEscape(model), &info)
 	require.NoError(t, err)
 	require.Greater(t, info.MaxContextLength, 0)
 	require.Greater(t, info.LoadedContextLength, 0)
@@ -104,7 +133,7 @@ func TestIntegration_LookupModelLimits_Omlx(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	limits := LookupModelLimits(ctx, baseURL, "", "omlx", nil, model)
+	limits := omlx.LookupModelLimits(ctx, baseURL, model)
 	require.Greater(t, limits.ContextLength, 0)
 	require.Greater(t, limits.MaxCompletionTokens, 0)
 
@@ -115,7 +144,7 @@ func TestIntegration_LookupModelLimits_Omlx(t *testing.T) {
 			MaxTokens        int    `json:"max_tokens"`
 		} `json:"models"`
 	}
-	err := getAndDecode(ctx, 5*time.Second, strings.TrimRight(baseURL, "/")+"/models/status", "", nil, &status)
+	err := getAndDecode(ctx, 5*time.Second, strings.TrimRight(baseURL, "/")+"/models/status", &status)
 	require.NoError(t, err)
 
 	for _, entry := range status.Models {
@@ -134,7 +163,7 @@ func TestIntegration_ProbeProviderFlavor_LMStudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	assert.Equal(t, "lmstudio", probeProviderFlavor(ctx, baseURL))
+	assert.Equal(t, "lmstudio", openai.New(openai.Config{BaseURL: baseURL}).DetectedFlavor())
 }
 
 func TestIntegration_ProbeProviderFlavor_Omlx(t *testing.T) {
@@ -143,7 +172,7 @@ func TestIntegration_ProbeProviderFlavor_Omlx(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	assert.Equal(t, "omlx", probeProviderFlavor(ctx, baseURL))
+	assert.Equal(t, "omlx", openai.New(openai.Config{BaseURL: baseURL}).DetectedFlavor())
 }
 
 func TestIntegration_DiscoverModels_LMStudio(t *testing.T) {
@@ -152,7 +181,7 @@ func TestIntegration_DiscoverModels_LMStudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ids, err := DiscoverModels(ctx, baseURL, "")
+	ids, err := openai.DiscoverModels(ctx, baseURL, "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, ids)
 }
@@ -163,7 +192,7 @@ func TestIntegration_DiscoverModels_Omlx(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ids, err := DiscoverModels(ctx, baseURL, "")
+	ids, err := openai.DiscoverModels(ctx, baseURL, "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, ids)
 }

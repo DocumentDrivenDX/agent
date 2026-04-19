@@ -1,4 +1,4 @@
-package openai
+package openrouter
 
 import (
 	"context"
@@ -51,7 +51,6 @@ func TestChat_OpenRouterUsageCostPreserved(t *testing.T) {
 		APIKey:  "test",
 		Model:   "anthropic/claude-sonnet-4",
 	})
-	p.providerSystem = "openrouter"
 
 	resp, err := p.Chat(context.Background(), []agent.Message{
 		{Role: agent.RoleUser, Content: "hello"},
@@ -88,7 +87,6 @@ func TestChat_OpenRouterUsageCostMissingRemainsUnknown(t *testing.T) {
 		APIKey:  "test",
 		Model:   "anthropic/claude-sonnet-4",
 	})
-	p.providerSystem = "openrouter"
 
 	resp, err := p.Chat(context.Background(), []agent.Message{
 		{Role: agent.RoleUser, Content: "hello"},
@@ -116,7 +114,6 @@ func TestChatStream_OpenRouterUsageCostPreserved(t *testing.T) {
 		APIKey:  "test",
 		Model:   "anthropic/claude-sonnet-4",
 	})
-	p.providerSystem = "openrouter"
 
 	ch, err := p.ChatStream(context.Background(), []agent.Message{
 		{Role: agent.RoleUser, Content: "hello"},
@@ -160,7 +157,6 @@ func TestRun_OpenRouterGatewayReportedCostFlowsToResult(t *testing.T) {
 		APIKey:  "test",
 		Model:   "anthropic/claude-sonnet-4",
 	})
-	p.providerSystem = "openrouter"
 
 	result, err := agent.Run(context.Background(), agent.Request{
 		Prompt:   "hello",

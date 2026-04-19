@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
+	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
 	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
 	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
@@ -756,6 +758,7 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 			KnownModels:    knownModels,
 			Headers:        pc.Headers,
 			Reasoning:      pc.Reasoning,
+			Capabilities:   &oaiProvider.OpenAIProtocolCapabilities,
 		}), nil
 	case "openrouter":
 		return openrouter.New(openrouter.Config{
@@ -817,6 +820,22 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 		}), nil
 	default:
 		return nil, fmt.Errorf("config: unknown provider type %q", pc.Type)
+	}
+}
+
+// LookupModelLimits queries the concrete provider package for provider-owned
+// model limits. Unknown or unsupported providers return zero values.
+func LookupModelLimits(ctx context.Context, pc ProviderConfig, model string) limits.ModelLimits {
+	pc = normalizeProviderConfig(pc)
+	switch pc.Type {
+	case "openrouter":
+		return openrouter.LookupModelLimits(ctx, pc.BaseURL, pc.APIKey, pc.Headers, model)
+	case "lmstudio":
+		return lmstudio.LookupModelLimits(ctx, pc.BaseURL, model)
+	case "omlx":
+		return omlx.LookupModelLimits(ctx, pc.BaseURL, model)
+	default:
+		return limits.ModelLimits{}
 	}
 }
 

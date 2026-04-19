@@ -38,7 +38,7 @@ func TestConformance_OpenAICompatShapedDoubles(t *testing.T) {
 		t.Run(desc.name, func(t *testing.T) {
 			conformance.Run(t, func(t *testing.T) conformance.Subject {
 				t.Helper()
-				srv, statusHits := newOpenAICompatConformanceServer(t, desc)
+				srv, _ := newOpenAICompatConformanceServer(t, desc)
 				t.Cleanup(srv.Close)
 
 				p := New(Config{
@@ -65,15 +65,6 @@ func TestConformance_OpenAICompatShapedDoubles(t *testing.T) {
 						defer resp.Body.Close()
 						if err := conformance.HTTPStatusError(resp.StatusCode); err != nil {
 							return err
-						}
-						if desc.flavor == "omlx" {
-							limits := LookupModelLimits(ctx, srv.URL+"/v1", "", "omlx", nil, desc.model)
-							if limits.ContextLength != 262144 || limits.MaxCompletionTokens != 32768 {
-								return fmt.Errorf("omlx limits = %+v, want context=262144 max_tokens=32768", limits)
-							}
-							if atomic.LoadInt32(statusHits) == 0 {
-								return fmt.Errorf("omlx /v1/models/status was not requested")
-							}
 						}
 						return nil
 					},

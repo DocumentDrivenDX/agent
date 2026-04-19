@@ -1,11 +1,28 @@
 package lmstudio
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 )
 
 const DefaultBaseURL = "http://localhost:1234/v1"
+
+var ProtocolCapabilities = openai.ProtocolCapabilities{
+	Tools:            true,
+	Stream:           true,
+	StructuredOutput: true,
+	Thinking:         true,
+}
 
 type Config struct {
 	BaseURL      string
@@ -32,6 +49,49 @@ func New(cfg Config) *openai.Provider {
 		KnownModels:    cfg.KnownModels,
 		Headers:        cfg.Headers,
 		Reasoning:      cfg.Reasoning,
+		Capabilities:   &ProtocolCapabilities,
 		Flavor:         "lmstudio",
 	})
+}
+
+func LookupModelLimits(ctx context.Context, baseURL, model string) limits.ModelLimits {
+	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
+	endpoint := root + "/api/v0/models/" + url.PathEscape(model)
+
+	var info struct {
+		LoadedContextLength int `json:"loaded_context_length"`
+		MaxContextLength    int `json:"max_context_length"`
+	}
+	if err := getAndDecode(ctx, 5*time.Second, endpoint, &info); err != nil {
+		return limits.ModelLimits{}
+	}
+
+	contextLen := info.LoadedContextLength
+	if contextLen == 0 {
+		contextLen = info.MaxContextLength
+	}
+	return limits.ModelLimits{ContextLength: contextLen}
+}
+
+func getAndDecode(ctx context.Context, timeout time.Duration, endpoint string, out any) error {
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
 }

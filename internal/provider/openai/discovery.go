@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -90,41 +89,6 @@ func SelectModel(ranked []ScoredModel) string {
 	return ranked[0].ID
 }
 
-// ModelLimits holds the context and output limits discovered from a provider API.
-// Zero values mean the limit could not be determined.
-type ModelLimits struct {
-	// ContextLength is the model's context window in tokens.
-	ContextLength int
-	// MaxCompletionTokens is the maximum number of output tokens per turn.
-	MaxCompletionTokens int
-}
-
-// LookupModelLimits queries the provider API to discover context and output
-// limits for the given model. Returns zero values on any error — callers should
-// apply their own defaults when the returned values are zero.
-//
-// flavor overrides automatic detection when non-empty; supported values are
-// "lmstudio", "omlx", "openrouter", "ollama". When flavor is empty the
-// function probes the server to detect its type, falling back to port-based
-// heuristics as a last resort.
-//
-// Supported providers:
-//   - LM Studio: queries /api/v0/models/{model} for loaded_context_length
-//   - oMLX: queries /v1/models/status and finds the matching entry
-//   - OpenRouter: queries /api/v1/models and finds the matching entry
-func LookupModelLimits(ctx context.Context, baseURL, apiKey, flavor string, headers map[string]string, model string) ModelLimits {
-	switch resolveProviderFlavor(ctx, baseURL, flavor) {
-	case "lmstudio":
-		return lmstudioLimits(ctx, baseURL, model)
-	case "omlx":
-		return omlxLimits(ctx, baseURL, model)
-	case "openrouter":
-		return openrouterLimits(ctx, apiKey, headers, model)
-	default:
-		return ModelLimits{}
-	}
-}
-
 // getAndDecode performs a GET request with optional Bearer auth and extra
 // headers, decodes the JSON response into out, and returns any error.
 func getAndDecode(ctx context.Context, timeout time.Duration, endpoint, apiKey string, headers map[string]string, out any) error {
@@ -154,89 +118,6 @@ func getAndDecode(ctx context.Context, timeout time.Duration, endpoint, apiKey s
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
-}
-
-// lmstudioLimits queries LM Studio's extended /api/v0/models/{model} endpoint.
-func lmstudioLimits(ctx context.Context, baseURL, model string) ModelLimits {
-	// Strip /v1 to get the LM Studio server root; path-escape the model ID to
-	// handle namespaced IDs like "qwen/qwen3.5-27b".
-	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
-	endpoint := root + "/api/v0/models/" + url.PathEscape(model)
-
-	var info struct {
-		LoadedContextLength int `json:"loaded_context_length"`
-		MaxContextLength    int `json:"max_context_length"`
-	}
-	if err := getAndDecode(ctx, 5*time.Second, endpoint, "", nil, &info); err != nil {
-		return ModelLimits{}
-	}
-
-	// Prefer the actually-loaded context over the theoretical model maximum.
-	contextLen := info.LoadedContextLength
-	if contextLen == 0 {
-		contextLen = info.MaxContextLength
-	}
-	return ModelLimits{ContextLength: contextLen}
-}
-
-// omlxLimits queries oMLX's extended /v1/models/status endpoint.
-func omlxLimits(ctx context.Context, baseURL, model string) ModelLimits {
-	base := strings.TrimRight(baseURL, "/")
-	endpoint := base + "/models/status"
-
-	var status struct {
-		Models []struct {
-			ID               string `json:"id"`
-			MaxContextWindow int    `json:"max_context_window"`
-			MaxTokens        int    `json:"max_tokens"`
-		} `json:"models"`
-	}
-	if err := getAndDecode(ctx, 5*time.Second, endpoint, "", nil, &status); err != nil {
-		return ModelLimits{}
-	}
-
-	for _, entry := range status.Models {
-		if strings.EqualFold(entry.ID, model) {
-			return ModelLimits{
-				ContextLength:       entry.MaxContextWindow,
-				MaxCompletionTokens: entry.MaxTokens,
-			}
-		}
-	}
-	return ModelLimits{}
-}
-
-// openrouterLimits queries the OpenRouter /api/v1/models list and finds the
-// entry matching the configured model.
-func openrouterLimits(ctx context.Context, apiKey string, headers map[string]string, model string) ModelLimits {
-	var list struct {
-		Data []struct {
-			ID            string `json:"id"`
-			ContextLength int    `json:"context_length"`
-			TopProvider   struct {
-				MaxCompletionTokens int `json:"max_completion_tokens"`
-			} `json:"top_provider"`
-		} `json:"data"`
-	}
-	if err := getAndDecode(ctx, 10*time.Second, "https://openrouter.ai/api/v1/models", apiKey, headers, &list); err != nil {
-		return ModelLimits{}
-	}
-
-	// Normalize ID by lowercasing and replacing hyphens with dots so that
-	// version variants like "4-5" and "4.5" compare equal.
-	normalizeID := func(s string) string {
-		return strings.ToLower(strings.ReplaceAll(s, "-", "."))
-	}
-	normModel := normalizeID(model)
-	for _, m := range list.Data {
-		if strings.EqualFold(m.ID, model) || normalizeID(m.ID) == normModel {
-			return ModelLimits{
-				ContextLength:       m.ContextLength,
-				MaxCompletionTokens: m.TopProvider.MaxCompletionTokens,
-			}
-		}
-	}
-	return ModelLimits{}
 }
 
 func resolveProviderFlavor(ctx context.Context, baseURL, flavor string) string {

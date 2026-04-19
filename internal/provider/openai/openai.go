@@ -4,7 +4,6 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -29,6 +28,8 @@ type Provider struct {
 	providerName     string
 	providerSystem   string // URL-heuristic tag; eager, zero-cost, used in hot telemetry paths
 	configFlavor     string // explicit Config.Flavor when set; empty means auto-detect via probe
+	capabilities     *ProtocolCapabilities
+	usageCost        func(rawUsage string) (*agent.CostAttribution, bool)
 	serverAddress    string
 	serverPort       int
 	reasoningDefault reasoningpolicy.Reasoning
@@ -60,6 +61,12 @@ type Config struct {
 	KnownModels map[string]string
 	Headers     map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
 	Reasoning   reasoningpolicy.Reasoning
+	// Capabilities supplies provider-owned protocol capability claims. When nil,
+	// legacy direct openai.Provider callers fall back to flavor detection.
+	Capabilities *ProtocolCapabilities
+	// UsageCostAttribution extracts provider-owned gateway cost metadata from
+	// the raw usage object, when that provider reports one.
+	UsageCostAttribution func(rawUsage string) (*agent.CostAttribution, bool)
 	// Flavor is an optional explicit server-type hint ("lmstudio", "omlx",
 	// "openrouter", "ollama"). When set, DetectedFlavor() returns this value
 	// without probing. When empty, DetectedFlavor() runs a one-time probe.
@@ -90,6 +97,8 @@ func New(cfg Config) *Provider {
 		providerName:     providerName,
 		providerSystem:   providerSystem,
 		configFlavor:     cfg.Flavor,
+		capabilities:     cfg.Capabilities,
+		usageCost:        cfg.UsageCostAttribution,
 		serverAddress:    serverAddress,
 		serverPort:       serverPort,
 		reasoningDefault: cfg.Reasoning,
@@ -275,7 +284,10 @@ func (p *Provider) attemptMetadata(requestedModel, responseModel string, cost *a
 }
 
 func (p *Provider) costAttribution(rawUsage string) *agent.CostAttribution {
-	cost, _ := openRouterCostAttribution(p.providerSystem, rawUsage)
+	if p.usageCost == nil {
+		return nil
+	}
+	cost, _ := p.usageCost(rawUsage)
 	return cost
 }
 
@@ -395,28 +407,4 @@ func streamAttemptCost(cost *agent.CostAttribution) *agent.CostAttribution {
 		return cost
 	}
 	return &agent.CostAttribution{Source: agent.CostSourceUnknown}
-}
-
-func openRouterCostAttribution(providerSystem, rawUsage string) (*agent.CostAttribution, bool) {
-	if providerSystem != "openrouter" || strings.TrimSpace(rawUsage) == "" {
-		return nil, false
-	}
-
-	// OpenRouter extends the OpenAI-compatible usage object with a billed USD
-	// cost field at usage.cost. Preserve it when present instead of guessing from
-	// a local pricing table.
-	var usage struct {
-		Cost *float64 `json:"cost"`
-	}
-	if err := json.Unmarshal([]byte(rawUsage), &usage); err != nil || usage.Cost == nil || *usage.Cost < 0 {
-		return nil, false
-	}
-
-	return &agent.CostAttribution{
-		Source:     agent.CostSourceGatewayReported,
-		Currency:   "USD",
-		Amount:     usage.Cost,
-		PricingRef: "openrouter/usage.cost",
-		Raw:        json.RawMessage(rawUsage),
-	}, true
 }
