@@ -64,6 +64,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsLocal:              false,
 		IsSubscription:       true,
 		ExactPinSupport:      false,
+		DefaultModel:         "claude-sonnet-4-6",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   []string{"low", "medium", "high", "xhigh", "max"},
 		CostClass:            "expensive",

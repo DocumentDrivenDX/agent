@@ -47,6 +47,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsLocal:              false,
 		IsSubscription:       true,
 		ExactPinSupport:      true,
+		DefaultModel:         "gpt-5.4",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   []string{"low", "medium", "high", "xhigh", "max"},
 		CostClass:            "medium",

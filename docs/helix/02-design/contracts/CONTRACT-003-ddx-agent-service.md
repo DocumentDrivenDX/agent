@@ -227,6 +227,7 @@ type HarnessInfo struct {
     IsLocal              bool
     IsSubscription       bool
     ExactPinSupport      bool
+    DefaultModel         string   // built-in default model when no override is supplied
     SupportedPermissions []string // subset of {"safe","supervised","unrestricted"}
     SupportedReasoning   []string // values such as {"off","low","medium","high","minimal","xhigh","max"}
     CostClass            string   // "local" | "cheap" | "medium" | "expensive"

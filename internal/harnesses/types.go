@@ -123,6 +123,7 @@ type HarnessInfo struct {
 	IsLocal              bool
 	IsSubscription       bool
 	ExactPinSupport      bool
+	DefaultModel         string
 	SupportedPermissions []string
 	SupportedReasoning   []string
 	CostClass            string

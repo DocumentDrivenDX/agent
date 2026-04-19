@@ -68,6 +68,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.Type != "subprocess" {
 			t.Errorf("codex Type: want subprocess, got %q", h.Type)
 		}
+		if h.DefaultModel != "gpt-5.4" {
+			t.Errorf("codex DefaultModel: want gpt-5.4, got %q", h.DefaultModel)
+		}
 	})
 
 	t.Run("claude", func(t *testing.T) {
@@ -87,6 +90,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.Type != "subprocess" {
 			t.Errorf("claude Type: want subprocess, got %q", h.Type)
 		}
+		if h.DefaultModel != "claude-sonnet-4-6" {
+			t.Errorf("claude DefaultModel: want claude-sonnet-4-6, got %q", h.DefaultModel)
+		}
 		// Quota may be nil (no cache on CI); just check it doesn't panic.
 		_ = h.Quota
 	})
@@ -104,6 +110,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 		if !h.Available {
 			t.Errorf("agent Available: want true (embedded)")
+		}
+		if h.DefaultModel != "" {
+			t.Errorf("agent DefaultModel: want empty, got %q", h.DefaultModel)
 		}
 	})
 

@@ -105,6 +105,7 @@ type HarnessInfo struct {
 	IsLocal              bool
 	IsSubscription       bool
 	ExactPinSupport      bool
+	DefaultModel         string   // built-in default model when no override is supplied
 	SupportedPermissions []string // subset of {"safe","supervised","unrestricted"}
 	SupportedReasoning   []string // values such as {"low","medium","high","xhigh","max"}
 	CostClass            string   // "local" | "cheap" | "medium" | "expensive"
@@ -431,6 +432,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 			IsLocal:              cfg.IsLocal,
 			IsSubscription:       cfg.IsSubscription,
 			ExactPinSupport:      cfg.ExactPinSupport,
+			DefaultModel:         cfg.DefaultModel,
 			SupportedPermissions: supportedPermissions(cfg),
 			SupportedReasoning:   supportedReasoning(cfg),
 			CostClass:            cfg.CostClass,
