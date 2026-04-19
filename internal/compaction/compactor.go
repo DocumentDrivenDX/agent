@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/compactionctx"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 )
 
 // state tracks compaction state across invocations.

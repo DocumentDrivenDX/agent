@@ -26,6 +26,10 @@ type configServiceConfig struct {
 	baseDir string
 }
 
+func NewServiceConfig(cfg *Config, baseDir string) agent.ServiceConfig {
+	return &configServiceConfig{cfg: cfg, baseDir: baseDir}
+}
+
 func (c *configServiceConfig) ProviderNames() []string {
 	if c.cfg == nil {
 		return nil

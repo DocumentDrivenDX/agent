@@ -55,26 +55,25 @@ Environment variables override the config file:
 import (
     "context"
     "github.com/DocumentDrivenDX/agent"
-    "github.com/DocumentDrivenDX/agent/provider/openai"
-    "github.com/DocumentDrivenDX/agent/tool"
+    _ "github.com/DocumentDrivenDX/agent/configinit"
 )
 
 func main() {
-    p := openai.New(openai.Config{
-        BaseURL: "http://localhost:1234/v1",
-        Model:   "qwen3.5-7b",
-    })
-
-    result, err := agent.Run(context.Background(), agent.Request{
+    a, err := agent.New(agent.ServiceOptions{})
+    if err != nil {
+        panic(err)
+    }
+    events, err := a.Execute(context.Background(), agent.ServiceExecuteRequest{
         Prompt:   "Read main.go and tell me the package name",
-        Provider: p,
-        Tools: []agent.Tool{
-            &tool.ReadTool{WorkDir: "."},
-            &tool.BashTool{WorkDir: "."},
-        },
-        MaxIterations: 10,
+        ModelRef: "cheap",
+        WorkDir:  ".",
     })
-    // result.Output contains the agent's response
+    if err != nil {
+        panic(err)
+    }
+    for event := range events {
+        _ = event
+    }
 }
 ```
 

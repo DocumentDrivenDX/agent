@@ -4,44 +4,42 @@ package agent
 
 import (
 	"context"
+
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 )
 
-// Test builds expose the four CONTRACT-003 seams via embedded SeamOptions.
+// Test builds expose the four CONTRACT-003 seams via embedded seamOptions.
 // Each helper returns the configured hook (possibly nil) and the native
 // provider resolver consults FakeProvider to bypass real HTTP.
 
-// PromptAssertionHookFn / CompactionAssertionHookFn / ToolWiringHookFn
+// promptAssertionHookFn / compactionAssertionHookFn / toolWiringHookFn
 // are the function-typed aliases shared by service_execute.go. In test
 // builds they alias the seam types from testseam_types.go.
-type PromptAssertionHookFn = PromptAssertionHook
-type CompactionAssertionHookFn = CompactionAssertionHook
-type ToolWiringHookFn = ToolWiringHook
+type promptAssertionHookFn = PromptAssertionHook
+type compactionAssertionHookFn = CompactionAssertionHook
+type toolWiringHookFn = ToolWiringHook
 
-func (s *service) promptAssertionHook() PromptAssertionHookFn {
+func (s *service) promptAssertionHook() promptAssertionHookFn {
 	return s.opts.PromptAssertionHook
 }
 
-func (s *service) compactionAssertionHook() CompactionAssertionHookFn {
+func (s *service) compactionAssertionHook() compactionAssertionHookFn {
 	return s.opts.CompactionAssertionHook
 }
 
-func (s *service) toolWiringHook() ToolWiringHookFn {
+func (s *service) toolWiringHook() toolWiringHookFn {
 	return s.opts.ToolWiringHook
 }
 
-// resolveNativeProvider returns FakeProvider when set on the service
-// options (the standard test seam) and otherwise honors any
-// caller-supplied req.NativeProvider. Real provider construction is
-// deferred to the routing bead (agent-1a486c2e).
-func (s *service) resolveNativeProvider(req ServiceExecuteRequest) Provider {
+func (s *service) resolveNativeProvider(req ServiceExecuteRequest) agentcore.Provider {
 	if s.opts.FakeProvider != nil {
 		return &fakeProviderAdapter{fp: s.opts.FakeProvider}
 	}
-	return req.NativeProvider
+	return s.resolveConfiguredNativeProvider(req)
 }
 
 // fakeProviderAdapter wraps a *FakeProvider so it satisfies the
-// agent.Provider interface. Static responses are consumed in order;
+// core.Provider interface. Static responses are consumed in order;
 // Dynamic is invoked per call when set; InjectError fires per-call to
 // optionally return an error before the response.
 type fakeProviderAdapter struct {
@@ -49,14 +47,14 @@ type fakeProviderAdapter struct {
 	callIndex int
 }
 
-func (a *fakeProviderAdapter) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
+func (a *fakeProviderAdapter) Chat(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolDef, opts agentcore.Options) (agentcore.Response, error) {
 	defer func() { a.callIndex++ }()
 	if a.fp == nil {
-		return Response{}, nil
+		return agentcore.Response{}, nil
 	}
 	if a.fp.InjectError != nil {
 		if err := a.fp.InjectError(a.callIndex); err != nil {
-			return Response{}, err
+			return agentcore.Response{}, err
 		}
 	}
 	if a.fp.Dynamic != nil {
@@ -74,7 +72,7 @@ func (a *fakeProviderAdapter) Chat(ctx context.Context, messages []Message, tool
 		}
 		fresp, err := a.fp.Dynamic(freq)
 		if err != nil {
-			return Response{}, err
+			return agentcore.Response{}, err
 		}
 		return fakeResponseToResponse(fresp), nil
 	}
@@ -83,11 +81,11 @@ func (a *fakeProviderAdapter) Chat(ctx context.Context, messages []Message, tool
 	}
 	// Out of static script — return an empty response so the loop
 	// terminates with no further tool calls.
-	return Response{Content: "", Usage: TokenUsage{}}, nil
+	return agentcore.Response{Content: "", Usage: agentcore.TokenUsage{}}, nil
 }
 
-func fakeResponseToResponse(fr FakeResponse) Response {
-	return Response{
+func fakeResponseToResponse(fr FakeResponse) agentcore.Response {
+	return agentcore.Response{
 		Content:   fr.Text,
 		ToolCalls: fr.ToolCalls,
 		Usage:     fr.Usage,

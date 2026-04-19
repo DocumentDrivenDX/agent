@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
@@ -261,14 +262,14 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	defer cancel()
 
 	// Bridge agent.Event (loop callback) → harnesses.Event (out chan).
-	cb := func(ev Event) {
+	cb := func(ev agentcore.Event) {
 		// Translate to a harnesses.Event of best-fit type. We only forward
 		// types that map onto CONTRACT-003's closed event union; internal
 		// session.start / llm.* / compaction.* events do not have a public
 		// equivalent and are dropped here. They still land in the session
 		// log via the session logger that consumers attach themselves.
 		switch ev.Type {
-		case EventToolCall:
+		case agentcore.EventToolCall:
 			// Map tool.call → tool_call + tool_result. The loop emits a
 			// single combined event with input + output; we split.
 			var payload map[string]any
@@ -308,7 +309,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 			} else {
 				readOnlyStreak.Store(0)
 			}
-		case EventCompactionEnd:
+		case agentcore.EventCompactionEnd:
 			// We only emit compaction events for *real* compaction work.
 			// loop.go runCompaction already suppresses no-op start/end pairs;
 			// the event we get here represents an actually-performed compaction.
@@ -345,7 +346,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	// cancels the context, the loop sees ctx.Done(), returns
 	// StatusCancelled, and we override the final to "stalled".
 	temperature := float64(req.Temperature)
-	loopReq := Request{
+	loopReq := agentcore.Request{
 		Prompt:           req.Prompt,
 		SystemPrompt:     req.SystemPrompt,
 		Provider:         provider,
@@ -358,8 +359,9 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		Temperature:      &temperature,
 		Seed:             req.Seed,
 		Reasoning:        effectiveReasoning(req.Reasoning),
+		NoStream:         true,
 	}
-	result, runErr := Run(cancelCtx, loopReq)
+	result, runErr := agentcore.Run(cancelCtx, loopReq)
 
 	// Map agent.Result → harness FinalData.
 	final := harnesses.FinalData{
@@ -401,13 +403,13 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	case runErr != nil:
 		final.Status = "failed"
 		final.Error = runErr.Error()
-	case result.Status == StatusError:
+	case result.Status == agentcore.StatusError:
 		final.Status = "failed"
 		if result.Error != nil {
 			final.Error = result.Error.Error()
 		}
-	case result.Status == StatusIterationLimit:
-		final.Status = string(StatusIterationLimit)
+	case result.Status == agentcore.StatusIterationLimit:
+		final.Status = string(agentcore.StatusIterationLimit)
 	default:
 		final.Status = "success"
 	}
@@ -551,7 +553,7 @@ var errProviderRequestTimeout = errors.New("provider request timeout")
 // minus the streaming variant (the in-process loop uses the non-streaming
 // Provider interface in this code path; streaming wrapping lives in
 // internal/execution and is reachable via the CLI command layer).
-func wrapProviderRequestTimeout(p Provider, requestTimeout time.Duration) Provider {
+func wrapProviderRequestTimeout(p agentcore.Provider, requestTimeout time.Duration) agentcore.Provider {
 	if p == nil || requestTimeout <= 0 {
 		return p
 	}
@@ -559,11 +561,11 @@ func wrapProviderRequestTimeout(p Provider, requestTimeout time.Duration) Provid
 }
 
 type timeoutProviderInline struct {
-	inner          Provider
+	inner          agentcore.Provider
 	requestTimeout time.Duration
 }
 
-func (p *timeoutProviderInline) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
+func (p *timeoutProviderInline) Chat(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolDef, opts agentcore.Options) (agentcore.Response, error) {
 	if p.requestTimeout <= 0 {
 		return p.inner.Chat(ctx, messages, tools, opts)
 	}

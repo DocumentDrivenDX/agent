@@ -2,11 +2,11 @@
 
 package agent
 
-// SeamOptions carries the four test injection seams. It is embedded into
+// seamOptions carries the four test injection seams. It is embedded into
 // Options and is only compiled when the testseam build tag is set.
-// Production builds get an empty SeamOptions from options_prod.go, making
+// Production builds get an empty seamOptions from options_prod.go, making
 // it a compile error to reference any of these fields without the tag.
-type SeamOptions struct {
+type seamOptions struct {
 	// FakeProvider replaces the real provider during testing. When non-nil,
 	// the agent uses it instead of making real network calls.
 	FakeProvider *FakeProvider

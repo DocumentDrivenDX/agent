@@ -1,4 +1,4 @@
-package agent_test
+package core_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/compaction"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	openaiprovider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/DocumentDrivenDX/agent/telemetry"
 	"github.com/stretchr/testify/assert"

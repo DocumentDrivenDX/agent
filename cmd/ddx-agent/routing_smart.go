@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/observations"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"

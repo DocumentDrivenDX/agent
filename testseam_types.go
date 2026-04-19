@@ -5,6 +5,12 @@
 // Production binaries cannot construct or reference these types.
 package agent
 
+import agentcore "github.com/DocumentDrivenDX/agent/internal/core"
+
+type Message = agentcore.Message
+type ToolCall = agentcore.ToolCall
+type TokenUsage = agentcore.TokenUsage
+
 // FakeProvider supports three patterns for intercepting provider Chat calls
 // during tests:
 //   - Static script: sequence of pre-recorded responses, consumed in order.

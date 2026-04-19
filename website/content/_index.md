@@ -29,7 +29,7 @@ layout: hextra-home
 {{< hextra/feature-grid >}}
   {{< hextra/feature-card
     title="Embeddable Library"
-    subtitle="agent.Run(ctx, request) — no subprocess overhead, direct state sharing with the host."
+    subtitle="agent.New(...).Execute(ctx, request) — no subprocess overhead, direct state sharing with the host."
   >}}
   {{< hextra/feature-card
     title="Local-Model-First"

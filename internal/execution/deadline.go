@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 )
 
 // DefaultProviderRequestTimeout bounds a single Chat / ChatStream call.

@@ -5,6 +5,25 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.5.0] — 2026-04-19
+
+### Breaking
+- **Removed the legacy `agent.Run` API from the public module surface.**
+  The former `Request`, `Result`, `Provider`, `StreamingProvider`, `Tool`,
+  `Message`, `ToolDef`, `Event`, session-log DTO, compaction callback, pricing,
+  and provider-conformance exports now live behind `internal/` for agent-owned
+  code only. External consumers must use `agent.New(...).Execute(...)` and the
+  DdxAgent service contract.
+- **Removed public compatibility packages for the old provider/tool/session
+  stack.** Provider implementations, compaction, prompt building, built-in
+  tools, session replay/logging, and provider conformance helpers are no longer
+  importable outside this module; Go `internal/` enforcement now blocks
+  consumers that have not migrated.
+
+### Changed
+- The standalone `ddx-agent` binary continues to use the internal native loop,
+  but that loop is no longer part of the exported Go API.
+
 ### Breaking
 - **Removed harness-flavored prompt preset names.** The system prompt preset
   surface now accepts only intent-flavored names: `default`, `smart`, `cheap`,

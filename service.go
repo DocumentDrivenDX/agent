@@ -78,13 +78,13 @@ type ServiceProviderEndpoint struct {
 
 // ServiceOptions configures a DdxAgent instance.
 //
-// SeamOptions is embedded so production builds (no testseam tag) get an
+// seamOptions is embedded so production builds (no testseam tag) get an
 // empty struct — making it a compile-time error to set seam fields without
 // the build tag. Test builds inherit the four CONTRACT-003 seams
 // (FakeProvider, PromptAssertionHook, CompactionAssertionHook,
 // ToolWiringHook) automatically.
 type ServiceOptions struct {
-	SeamOptions
+	seamOptions
 
 	ConfigPath string    // optional override; default $XDG_CONFIG_HOME/ddx-agent/config.yaml
 	Logger     io.Writer // optional; agent writes structured session logs internally regardless
@@ -270,12 +270,6 @@ type ServiceExecuteRequest struct {
 	// Metadata is bidirectional: echoed back in every Event AND stamped
 	// onto every line of the session log so external consumers correlate.
 	Metadata map[string]string
-
-	// NativeProvider, when set, overrides provider construction for the
-	// native ("agent") path. Required while agent-1a486c2e (ResolveRoute)
-	// is unimplemented; supply a constructed Provider directly. Tests
-	// also use this together with PreResolved.
-	NativeProvider Provider
 }
 
 // StallPolicy bounds how long the agent will spin without making progress

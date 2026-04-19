@@ -91,37 +91,31 @@ import (
     "fmt"
 
     "github.com/DocumentDrivenDX/agent"
-    "github.com/DocumentDrivenDX/agent/provider/openai"
-    "github.com/DocumentDrivenDX/agent/tool"
+    _ "github.com/DocumentDrivenDX/agent/configinit"
 )
 
 func main() {
-    p := openai.New(openai.Config{
-        BaseURL: "http://localhost:1234/v1",
-        Model:   "qwen3.5-7b",
-    })
-
-    result, err := agent.Run(context.Background(), agent.Request{
+    a, err := agent.New(agent.ServiceOptions{})
+    if err != nil {
+        panic(err)
+    }
+    events, err := a.Execute(context.Background(), agent.ServiceExecuteRequest{
         Prompt:   "Read main.go and tell me the package name",
-        Provider: p,
-        Tools: []agent.Tool{
-            &tool.ReadTool{WorkDir: "."},
-            &tool.BashTool{WorkDir: "."},
-        },
-        MaxIterations: 10,
+        ModelRef: "cheap",
+        WorkDir:  ".",
     })
     if err != nil {
         panic(err)
     }
-    fmt.Println(result.Output)
-    fmt.Printf("Tokens: %d in / %d out, Cost: $%.4f\n",
-        result.Tokens.Input, result.Tokens.Output, result.CostUSD)
+    for event := range events {
+        fmt.Println(event.Type)
+    }
 }
 ```
 
 ## Features
 
-- **Embeddable library** — `agent.Run(ctx, request)`, no subprocess overhead
+- **Embeddable library** — `agent.New(...).Execute(ctx, request)`, no subprocess overhead
 - **Local-model-first** — LM Studio, Ollama via OpenAI-compatible API
 - **Multi-provider** — OpenAI-compatible, Anthropic Claude, virtual (test replay)
 - **9 built-in tools** — read, write, edit, bash, find, grep, ls, patch, task

@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/provider/conformance"
+	"github.com/DocumentDrivenDX/agent/internal/provider/conformance"
 )
 
 type openAICompatDescriptor struct {

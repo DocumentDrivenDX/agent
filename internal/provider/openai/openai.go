@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	reasoningpolicy "github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 )
 
 // SessionStartData is the data payload for a session.start event.

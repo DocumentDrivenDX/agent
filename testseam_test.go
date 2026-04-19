@@ -26,7 +26,7 @@ func TestSeamFakeProvider(t *testing.T) {
 		},
 	}
 
-	opts := agent.Options{}
+	opts := agent.ServiceOptions{}
 	opts.FakeProvider = fp
 
 	if opts.FakeProvider == nil {
@@ -59,7 +59,7 @@ func TestSeamPromptAssertionHook(t *testing.T) {
 		captured.contextFiles = contextFiles
 	})
 
-	opts := agent.Options{}
+	opts := agent.ServiceOptions{}
 	opts.PromptAssertionHook = hook
 
 	if opts.PromptAssertionHook == nil {
@@ -91,7 +91,7 @@ func TestSeamCompactionAssertionHook(t *testing.T) {
 		gotFreed = tokensFreed
 	})
 
-	opts := agent.Options{}
+	opts := agent.ServiceOptions{}
 	opts.CompactionAssertionHook = hook
 
 	if opts.CompactionAssertionHook == nil {
@@ -116,7 +116,7 @@ func TestSeamToolWiringHook(t *testing.T) {
 		gotTools = toolNames
 	})
 
-	opts := agent.Options{}
+	opts := agent.ServiceOptions{}
 	opts.ToolWiringHook = hook
 
 	if opts.ToolWiringHook == nil {

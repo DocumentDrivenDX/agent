@@ -1,6 +1,6 @@
 package session
 
-import "github.com/DocumentDrivenDX/agent"
+import agent "github.com/DocumentDrivenDX/agent/internal/core"
 
 // ModelPricing holds per-million-token costs for a model.
 // Alias of agent.ModelPricing — kept here for backward compatibility.

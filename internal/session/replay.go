@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 )
 
 // Replay reads a session log and renders a human-readable conversation.

@@ -1,4 +1,4 @@
-package agent
+package core
 
 import (
 	"context"
@@ -18,11 +18,8 @@ import (
 	"github.com/DocumentDrivenDX/agent/telemetry"
 )
 
-// Run executes the legacy agent loop: send prompt, process tool calls, repeat
+// Run executes the internal agent loop: send prompt, process tool calls, repeat
 // until the model produces a final text response or limits are reached.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions). Run remains for
-// one migration window so existing agentlib.Run integrations compile.
 func Run(ctx context.Context, req Request) (Result, error) {
 	start := time.Now()
 	const maxProviderAttempts = 5

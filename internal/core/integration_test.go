@@ -1,6 +1,6 @@
 //go:build integration
 
-package agent_test
+package core_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	antProvider "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/DocumentDrivenDX/agent/internal/session"

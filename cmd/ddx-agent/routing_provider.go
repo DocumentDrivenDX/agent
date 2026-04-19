@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 

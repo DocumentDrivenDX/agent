@@ -1,6 +1,5 @@
-// Package agent provides an embeddable Go agent runtime — a tool-calling LLM
-// loop with file read/write, shell execution, and structured I/O.
-package agent
+// Package core contains the internal agent loop and provider-facing DTOs.
+package core
 
 import (
 	"context"
@@ -11,13 +10,9 @@ import (
 	"github.com/DocumentDrivenDX/agent/telemetry"
 )
 
-// Status represents the outcome of a legacy agent run.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
-// reports status in the final ServiceEvent.
+// Status represents the outcome of a internal agent loop.
 type Status string
 
-// Deprecated: Use final ServiceEvent status values from DdxAgent.Execute.
 const (
 	StatusSuccess        Status = "success"
 	StatusIterationLimit Status = "iteration_limit"
@@ -25,14 +20,9 @@ const (
 	StatusError          Status = "error"
 )
 
-// Role identifies the sender of a message in the legacy conversation history.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service callers
-// consume ServiceEvent streams instead of managing message history directly.
+// Role identifies the sender of a message in the internal conversation history.
 type Role string
 
-// Deprecated: Use ServiceExecuteRequest prompt fields and ServiceEvent streams
-// instead of managing legacy Message values.
 const (
 	RoleSystem    Role = "system"
 	RoleUser      Role = "user"
@@ -40,10 +30,7 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// TokenUsage tracks input and output token counts for the legacy loop API.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service usage is
-// reported in the final ServiceEvent.
+// TokenUsage tracks input and output token counts for the internal loop API.
 type TokenUsage struct {
 	Input      int `json:"input"`
 	Output     int `json:"output"`
@@ -53,9 +40,6 @@ type TokenUsage struct {
 }
 
 // Add accumulates token counts from another TokenUsage.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service usage is
-// reported in the final ServiceEvent.
 func (u *TokenUsage) Add(other TokenUsage) {
 	u.Input += other.Input
 	u.Output += other.Output
@@ -64,21 +48,15 @@ func (u *TokenUsage) Add(other TokenUsage) {
 	u.Total += other.Total
 }
 
-// ToolCall represents a tool invocation requested by the model in the legacy
+// ToolCall represents a tool invocation requested by the model in the internal
 // loop API.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
-// reports tool calls as ServiceEvent values.
 type ToolCall struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
-// Message is a single message in the legacy conversation history.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service callers
-// pass prompt fields on ServiceExecuteRequest.
+// Message is a single message in the internal conversation history.
 type Message struct {
 	Role       Role       `json:"role"`
 	Content    string     `json:"content,omitempty"`
@@ -86,10 +64,7 @@ type Message struct {
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
-// ToolDef describes a tool for the legacy LLM provider interface.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); tool wiring is
-// owned by the service contract.
+// ToolDef describes a tool for the internal LLM provider interface.
 type ToolDef struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
@@ -113,10 +88,8 @@ func ReasoningTokens(n int) Reasoning {
 	return reasoning.ReasoningTokens(n)
 }
 
-// Options configures a single legacy provider Chat call.
+// Options configures a single internal provider Chat call.
 //
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); request-level
-// options are carried by ServiceExecuteRequest.
 // SeamOptions is embedded to carry test injection seams when the testseam
 // build tag is set; in production builds it is an empty struct with no fields.
 type Options struct {
@@ -132,10 +105,7 @@ type Options struct {
 	Reasoning Reasoning `json:"reasoning,omitempty"`
 }
 
-// Response is the result of a single legacy provider Chat call.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service results
-// are reported as ServiceEvent values.
+// Response is the result of a single internal provider Chat call.
 type Response struct {
 	Content      string           `json:"content"`
 	ToolCalls    []ToolCall       `json:"tool_calls,omitempty"`
@@ -145,18 +115,12 @@ type Response struct {
 	Attempt      *AttemptMetadata `json:"attempt,omitempty"`
 }
 
-// Provider is the legacy interface that LLM backends implement.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions). Provider remains
-// for one migration window so existing agentlib.Run integrations compile.
+// Provider is the internal interface that LLM backends implement.
 type Provider interface {
 	Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error)
 }
 
-// Tool is the legacy interface that agent tools implement.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions). Tool remains for
-// one migration window so existing agentlib.Run integrations compile.
+// Tool is the internal interface that agent tools implement.
 type Tool interface {
 	// Name returns the tool's identifier.
 	Name() string
@@ -172,10 +136,7 @@ type Tool interface {
 	Parallel() bool
 }
 
-// ToolCallLog records one tool execution during a legacy agent run.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
-// reports tool calls/results as ServiceEvent values.
+// ToolCallLog records one tool execution during a internal agent loop.
 type ToolCallLog struct {
 	Tool     string          `json:"tool"`
 	Input    json.RawMessage `json:"input"`
@@ -184,13 +145,11 @@ type ToolCallLog struct {
 	Error    string          `json:"error,omitempty"`
 }
 
-// EventType identifies the kind of event emitted during a legacy agent run.
+// EventType identifies the kind of event emitted during a internal agent loop.
 //
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
 // uses ServiceEvent.
 type EventType string
 
-// Deprecated: Use ServiceEvent event type values from DdxAgent.Execute.
 const (
 	EventSessionStart    EventType = "session.start"
 	EventLLMRequest      EventType = "llm.request"
@@ -202,9 +161,8 @@ const (
 	EventCompactionEnd   EventType = "compaction.end"
 )
 
-// Event is a structured event emitted during a legacy agent run.
+// Event is a structured event emitted during a internal agent loop.
 //
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
 // uses ServiceEvent.
 type Event struct {
 	SessionID string          `json:"session_id"`
@@ -214,20 +172,14 @@ type Event struct {
 	Data      json.RawMessage `json:"data"`
 }
 
-// EventCallback receives events during a legacy agent run.
+// EventCallback receives events during a internal agent loop.
 //
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
 // returns a channel of ServiceEvent values.
 type EventCallback func(Event)
 
-// CostSource identifies where the recorded cost originated in the legacy loop.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service cost is
-// reported in the final ServiceEvent.
+// CostSource identifies where the recorded cost originated in the internal loop.
 type CostSource string
 
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service cost is
-// reported in the final ServiceEvent.
 const (
 	CostSourceProviderReported CostSource = "provider_reported"
 	CostSourceGatewayReported  CostSource = "gateway_reported"
@@ -236,10 +188,7 @@ const (
 )
 
 // CostAttribution captures the provenance of the cost associated with one
-// legacy provider attempt.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service cost is
-// reported in the final ServiceEvent.
+// internal provider attempt.
 type CostAttribution struct {
 	Source           CostSource      `json:"source,omitempty"`
 	Currency         string          `json:"currency,omitempty"`
@@ -253,11 +202,8 @@ type CostAttribution struct {
 	Raw              json.RawMessage `json:"raw,omitempty"`
 }
 
-// TimingBreakdown captures optional provider timing windows for one legacy
+// TimingBreakdown captures optional provider timing windows for one internal
 // attempt.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service timing is
-// reported through ServiceEvent streams and session logs.
 type TimingBreakdown struct {
 	FirstToken *time.Duration `json:"first_token,omitempty"`
 	Queue      *time.Duration `json:"queue,omitempty"`
@@ -268,9 +214,8 @@ type TimingBreakdown struct {
 }
 
 // AttemptMetadata captures the structured identity and attribution data for a
-// single legacy provider attempt.
+// single internal provider attempt.
 //
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service route
 // identity is reported through routing_decision and final ServiceEvent data.
 type AttemptMetadata struct {
 	AttemptIndex   int              `json:"attempt_index,omitempty"`
@@ -286,11 +231,8 @@ type AttemptMetadata struct {
 	Timing         *TimingBreakdown `json:"timing,omitempty"`
 }
 
-// RoutingReport summarizes dynamic routing behavior from legacy wrapper
+// RoutingReport summarizes dynamic routing behavior from internal wrapper
 // providers.
-//
-// Deprecated: Use DdxAgent.ResolveRoute and DdxAgent.Execute via
-// New(ServiceOptions).
 type RoutingReport struct {
 	SelectedProvider   string   `json:"selected_provider,omitempty"`
 	SelectedRoute      string   `json:"selected_route,omitempty"`
@@ -298,26 +240,16 @@ type RoutingReport struct {
 	FailoverCount      int      `json:"failover_count,omitempty"`
 }
 
-// RoutingReporter is implemented by legacy providers that can expose
+// RoutingReporter is implemented by internal providers that can expose
 // route-attribution details such as failover attempts.
-//
-// Deprecated: Use DdxAgent.ResolveRoute and DdxAgent.Execute via
-// New(ServiceOptions).
 type RoutingReporter interface {
 	RoutingReport() RoutingReport
 }
 
-// Compactor is the legacy callback shape used by Request.Compactor.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); compaction is owned
-// by the service contract.
+// Compactor is the internal callback shape used by Request.Compactor.
 type Compactor func(ctx context.Context, messages []Message, provider Provider, toolCalls []ToolCallLog) ([]Message, *CompactionResult, error)
 
-// Request configures a single legacy agent run.
-//
-// Deprecated: Use ServiceExecuteRequest with DdxAgent.Execute via
-// New(ServiceOptions). Request remains for one migration window so existing
-// agentlib.Run integrations compile.
+// Request configures a single internal agent loop.
 type Request struct {
 	// Prompt is the user's task description.
 	Prompt string
@@ -404,10 +336,7 @@ type Request struct {
 	Compactor Compactor
 }
 
-// Result is the outcome of a legacy agent run.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); service execution
-// reports the terminal result in the final ServiceEvent.
+// Result is the outcome of a internal agent loop.
 type Result struct {
 	// Status indicates whether the run succeeded.
 	Status Status `json:"status"`
@@ -469,10 +398,7 @@ type Result struct {
 	SessionID string `json:"session_id"`
 }
 
-// CompactionResult holds the output of a legacy compaction pass.
-//
-// Deprecated: Use DdxAgent.Execute via New(ServiceOptions); compaction events
-// are reported as ServiceEvent values.
+// CompactionResult holds the output of a internal compaction pass.
 type CompactionResult struct {
 	// Summary is the generated summary text.
 	Summary string `json:"summary"`

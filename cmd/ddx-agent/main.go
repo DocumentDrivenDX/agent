@@ -19,6 +19,7 @@ import (
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/compaction"
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/prompt"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
@@ -246,7 +247,7 @@ func run() int {
 	compactor := compaction.NewCompactor(compactionCfg)
 
 	// Build request
-	req := agent.Request{
+	req := agentcore.Request{
 		Prompt:                promptText,
 		SystemPrompt:          sysPrompt.Build(),
 		Provider:              p,
@@ -270,11 +271,11 @@ func run() int {
 		Compactor:             compactor,
 	}
 
-	var result agent.Result
+	var result agentcore.Result
 	if os.Getenv("DDX_AGENT_USE_SERVICE_CONTRACT") == "1" {
-		result, err = executeViaServiceContract(ctx, req, p)
+		result, err = executeViaServiceContract(ctx, req, agentConfig.NewServiceConfig(cfg, wd))
 	} else {
-		result, err = agent.Run(ctx, req)
+		result, err = agentcore.Run(ctx, req)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
@@ -300,17 +301,17 @@ func run() int {
 	fmt.Fprintln(os.Stderr)
 
 	switch result.Status {
-	case agent.StatusSuccess, agent.StatusIterationLimit:
+	case agentcore.StatusSuccess, agentcore.StatusIterationLimit:
 		return 0
 	default:
 		return 1
 	}
 }
 
-func executeViaServiceContract(ctx context.Context, req agent.Request, provider agent.Provider) (agent.Result, error) {
-	svc, err := agent.New(agent.ServiceOptions{})
+func executeViaServiceContract(ctx context.Context, req agentcore.Request, serviceConfig agent.ServiceConfig) (agentcore.Result, error) {
+	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: serviceConfig})
 	if err != nil {
-		return agent.Result{}, err
+		return agentcore.Result{}, err
 	}
 
 	temperature := float32(0)
@@ -318,17 +319,16 @@ func executeViaServiceContract(ctx context.Context, req agent.Request, provider 
 		temperature = float32(*req.Temperature)
 	}
 	ch, err := svc.Execute(ctx, agent.ServiceExecuteRequest{
-		Prompt:         req.Prompt,
-		SystemPrompt:   req.SystemPrompt,
-		Model:          req.ResolvedModel,
-		Provider:       req.SelectedProvider,
-		Harness:        "agent",
-		WorkDir:        req.WorkDir,
-		Temperature:    temperature,
-		Seed:           req.Seed,
-		Reasoning:      req.Reasoning,
-		Metadata:       req.Metadata,
-		NativeProvider: chatOnlyProvider{inner: provider},
+		Prompt:       req.Prompt,
+		SystemPrompt: req.SystemPrompt,
+		Model:        req.ResolvedModel,
+		Provider:     req.SelectedProvider,
+		Harness:      "agent",
+		WorkDir:      req.WorkDir,
+		Temperature:  temperature,
+		Seed:         req.Seed,
+		Reasoning:    req.Reasoning,
+		Metadata:     req.Metadata,
 		PreResolved: &agent.RouteDecision{
 			Harness:  "agent",
 			Provider: req.SelectedProvider,
@@ -337,10 +337,10 @@ func executeViaServiceContract(ctx context.Context, req agent.Request, provider 
 		},
 	})
 	if err != nil {
-		return agent.Result{}, err
+		return agentcore.Result{}, err
 	}
 
-	result := agent.Result{
+	result := agentcore.Result{
 		SelectedProvider:  req.SelectedProvider,
 		SelectedRoute:     req.SelectedRoute,
 		RequestedModel:    req.RequestedModel,
@@ -413,24 +413,16 @@ func executeViaServiceContract(ctx context.Context, req agent.Request, provider 
 	return result, nil
 }
 
-type chatOnlyProvider struct {
-	inner agent.Provider
-}
-
-func (p chatOnlyProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
-	return p.inner.Chat(ctx, messages, tools, opts)
-}
-
-func serviceStatusToLegacyStatus(status string) agent.Status {
+func serviceStatusToLegacyStatus(status string) agentcore.Status {
 	switch status {
 	case "success":
-		return agent.StatusSuccess
-	case string(agent.StatusIterationLimit):
-		return agent.StatusIterationLimit
+		return agentcore.StatusSuccess
+	case string(agentcore.StatusIterationLimit):
+		return agentcore.StatusIterationLimit
 	case "cancelled":
-		return agent.StatusCancelled
+		return agentcore.StatusCancelled
 	default:
-		return agent.StatusError
+		return agentcore.StatusError
 	}
 }
 
@@ -540,7 +532,7 @@ func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
 	return 0
 }
 
-func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
+func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, agentcore.Provider, agentConfig.ProviderConfig, error) {
 	routeKey, routeModelRef, useLegacyBackend, err := resolveRouteTarget(cfg, backendName, providerName, overrides)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
@@ -650,7 +642,7 @@ func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName strin
 	return "", "", "", nil
 }
 
-func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
+func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool) (providerSelection, agentcore.Provider, agentConfig.ProviderConfig, error) {
 	var explicitRoute *agentConfig.ModelRouteConfig
 	if route, ok := cfg.GetModelRoute(routeKey); ok {
 		explicitRoute = &route
@@ -776,12 +768,12 @@ func resolvePreset(flagValue string, cfg *agentConfig.Config) (string, error) {
 	return prompt.ResolvePresetName(preset)
 }
 
-func buildToolsForPreset(workDir, preset string, bashFilter ...tool.BashOutputFilterConfig) []agent.Tool {
+func buildToolsForPreset(workDir, preset string, bashFilter ...tool.BashOutputFilterConfig) []agentcore.Tool {
 	filter := tool.BashOutputFilterConfig{}
 	if len(bashFilter) > 0 {
 		filter = bashFilter[0]
 	}
-	tools := []agent.Tool{
+	tools := []agentcore.Tool{
 		&tool.ReadTool{WorkDir: workDir},
 		&tool.WriteTool{WorkDir: workDir},
 		&tool.EditTool{WorkDir: workDir},
@@ -807,7 +799,7 @@ func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) tool.BashOut
 	}
 }
 
-func buildProviderFromResolvedConfig(name string, pc agentConfig.ProviderConfig) (agent.Provider, error) {
+func buildProviderFromResolvedConfig(name string, pc agentConfig.ProviderConfig) (agentcore.Provider, error) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{name: pc},
 	}

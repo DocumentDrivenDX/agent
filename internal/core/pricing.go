@@ -1,4 +1,4 @@
-package agent
+package core
 
 import "github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 
