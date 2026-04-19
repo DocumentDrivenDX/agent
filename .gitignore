@@ -43,3 +43,4 @@ coverage.html
 # Benchmark artifacts
 /benchmark-results/
 /jobs/
+/bench/results/
