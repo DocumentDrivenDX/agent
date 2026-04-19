@@ -22,3 +22,7 @@ type SeamOptions struct {
 	// the resolved tool list.
 	ToolWiringHook ToolWiringHook
 }
+
+func shouldAutoLoadServiceConfig(opts ServiceOptions) bool {
+	return opts.ConfigPath != ""
+}

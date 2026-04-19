@@ -7,3 +7,7 @@ package agent
 // Options ensures that production builds cannot set seam fields — any attempt
 // to do so is a compile error.
 type SeamOptions struct{}
+
+func shouldAutoLoadServiceConfig(ServiceOptions) bool {
+	return true
+}

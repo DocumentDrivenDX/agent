@@ -326,7 +326,7 @@ func RegisterConfigLoader(fn func(dir string) (ServiceConfig, error)) {
 // imported and ServiceConfig is nil, the service starts without provider config
 // (ListProviders/HealthCheck will return errors until config is injected).
 func New(opts ServiceOptions) (DdxAgent, error) {
-	if opts.ServiceConfig == nil && loadServiceConfig != nil {
+	if opts.ServiceConfig == nil && loadServiceConfig != nil && shouldAutoLoadServiceConfig(opts) {
 		dir := ""
 		if opts.ConfigPath != "" {
 			dir = filepath.Dir(opts.ConfigPath)

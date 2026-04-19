@@ -270,7 +270,12 @@ func run() int {
 		Compactor:             compactor,
 	}
 
-	result, err := agent.Run(ctx, req)
+	var result agent.Result
+	if os.Getenv("DDX_AGENT_USE_SERVICE_CONTRACT") == "1" {
+		result, err = executeViaServiceContract(ctx, req, p)
+	} else {
+		result, err = agent.Run(ctx, req)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
@@ -299,6 +304,133 @@ func run() int {
 		return 0
 	default:
 		return 1
+	}
+}
+
+func executeViaServiceContract(ctx context.Context, req agent.Request, provider agent.Provider) (agent.Result, error) {
+	svc, err := agent.New(agent.ServiceOptions{})
+	if err != nil {
+		return agent.Result{}, err
+	}
+
+	temperature := float32(0)
+	if req.Temperature != nil {
+		temperature = float32(*req.Temperature)
+	}
+	ch, err := svc.Execute(ctx, agent.ServiceExecuteRequest{
+		Prompt:         req.Prompt,
+		SystemPrompt:   req.SystemPrompt,
+		Model:          req.ResolvedModel,
+		Provider:       req.SelectedProvider,
+		Harness:        "agent",
+		WorkDir:        req.WorkDir,
+		Temperature:    temperature,
+		Seed:           req.Seed,
+		Reasoning:      req.Reasoning,
+		Metadata:       req.Metadata,
+		NativeProvider: chatOnlyProvider{inner: provider},
+		PreResolved: &agent.RouteDecision{
+			Harness:  "agent",
+			Provider: req.SelectedProvider,
+			Model:    req.ResolvedModel,
+			Reason:   "cli pre-resolved provider",
+		},
+	})
+	if err != nil {
+		return agent.Result{}, err
+	}
+
+	result := agent.Result{
+		SelectedProvider:  req.SelectedProvider,
+		SelectedRoute:     req.SelectedRoute,
+		RequestedModel:    req.RequestedModel,
+		RequestedModelRef: req.RequestedModelRef,
+		ResolvedModelRef:  req.ResolvedModelRef,
+		ResolvedModel:     req.ResolvedModel,
+		Reasoning:         req.Reasoning,
+		Model:             req.ResolvedModel,
+	}
+	var output strings.Builder
+	var sawFinal bool
+	for ev := range ch {
+		switch string(ev.Type) {
+		case "routing_decision":
+			var data struct {
+				SessionID string `json:"session_id"`
+			}
+			if err := json.Unmarshal(ev.Data, &data); err == nil && data.SessionID != "" {
+				result.SessionID = data.SessionID
+			}
+		case "text_delta":
+			var data struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(ev.Data, &data); err == nil {
+				output.WriteString(data.Text)
+			}
+		case "final":
+			sawFinal = true
+			var data struct {
+				Status string `json:"status"`
+				Error  string `json:"error"`
+				Usage  *struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+					TotalTokens  int `json:"total_tokens"`
+				} `json:"usage"`
+				CostUSD       float64 `json:"cost_usd"`
+				RoutingActual *struct {
+					Provider string   `json:"provider"`
+					Model    string   `json:"model"`
+					Chain    []string `json:"fallback_chain_fired"`
+				} `json:"routing_actual"`
+			}
+			if err := json.Unmarshal(ev.Data, &data); err != nil {
+				return result, fmt.Errorf("decode service final event: %w", err)
+			}
+			result.Status = serviceStatusToLegacyStatus(data.Status)
+			if data.Error != "" {
+				result.Error = errors.New(data.Error)
+			}
+			if data.Usage != nil {
+				result.Tokens.Input = data.Usage.InputTokens
+				result.Tokens.Output = data.Usage.OutputTokens
+				result.Tokens.Total = data.Usage.TotalTokens
+			}
+			result.CostUSD = data.CostUSD
+			if data.RoutingActual != nil {
+				result.SelectedProvider = data.RoutingActual.Provider
+				result.ResolvedModel = data.RoutingActual.Model
+				result.Model = data.RoutingActual.Model
+				result.AttemptedProviders = append([]string(nil), data.RoutingActual.Chain...)
+			}
+		}
+	}
+	if !sawFinal {
+		return result, fmt.Errorf("service contract execution ended without final event")
+	}
+	result.Output = output.String()
+	return result, nil
+}
+
+type chatOnlyProvider struct {
+	inner agent.Provider
+}
+
+func (p chatOnlyProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	return p.inner.Chat(ctx, messages, tools, opts)
+}
+
+func serviceStatusToLegacyStatus(status string) agent.Status {
+	switch status {
+	case "success":
+		return agent.StatusSuccess
+	case string(agent.StatusIterationLimit):
+		return agent.StatusIterationLimit
+	case "cancelled":
+		return agent.StatusCancelled
+	default:
+		return agent.StatusError
 	}
 }
 

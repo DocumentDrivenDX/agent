@@ -85,7 +85,7 @@ type ToolResultData struct {
 
 // FinalData is the payload for type=final events.
 type FinalData struct {
-	Status         string            `json:"status"` // success|failed|stalled|timed_out|cancelled
+	Status         string            `json:"status"` // success|iteration_limit|failed|stalled|timed_out|cancelled
 	ExitCode       int               `json:"exit_code"`
 	Error          string            `json:"error,omitempty"`
 	DurationMS     int64             `json:"duration_ms"`

@@ -238,6 +238,46 @@ default: local
 	assert.GreaterOrEqual(t, parsed.Tokens.Output, 0)
 }
 
+func TestCLI_ServiceContractSmoke(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+	fake := newFakeOpenAIServer(t)
+
+	writeTempConfig(t, workDir, `
+providers:
+  local:
+    type: lmstudio
+    base_url: `+fake.baseURL()+`
+    api_key: test
+    model: gpt-4o
+default: local
+`)
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, map[string]string{
+		"DDX_AGENT_USE_SERVICE_CONTRACT": "1",
+	}), "--json", "--work-dir", workDir, "-p", "hello")
+	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
+	assert.Contains(t, res.stderr, "[success] tokens:")
+
+	var parsed struct {
+		Status    string `json:"status"`
+		Output    string `json:"output"`
+		SessionID string `json:"session_id"`
+		Tokens    struct {
+			Input  int `json:"input"`
+			Output int `json:"output"`
+		} `json:"tokens"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
+	assert.Equal(t, "success", parsed.Status)
+	assert.Equal(t, "stub ok", parsed.Output)
+	assert.True(t, strings.HasPrefix(parsed.SessionID, "svc-"), "session_id=%q proves DdxAgent.Execute generated the run", parsed.SessionID)
+	assert.Equal(t, "gpt-4o", fake.lastModel())
+	assert.Equal(t, 10, parsed.Tokens.Input)
+	assert.Equal(t, 2, parsed.Tokens.Output)
+}
+
 func TestCLI_UnknownSubcommand_NoPromptUsageExitCode(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()

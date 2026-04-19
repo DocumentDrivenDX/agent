@@ -380,6 +380,9 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	if result.CostUSD > 0 {
 		final.CostUSD = result.CostUSD
 	}
+	if result.Output != "" {
+		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Output})
+	}
 	switch {
 	case stalled.Load():
 		final.Status = "stalled"
@@ -403,6 +406,8 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		if result.Error != nil {
 			final.Error = result.Error.Error()
 		}
+	case result.Status == StatusIterationLimit:
+		final.Status = string(StatusIterationLimit)
 	default:
 		final.Status = "success"
 	}
