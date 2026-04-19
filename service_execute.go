@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync/atomic"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 )
 
 // generateSessionID returns a unique session identifier for a new Execute.
@@ -575,15 +574,12 @@ func writeSessionLogStub(dir, sessionID string, final harnesses.FinalData, meta 
 	if sessionID == "" {
 		sessionID = fmt.Sprintf("s-%d", time.Now().UnixNano())
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return ""
-	}
-	path := filepath.Join(dir, "agent-"+sessionID+".jsonl")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := sessionlog.OpenAppend(dir, sessionID)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
+	path := f.Name()
 	line, err := json.Marshal(map[string]any{
 		"type":     "final",
 		"final":    final,

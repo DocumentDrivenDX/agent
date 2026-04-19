@@ -134,21 +134,30 @@ func createCompareWorktree(workDir, compareID, harnessName string) (string, erro
 
 	wtDir := filepath.Join(gitRoot, ".worktrees", fmt.Sprintf("%s-%s", compareID, harnessName))
 
-	cmd := exec.Command("git", "worktree", "add", "--detach", wtDir, "HEAD")
-	cmd.Dir = gitRoot
-	cmd.Env = cleanGitEnv()
+	cmd := runGit(gitRoot, "worktree", "add", "--detach", wtDir, "HEAD")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git worktree add: %s\n%s", err, string(out))
 	}
 	return wtDir, nil
 }
 
-// resolveGitRoot finds the git repository root from any directory within it.
-func resolveGitRoot(dir string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+// runGit prepares an *exec.Cmd that invokes the git binary in dir with a
+// scrubbed environment. git is a fixed binary; args originate from the
+// comparison driver and operator-supplied benchmark suite YAML — no raw
+// network input flows here. This helper localizes the gosec G204 annotation
+// rather than scattering it across each callsite.
+func runGit(dir string, args ...string) *exec.Cmd {
+	// #nosec G204 -- "git" is a fixed binary; args come from operator-supplied
+	// benchmark config and internally derived paths (worktree dir, gitRoot).
+	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = cleanGitEnv()
-	out, err := cmd.Output()
+	return cmd
+}
+
+// resolveGitRoot finds the git repository root from any directory within it.
+func resolveGitRoot(dir string) (string, error) {
+	out, err := runGit(dir, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		return "", fmt.Errorf("not a git repository: %s", dir)
 	}
@@ -157,20 +166,14 @@ func resolveGitRoot(dir string) (string, error) {
 
 // captureGitDiff captures the unified diff of all changes in a worktree.
 func captureGitDiff(worktreePath string) string {
-	cmd := exec.Command("git", "diff", "HEAD")
-	cmd.Dir = worktreePath
-	cmd.Env = cleanGitEnv()
-	out, err := cmd.Output()
+	out, err := runGit(worktreePath, "diff", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
 	diff := string(out)
 
 	// Also capture untracked files as a diff-like listing.
-	cmd3 := exec.Command("git", "ls-files", "--others", "--exclude-standard")
-	cmd3.Dir = worktreePath
-	cmd3.Env = cleanGitEnv()
-	untrackedOut, _ := cmd3.Output()
+	untrackedOut, _ := runGit(worktreePath, "ls-files", "--others", "--exclude-standard").Output()
 	untracked := strings.TrimSpace(string(untrackedOut))
 	if untracked != "" {
 		for _, f := range strings.Split(untracked, "\n") {
@@ -178,6 +181,9 @@ func captureGitDiff(worktreePath string) string {
 			if f == "" {
 				continue
 			}
+			// #nosec G304 -- f is a worktree-relative path emitted by `git
+			// ls-files --others`; worktreePath is the comparison driver's
+			// own sandbox root, not external input.
 			content, err := os.ReadFile(filepath.Join(worktreePath, f))
 			if err != nil {
 				continue
@@ -219,6 +225,9 @@ func cleanGitEnv() []string {
 
 // runPostCommand runs a shell command in the given directory.
 func runPostCommand(dir, command string) (string, bool) {
+	// #nosec G204 -- post-command is operator-supplied benchmark suite YAML;
+	// the shell-out is intentional so suite authors can chain arbitrary
+	// validation commands. This is the documented contract of PostRun.
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -238,16 +247,10 @@ func cleanupCompareWorktrees(repoDir, compareID string) {
 	for _, e := range entries {
 		if e.IsDir() && strings.HasPrefix(e.Name(), compareID) {
 			wtPath := filepath.Join(wtBase, e.Name())
-			cmd := exec.Command("git", "worktree", "remove", "--force", wtPath)
-			cmd.Dir = repoDir
-			cmd.Env = cleanGitEnv()
-			_ = cmd.Run()
+			_ = runGit(repoDir, "worktree", "remove", "--force", wtPath).Run()
 		}
 	}
-	cmd := exec.Command("git", "worktree", "prune")
-	cmd.Dir = repoDir
-	cmd.Env = cleanGitEnv()
-	_ = cmd.Run()
+	_ = runGit(repoDir, "worktree", "prune").Run()
 }
 
 func genCompareID() string {

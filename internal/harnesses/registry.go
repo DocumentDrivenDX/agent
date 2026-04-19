@@ -29,6 +29,8 @@ var builtinHarnesses = map[string]HarnessConfig{
 		ExactPinSupport: true,
 		TUIQuotaCommand: "exec /status",
 	},
+	// #nosec G101 -- not credentials; this is the harness invocation config
+	// for the claude CLI (binary name, flags, permission mode strings).
 	"claude": {
 		Name:   "claude",
 		Binary: "claude",

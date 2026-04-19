@@ -9,6 +9,8 @@ import (
 
 // LoadBenchmarkSuite reads a benchmark suite from a JSON file.
 func LoadBenchmarkSuite(path string) (*BenchmarkSuite, error) {
+	// #nosec G304 -- path is the benchmark suite file the operator passed on
+	// the command line; loading it is the explicit purpose of this function.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading benchmark suite: %w", err)
@@ -121,5 +123,5 @@ func SaveBenchmarkResult(path string, result *BenchmarkResult) error {
 	if err != nil {
 		return fmt.Errorf("marshaling result: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o600)
 }

@@ -8,12 +8,12 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 )
 
 const defaultEventBuffer = 64
@@ -179,7 +179,7 @@ func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.E
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cmd := osexec.CommandContext(runCtx, binary, args...)
+	cmd := harnesses.HarnessCommand(runCtx, binary, args...)
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
@@ -201,16 +201,13 @@ func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.E
 
 	var progressLog *os.File
 	if req.SessionLogDir != "" {
-		if err := os.MkdirAll(req.SessionLogDir, 0o755); err == nil {
-			sid := req.SessionID
-			if sid == "" {
-				sid = fmt.Sprintf("gemini-%d", time.Now().UnixNano())
-			}
-			logPath := filepath.Join(req.SessionLogDir, "agent-"+sid+".jsonl")
-			if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-				progressLog = f
-				defer progressLog.Close()
-			}
+		sid := req.SessionID
+		if sid == "" {
+			sid = fmt.Sprintf("gemini-%d", time.Now().UnixNano())
+		}
+		if f, err := sessionlog.OpenAppend(req.SessionLogDir, sid); err == nil {
+			progressLog = f
+			defer progressLog.Close()
 		}
 	}
 

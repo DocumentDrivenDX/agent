@@ -18,6 +18,24 @@ func stripANSI(s string) string {
 	return ansiPattern.ReplaceAllString(s, "")
 }
 
+// tmuxRun invokes the tmux binary with the given args and waits for it to
+// complete. tmuxOutput captures stdout. Both helpers exist to localize the
+// gosec G204 (subprocess launched with variable) annotation: tmux is a fixed
+// binary name resolved via PATH, and the variable args are tmux subcommands
+// plus a service-generated session identifier (`ddx-codex-quota-<pid>`),
+// never raw external input.
+func tmuxRun(args ...string) error {
+	// #nosec G204 -- "tmux" is a fixed binary; args are tmux subcommands and a
+	// service-generated session identifier, not external input.
+	return exec.Command("tmux", args...).Run()
+}
+
+func tmuxOutput(args ...string) ([]byte, error) {
+	// #nosec G204 -- "tmux" is a fixed binary; args are tmux subcommands and a
+	// service-generated session identifier, not external input.
+	return exec.Command("tmux", args...).Output()
+}
+
 // ReadCodexQuotaViaTmux starts codex in a detached tmux session, sends /status,
 // captures the output, and returns parsed quota windows.
 func ReadCodexQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
@@ -32,20 +50,20 @@ func ReadCodexQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, erro
 	}
 
 	sessName := fmt.Sprintf("ddx-codex-quota-%d", os.Getpid())
-	if err := exec.Command("tmux", "new-session", "-d", "-s", sessName, "-x", "220", "-y", "50", "codex").Run(); err != nil {
+	if err := tmuxRun("new-session", "-d", "-s", sessName, "-x", "220", "-y", "50", "codex"); err != nil {
 		return nil, fmt.Errorf("start tmux session: %w", err)
 	}
-	defer func() { _ = exec.Command("tmux", "kill-session", "-t", sessName).Run() }()
+	defer func() { _ = tmuxRun("kill-session", "-t", sessName) }()
 
 	// Poll until codex shows its "›" interactive prompt.
 	deadline := time.Now().Add(timeout)
 	ready := false
 	for !ready && time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		if err := exec.Command("tmux", "has-session", "-t", sessName).Run(); err != nil {
+		if err := tmuxRun("has-session", "-t", sessName); err != nil {
 			return nil, fmt.Errorf("codex session exited before initialization")
 		}
-		out, err := exec.Command("tmux", "capture-pane", "-t", sessName, "-p").Output()
+		out, err := tmuxOutput("capture-pane", "-t", sessName, "-p")
 		if err == nil {
 			text := stripANSI(string(out))
 			if strings.Contains(text, "›") {
@@ -57,7 +75,7 @@ func ReadCodexQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, erro
 		return nil, fmt.Errorf("timed out waiting for codex to initialize")
 	}
 
-	if err := exec.Command("tmux", "send-keys", "-t", sessName, "/status", "Enter").Run(); err != nil {
+	if err := tmuxRun("send-keys", "-t", sessName, "/status", "Enter"); err != nil {
 		return nil, fmt.Errorf("send /status: %w", err)
 	}
 
@@ -65,7 +83,7 @@ func ReadCodexQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, erro
 	var captured string
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		out, err := exec.Command("tmux", "capture-pane", "-t", sessName, "-p", "-S", "-100").Output()
+		out, err := tmuxOutput("capture-pane", "-t", sessName, "-p", "-S", "-100")
 		if err == nil {
 			text := stripANSI(string(out))
 			if strings.Contains(text, "% left") {
