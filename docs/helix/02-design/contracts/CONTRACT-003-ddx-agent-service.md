@@ -589,6 +589,29 @@ means no service-owned usage source is available for that harness/provider yet;
 consumers should display that as unavailable rather than reading native logs
 directly.
 
+## CLI Projection Boundary
+
+The standalone `cmd/ddx-agent` binary is both a consumer of this service
+contract and a transitional first-party adapter. User-visible CLI output should
+prefer public service APIs:
+
+- service execution output is decoded with `DecodeServiceEvent` or
+  `DrainExecute`, not local copies of event payload structs;
+- harness capabilities, profile projection, route feedback, quota/status, and
+  test-only harness dispatch are public service surfaces;
+- direct imports of internal packages from `cmd/ddx-agent` are an explicit
+  allowlist for legacy provider setup, prompt construction, session-log
+  compatibility, and catalog/routing migration code.
+
+The allowlist is enforced by `cmd/ddx-agent` boundary tests. Remaining internal
+reads in the CLI are transitional implementation adapters, not public API:
+`internal/config`, `internal/core`, `internal/modelcatalog`,
+`internal/observations`, `internal/provider/openai`, `internal/prompt`,
+`internal/reasoning`, `internal/safefs`, `internal/session`, and
+`internal/tool`. Follow-up work that adds CLI-visible profile/model/status
+behavior must either source it from `DdxAgent` methods or extend this contract
+first.
+
 ## Catalog Profile Projection
 
 Catalog profiles are service data, not consumer configuration. Consumers that

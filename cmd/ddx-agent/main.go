@@ -353,56 +353,39 @@ func executeViaServiceContract(ctx context.Context, req agentcore.Request, servi
 	var output strings.Builder
 	var sawFinal bool
 	for ev := range ch {
-		switch string(ev.Type) {
-		case "routing_decision":
-			var data struct {
-				SessionID string `json:"session_id"`
+		decoded, err := agent.DecodeServiceEvent(ev)
+		if err != nil {
+			return result, fmt.Errorf("decode service event: %w", err)
+		}
+		switch decoded.Type {
+		case agent.ServiceEventTypeRoutingDecision:
+			if decoded.RoutingDecision != nil && decoded.RoutingDecision.SessionID != "" {
+				result.SessionID = decoded.RoutingDecision.SessionID
 			}
-			if err := json.Unmarshal(ev.Data, &data); err == nil && data.SessionID != "" {
-				result.SessionID = data.SessionID
+		case agent.ServiceEventTypeTextDelta:
+			if decoded.TextDelta != nil {
+				output.WriteString(decoded.TextDelta.Text)
 			}
-		case "text_delta":
-			var data struct {
-				Text string `json:"text"`
-			}
-			if err := json.Unmarshal(ev.Data, &data); err == nil {
-				output.WriteString(data.Text)
-			}
-		case "final":
+		case agent.ServiceEventTypeFinal:
 			sawFinal = true
-			var data struct {
-				Status string `json:"status"`
-				Error  string `json:"error"`
-				Usage  *struct {
-					InputTokens  int `json:"input_tokens"`
-					OutputTokens int `json:"output_tokens"`
-					TotalTokens  int `json:"total_tokens"`
-				} `json:"usage"`
-				CostUSD       float64 `json:"cost_usd"`
-				RoutingActual *struct {
-					Provider string   `json:"provider"`
-					Model    string   `json:"model"`
-					Chain    []string `json:"fallback_chain_fired"`
-				} `json:"routing_actual"`
+			if decoded.Final == nil {
+				return result, fmt.Errorf("decode service final event: missing final payload")
 			}
-			if err := json.Unmarshal(ev.Data, &data); err != nil {
-				return result, fmt.Errorf("decode service final event: %w", err)
+			result.Status = serviceStatusToLegacyStatus(decoded.Final.Status)
+			if decoded.Final.Error != "" {
+				result.Error = errors.New(decoded.Final.Error)
 			}
-			result.Status = serviceStatusToLegacyStatus(data.Status)
-			if data.Error != "" {
-				result.Error = errors.New(data.Error)
+			if decoded.Final.Usage != nil {
+				result.Tokens.Input = decoded.Final.Usage.InputTokens
+				result.Tokens.Output = decoded.Final.Usage.OutputTokens
+				result.Tokens.Total = decoded.Final.Usage.TotalTokens
 			}
-			if data.Usage != nil {
-				result.Tokens.Input = data.Usage.InputTokens
-				result.Tokens.Output = data.Usage.OutputTokens
-				result.Tokens.Total = data.Usage.TotalTokens
-			}
-			result.CostUSD = data.CostUSD
-			if data.RoutingActual != nil {
-				result.SelectedProvider = data.RoutingActual.Provider
-				result.ResolvedModel = data.RoutingActual.Model
-				result.Model = data.RoutingActual.Model
-				result.AttemptedProviders = append([]string(nil), data.RoutingActual.Chain...)
+			result.CostUSD = decoded.Final.CostUSD
+			if decoded.Final.RoutingActual != nil {
+				result.SelectedProvider = decoded.Final.RoutingActual.Provider
+				result.ResolvedModel = decoded.Final.RoutingActual.Model
+				result.Model = decoded.Final.RoutingActual.Model
+				result.AttemptedProviders = append([]string(nil), decoded.Final.RoutingActual.FallbackChainFired...)
 			}
 		}
 	}
