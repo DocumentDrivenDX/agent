@@ -672,6 +672,23 @@ semantics:
   currently available.
 - `not_applicable`: the capability does not apply to that harness class.
 
+The broad matrix below is a compatibility view across subprocess harnesses,
+test-only harnesses, and current provider-backend rows. It is not the
+authoritative health signal for the primary harnesses. Primary harness health is
+specified separately in
+`docs/helix/02-design/primary-harness-capability-baseline.md` and covers only
+`agent`, `codex`, and `claude`.
+
+Primary-harness baseline capabilities are strict: `Run`, `FinalText`,
+`ProgressEvents`, `Cancel`, `WorkdirContext`, `PermissionModes`, `ListModels`,
+`SetModel`, `ListReasoning`, `SetReasoning`, `TokenUsage`, `QuotaStatus` for
+subscription harnesses, `ErrorStatus`, and `RequestMetadata`. These capabilities
+must not be reported as `optional` in the primary baseline. In particular,
+`ListModels` is required for `codex` and `claude`; if model choices are only
+available through their interactive TUI surfaces and no headless collector is
+implemented yet, the primary baseline reports a visible `gap` or `blocked`
+state rather than treating model listing as unsupported or optional.
+
 Current builtin matrix:
 
 | Harness | ExecutePrompt | ModelDiscovery | ModelPinning | WorkdirContext | ReasoningLevels | PermissionModes | ProgressEvents | UsageCapture | FinalText | ToolEvents | QuotaStatus | RecordReplay |
