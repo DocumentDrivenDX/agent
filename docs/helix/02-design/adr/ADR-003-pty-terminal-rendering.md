@@ -89,7 +89,10 @@ Candidate families include:
 ## Conformance Tests
 
 The PTY terminal model is not complete until tests prove behavior against real
-terminal programs:
+terminal programs. These tests must be fully automated through the cassette
+assertion framework defined in ADR-002: replay runs in collapsed time for fast
+CI, record mode is scripted when enabled, and no support claim depends on
+manual screen inspection.
 
 | Target | Required Evidence |
 |--------|-------------------|

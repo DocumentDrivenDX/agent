@@ -83,6 +83,7 @@ live inside it.
 | Raw PTY session | `internal/pty/session` | `Start`, command argv/env/workdir, terminal size, PTY file descriptors, process groups, stdin bytes, resize, raw output stream, `Wait`, timeout, cancellation, `Close`/`Kill` cleanup | Claude/Codex parsing, model names, quota semantics, cassette schema, service events |
 | Terminal model | `internal/pty/terminal` | Byte-to-frame derivation, normalized screen snapshots, key encoding, expect/wait predicates, frame diffing, capture metadata | Process spawning, harness-specific slash commands, quota/model interpretation |
 | Cassette record/replay | `internal/pty/cassette` | Versioned manifest, input/output/frame streams, event timestamps, timing normalization, scrub reports, replay scheduler, deterministic and real-time playback drivers, read-only inspection inputs | Live credentials, provider calls, harness-specific capability decisions |
+| Cassette assertion tests | `internal/ptytest` or equivalent test-only package | Scenario specs, fixture discovery, cassette playback assertions, time-coded predicates, replay clocks, fixture isolation, parallel-safe temp homes, and test reporting | Production harness behavior, credential storage, terminal emulation internals |
 | Harness probes | `internal/harnesses/<name>` | Claude/Codex prompt flows, quota/status/model-list extraction, reasoning-level discovery, normalized errors, capability matrix updates | PTY lifecycle primitives or cassette file-format internals |
 
 No package below `internal/pty` may import `internal/harnesses`. The PTY
@@ -130,15 +131,24 @@ append-only event streams. Version `1` contains:
 | `manifest.timing` | Yes | Clock policy, timestamp resolution, replay default, and any scaling/collapse policy used by tests. Version `1` defaults to 100ms timestamp resolution, but recorders may choose a finer `resolution_ms` without a schema bump. |
 | `manifest.provenance` | Yes | Agent git SHA, contract version, OS/arch, recorded-at timestamp, and recorder version. |
 | `input.jsonl` | Yes | User/input events: bytes sent to stdin, paste boundaries, control keys, resize events, and signal events. Every record includes monotonic `t_ms`. |
-| `output.raw` | Yes | Raw output bytes from the PTY, exactly as observed after environment scrubbing. |
+| `output.raw` | Yes | Raw output bytes from the PTY, exactly as observed after environment scrubbing. This is the byte-for-byte evidence stream. |
+| `output.jsonl` | Yes | Timed raw output chunks from the PTY. Every record includes monotonic `t_ms`, byte offsets into `output.raw`, chunk length, and the chunk data or a reference to the raw byte range. This is the authoritative timing source for buffering, delay, and emulator replay tests. |
 | `frames.jsonl` | Yes | Screen snapshots or frame diffs at monotonic `t_ms` timestamps for human review and deterministic replay assertions. |
 | `service-events.jsonl` | Yes | Opaque service-event JSON emitted during the run, including routing, tool, final, and typed-drain-compatible payloads. Every record includes monotonic `t_ms`. |
 | `final.json` | Yes | Exit status, signal, duration, final metadata, usage, cost, routing actual, session log path, and normalized final text. |
 | `quota.json` | When applicable | Scrubbed quota/status probe output and parsed quota windows used to accept or reject the record run. |
 | `scrub-report.json` | Yes | Redaction rules applied, environment values removed, secret-pattern hit counts, and fields intentionally preserved. |
+| `assertions.json` or `assertions.yaml` | Test fixtures only | Time-coded semantic assertions for automated tests. This is a sidecar test spec, not observed evidence, and may be regenerated or tightened without changing the recorded PTY facts. |
 
-Timing is stored as monotonic milliseconds from cassette start, quantized to
-`manifest.timing.resolution_ms`. Version `1` uses `resolution_ms: 100` by
+Timing is event-driven. The recorder writes a monotonic `t_ms` timestamp on
+every observed input event, raw output chunk, resize, signal, derived frame,
+service event, and final event. Fixed-interval frame sampling is optional and
+derived; it is not the authoritative recording model. This keeps recordings
+compact while preserving the exact timeline needed to test terminal emulation,
+buffering, delays, and interactions.
+
+Timestamps are stored as monotonic milliseconds from cassette start, quantized
+to `manifest.timing.resolution_ms`. Version `1` uses `resolution_ms: 100` by
 default so replay preserves the shape of a real TUI session without pretending
 to be nanosecond-accurate. Recorders may use a finer capture resolution in
 version `1` when a TUI or test needs it; replay mode remains orthogonal to
@@ -151,8 +161,11 @@ capture resolution. Replay supports three timing modes:
 - `collapsed`: ignore sleeps and replay in event order for fast deterministic
   CI assertions.
 
-Replay must preserve event order, resize ordering, process exit, final service
-metadata, and the recorded timing relation within one timestamp resolution.
+Replay must preserve event order, raw output chunk boundaries, resize ordering,
+process exit, final service metadata, and the recorded timing relation within
+one timestamp resolution. Terminal emulator tests replay `output.jsonl` at full
+speed under a virtual clock, so assertions run at the same logical place in the
+timeline without waiting on wall-clock sleeps.
 
 Nondeterministic terminal content normalization is separate from secret
 scrubbing. Scrubbing removes sensitive values. Normalization handles volatile
@@ -202,20 +215,81 @@ Replay is deterministic by default:
 - service-event assertions compare typed payloads after documented scrub rules,
   not raw secrets or machine-specific paths.
 
+## Automated Cassette Assertion Framework
+
+All PTY/cassette acceptance tests must be automated. Manual inspection is useful
+for debugging, but it is never a promotion gate for `supported` capability
+status. The default `go test ./...` path must run replay-only tests that are
+credential-free, provider-free, parallel-safe, and fast. Live record mode and
+Docker conformance mode may be opt-in because they need binaries, credentials,
+or containers, but when enabled they must still run without human keystrokes or
+manual TUI observation.
+
+The project will build a test-only cassette assertion framework on top of
+`internal/pty/session`, `internal/pty/terminal`, and `internal/pty/cassette`.
+That framework owns:
+
+- scenario definitions that name the cassette, terminal size, replay mode,
+  fixture driver, environment policy, and expected artifacts;
+- time-coded assertions over frames, raw output chunks, input events, resize
+  events, service events, final metadata, exit status, and timing gaps;
+- a virtual clock for `collapsed` replay so time-coded tests run quickly while
+  preserving recorded event order;
+- `realtime` and `scaled` replay modes for tests that explicitly validate
+  scheduler behavior;
+- parallel fixture isolation: read-only cassette inputs, per-test temp dirs,
+  per-test `HOME`/config roots for record mode, no global tmux/session state,
+  unique artifact output paths, and deterministic cleanup;
+- structured failure reports that include the failed assertion, nearest frame
+  timestamps, relevant screen excerpts, and service-event context.
+
+Assertion specs must support at least these predicate families:
+
+| Predicate Family | Examples |
+|------------------|----------|
+| Frame content | `at t_ms screen contains`, `within window eventually contains`, `never contains`, `stable_for`, normalized volatile text comparison |
+| Terminal state | cursor position/visibility, rows/cols, alternate-screen state, style/color policy, scrollback or screen clear facts |
+| Timing and buffering | output chunk ordering, maximum gap, minimum delay, delayed prompt arrival, split escape sequence handling, backpressure/large output completion |
+| Input and resize | exact bytes sent, paste boundaries, control keys, signal events, resize order relative to output |
+| Service events | typed-drain-compatible JSON shape, quota/model/reasoning/usage metadata, final status, warning presence or absence |
+| Process lifecycle | exit code, signal, EOF, timeout, cancellation, no leaked child process evidence |
+
+The initial scenario set is:
+
+1. `top` through Docker conformance, with initial paint, refresh, input-driven
+   change, and resize-driven layout change.
+2. `claude` authenticated record mode plus replay cassettes for quota/status,
+   model list, reasoning levels, token usage, and one prompt run.
+3. `codex` authenticated record mode plus replay cassettes for quota/status,
+   model list, reasoning levels, token usage, and one prompt run.
+
+The framework must be extensible before those scenarios are marked complete.
+Adding a new weird terminal case should require adding a scenario fixture and
+assertion spec, not writing one-off sleeps or parser-specific test plumbing.
+Required synthetic fixture families include partial ANSI/VT escape sequences,
+one-byte chunking, alternate screen, cursor addressing, screen clears, SGR
+style changes, OSC/title sequences, bracketed paste, Unicode wide and combining
+characters, resize during output, resize during an escape sequence, rapid
+redraw/spinner frames, delayed output, no-newline prompts, large buffered
+output, EOF during redraw, cancellation, and timeout.
+
 ## PTY Library Test Strategy
 
 The PTY library is not complete until it proves useful behavior against real
-terminal programs, not only fake sessions and happy-path harness probes.
+terminal programs, not only fake sessions and happy-path harness probes. These
+tests are layered on the automated cassette assertion framework above; they do
+not rely on manual inspection, arbitrary sleeps, or terminal text scraping
+outside the selected emulator.
 
 | Test Class | Required Coverage |
 |------------|-------------------|
-| Unit and fake-session tests | Startup failure, normal exit, EOF, timeout, cancellation, process-group cleanup, large input, multiline paste boundaries, control keys, resize events, raw output capture, frame derivation, deterministic fake clock, and replay ordering. |
+| Unit and fake-session tests | Startup failure, normal exit, EOF, timeout, cancellation, process-group cleanup, large input, multiline paste boundaries, control keys, resize events, raw output capture, frame derivation, deterministic fake clock, replay ordering, and assertion-runner failure reporting. |
 | Host PTY smoke tests | Portable Unix commands such as `sh`, `cat`, `stty size`, and `sleep` verify stdin/stdout, exit status, terminal sizing, cancellation, and no leaked child processes without credentials or network. Linux and macOS host smoke targets are required before primary PTY support is promoted. Windows support is an explicit gap until a Windows PTY adapter and fixtures are designed. |
-| Docker TUI conformance tests | A pinned Linux container image supplies known TUI programs. The first required target is Unix `top`: capture several distinct screens from one run, including initial paint, later refresh frames, and at least one interaction or resize that changes the screen. Assertions check semantic screen facts and frame progression rather than brittle byte-for-byte full-screen output. |
-| Terminal rendering tests | `internal/pty/terminal` must wrap a real VT/ANSI emulator. Tests must prove screen clears, cursor movement, SGR style policy, alternate-screen behavior where available, Unicode/wide characters, partial escape sequences, resize races, and volatile-content normalization. Regex ANSI stripping is not accepted as the screen model. |
-| Additional TUI diversity | Add at least two more common terminal shapes before calling the library mature: a pager flow such as `less`, and an editor or curses-style full-screen flow such as `vim`, `nano`, or `dialog`, using Docker when host availability is inconsistent. |
-| Cassette replay tests | Record a deterministic synthetic terminal run, replay it through the cassette reader/player, and assert manifest fields, input ordering, raw output, frame snapshots, scrub report, final status, and read-only replay behavior. |
-| Authenticated harness tests | Opt-in recorder tests drive Claude and Codex through the same PTY library to extract quota/status, model listings, reasoning levels, and token usage. Missing binary/auth/quota/timeout cases must fail before writing accepted cassettes. |
+| Docker TUI conformance tests | A pinned Linux container image supplies known TUI programs. The first required target is Unix `top`: capture several distinct screens from one run, including initial paint, later refresh frames, and at least one interaction or resize that changes the screen. Assertions are time-coded scenario predicates over rendered frames and service metadata, not brittle byte-for-byte full-screen output. |
+| Terminal rendering tests | `internal/pty/terminal` must wrap a real VT/ANSI emulator. Tests must prove screen clears, cursor movement, SGR style policy, alternate-screen behavior where available, Unicode/wide characters, partial escape sequences, resize races, buffering/delay behavior, and volatile-content normalization. Regex ANSI stripping is not accepted as the screen model. |
+| Additional TUI diversity | Add at least two more common terminal shapes before calling the library mature: a pager flow such as `less`, and an editor or curses-style full-screen flow such as `vim`, `nano`, or `dialog`, using Docker when host availability is inconsistent. Each new TUI shape must be a reusable scenario fixture. |
+| Cassette replay tests | Record a deterministic synthetic terminal run, replay it through the cassette reader/player and assertion framework, and assert manifest fields, input ordering, raw output, frame snapshots, scrub report, final status, read-only replay behavior, and parallel replay safety. |
+| Authenticated harness tests | Opt-in recorder tests drive Claude and Codex through the same PTY library to extract quota/status, model listings, reasoning levels, token usage, and one prompt run. Missing binary/auth/quota/timeout cases must fail before writing accepted cassettes. Replay cassettes for these flows must run in default CI without credentials. |
 
 ## Inspection
 
@@ -263,6 +337,7 @@ never normalizes or rewrites the evidence.
 | Success Metric | Review Trigger |
 |----------------|----------------|
 | A future cassette runner can record and replay one codex or claude run through the same direct PTY transport | Record and replay use different process/session supervisors |
+| Time-coded cassette assertions run in collapsed mode quickly and in parallel for top, Claude, Codex, and synthetic edge fixtures | Tests rely on sleeps, manual inspection, or serial global state |
 | PTY conformance tests capture useful multi-frame output from Unix `top` and at least two other terminal program shapes | The library is marked complete using only fake sessions or Claude/Codex probes |
 | Linux and macOS host PTY smoke tests pass or report an explicit platform gap | Primary PTY support is claimed from Docker-only Linux evidence |
 | Codex and Claude model-list and quota probes run through the direct PTY library | A capability is marked supported from tmux-only evidence |

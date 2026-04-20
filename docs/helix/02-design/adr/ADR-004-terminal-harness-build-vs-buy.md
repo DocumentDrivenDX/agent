@@ -64,10 +64,10 @@ The PTY library work is limited to orchestration and evidence:
 
 Before `agent-949a5ba4` starts implementation, the project must complete a
 build-vs-buy evaluation bead that compares concrete dependencies for PTY
-lifecycle, terminal rendering, recording/playback, replay timing, licensing,
-maintenance health, and API fit. The evaluation must explicitly decide whether
-the first implementation remains under `internal/pty` or is split out
-immediately.
+lifecycle, terminal rendering, event-driven recording/playback, replay timing,
+automated time-coded assertion support, licensing, maintenance health, and API
+fit. The evaluation must explicitly decide whether the first implementation
+remains under `internal/pty` or is split out immediately.
 
 The default is to keep the first implementation under `internal/pty` with
 separable package boundaries. Split it into a standalone project only when one
@@ -101,6 +101,7 @@ of these triggers occurs:
 |------|--------|
 | Positive | The implementation effort narrows to DDX-specific evidence instead of terminal-emulator ownership. |
 | Positive | Candidate dependency evaluation becomes a blocking prerequisite, reducing accidental NIH work. |
+| Positive | The selected dependencies must fit the automated cassette assertion strategy, not only live terminal display. |
 | Positive | Extraction is designed in, but delayed until the API is proven by real harnesses. |
 | Negative | The PTY/cassette work cannot start as a coding bead until the buy-vs-build review completes. |
 | Negative | The project may still need to own a small cassette schema if existing recorders cannot carry service events and quota evidence cleanly. |
@@ -119,6 +120,7 @@ of these triggers occurs:
 | Success Metric | Review Trigger |
 |----------------|----------------|
 | `agent-949a5ba4` cites a completed build-vs-buy matrix before choosing dependencies | Implementation imports a terminal/PTY dependency without documented comparison |
+| Dependency choices support fast replay and time-coded assertion tests without live credentials | The test plan depends on manual TUI inspection or wall-clock sleeps |
 | PTY code wraps adopted PTY/emulator dependencies behind package interfaces | Raw ANSI parsing or platform PTY code appears without a rejection rationale |
 | Cassette design reuses existing recording concepts where possible and explains every DDX-specific extension | New recording schema duplicates asciicast without service-event justification |
 | Project split is reconsidered after one working Claude/Codex cassette and before any public API promise | `internal/pty` grows into a reusable library with no extraction decision |
