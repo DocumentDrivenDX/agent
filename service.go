@@ -111,12 +111,14 @@ type HarnessInfo struct {
 	Error                string
 	IsLocal              bool
 	IsSubscription       bool
+	TestOnly             bool
 	ExactPinSupport      bool
 	DefaultModel         string   // built-in default model when no override is supplied
 	SupportedPermissions []string // subset of {"safe","supervised","unrestricted"}
 	SupportedReasoning   []string // values such as {"low","medium","high","xhigh","max"}
 	CostClass            string   // "local" | "cheap" | "medium" | "expensive"
 	Quota                *QuotaState
+	CapabilityMatrix     HarnessCapabilityMatrix
 }
 
 // CooldownState describes an active routing cooldown for a provider.
@@ -435,11 +437,13 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 			Error:                st.Error,
 			IsLocal:              cfg.IsLocal,
 			IsSubscription:       cfg.IsSubscription,
+			TestOnly:             cfg.TestOnly,
 			ExactPinSupport:      cfg.ExactPinSupport,
 			DefaultModel:         cfg.DefaultModel,
 			SupportedPermissions: supportedPermissions(cfg),
 			SupportedReasoning:   supportedReasoning(cfg),
 			CostClass:            cfg.CostClass,
+			CapabilityMatrix:     harnessCapabilityMatrix(name, cfg),
 		}
 
 		// Populate live Quota for harnesses that have durable quota caches.

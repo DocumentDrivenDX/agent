@@ -35,7 +35,7 @@ func TestListHarnesses_shape(t *testing.T) {
 		byName[h.Name] = h
 	}
 
-	// All 10 builtins must appear.
+	// All builtins must appear.
 	expected := []string{
 		"codex", "claude", "gemini", "opencode", "agent",
 		"pi", "virtual", "script", "openrouter", "lmstudio", "omlx",
@@ -169,6 +169,170 @@ func TestListHarnesses_shape(t *testing.T) {
 		assertContains(t, h.SupportedReasoning, "minimal", "opencode reasoning")
 		assertContains(t, h.SupportedReasoning, "max", "opencode reasoning")
 	})
+
+	t.Run("capability_matrix_all_harnesses", func(t *testing.T) {
+		expected := map[string]agent.HarnessCapabilityMatrix{
+			"codex": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
+				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"claude": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
+				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"gemini": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityUnsupported),
+				UsageCapture:    capStatus(agent.HarnessCapabilityUnsupported),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"opencode": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
+				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityUnsupported),
+				UsageCapture:    capStatus(agent.HarnessCapabilityUnsupported),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"agent": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"pi": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityUnsupported),
+				UsageCapture:    capStatus(agent.HarnessCapabilityUnsupported),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"virtual": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityNotApplicable),
+				ModelPinning:    capStatus(agent.HarnessCapabilityNotApplicable),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityNotApplicable),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityNotApplicable),
+				PermissionModes: capStatus(agent.HarnessCapabilityNotApplicable),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityUnsupported),
+				UsageCapture:    capStatus(agent.HarnessCapabilityUnsupported),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityNotApplicable),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(agent.HarnessCapabilityRequired),
+			},
+			"script": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityNotApplicable),
+				ModelPinning:    capStatus(agent.HarnessCapabilityNotApplicable),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityNotApplicable),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityNotApplicable),
+				PermissionModes: capStatus(agent.HarnessCapabilityNotApplicable),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityUnsupported),
+				UsageCapture:    capStatus(agent.HarnessCapabilityUnsupported),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityNotApplicable),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(agent.HarnessCapabilityRequired),
+			},
+			"openrouter": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"lmstudio": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+			"omlx": {
+				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
+				FinalText:       capStatus(agent.HarnessCapabilityUnsupported),
+				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+			},
+		}
+
+		for name, want := range expected {
+			got := byName[name].CapabilityMatrix
+			assertCapabilityMatrix(t, name, got, want)
+		}
+	})
 }
 
 func assertContains(t *testing.T, slice []string, want, context string) {
@@ -179,4 +343,34 @@ func assertContains(t *testing.T, slice []string, want, context string) {
 		}
 	}
 	t.Errorf("%s: want %q in %v", context, want, slice)
+}
+
+func capStatus(status agent.HarnessCapabilityStatus) agent.HarnessCapability {
+	return agent.HarnessCapability{Status: status}
+}
+
+func assertCapabilityMatrix(t *testing.T, name string, got, want agent.HarnessCapabilityMatrix) {
+	t.Helper()
+	assertCapability(t, name, "ExecutePrompt", got.ExecutePrompt, want.ExecutePrompt)
+	assertCapability(t, name, "ModelDiscovery", got.ModelDiscovery, want.ModelDiscovery)
+	assertCapability(t, name, "ModelPinning", got.ModelPinning, want.ModelPinning)
+	assertCapability(t, name, "WorkdirContext", got.WorkdirContext, want.WorkdirContext)
+	assertCapability(t, name, "ReasoningLevels", got.ReasoningLevels, want.ReasoningLevels)
+	assertCapability(t, name, "PermissionModes", got.PermissionModes, want.PermissionModes)
+	assertCapability(t, name, "ProgressEvents", got.ProgressEvents, want.ProgressEvents)
+	assertCapability(t, name, "UsageCapture", got.UsageCapture, want.UsageCapture)
+	assertCapability(t, name, "FinalText", got.FinalText, want.FinalText)
+	assertCapability(t, name, "ToolEvents", got.ToolEvents, want.ToolEvents)
+	assertCapability(t, name, "QuotaStatus", got.QuotaStatus, want.QuotaStatus)
+	assertCapability(t, name, "RecordReplay", got.RecordReplay, want.RecordReplay)
+}
+
+func assertCapability(t *testing.T, harness, field string, got, want agent.HarnessCapability) {
+	t.Helper()
+	if got.Status != want.Status {
+		t.Errorf("%s.%s Status: got %q, want %q", harness, field, got.Status, want.Status)
+	}
+	if got.Detail == "" {
+		t.Errorf("%s.%s Detail: should explain the capability status", harness, field)
+	}
 }

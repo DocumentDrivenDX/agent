@@ -233,12 +233,43 @@ type HarnessInfo struct {
     Error                string   // when Available=false
     IsLocal              bool
     IsSubscription       bool
+    TestOnly             bool     // true for sentinel harnesses excluded from production routing
     ExactPinSupport      bool
     DefaultModel         string   // built-in default model when no override is supplied
     SupportedPermissions []string // subset of {"safe","supervised","unrestricted"}
     SupportedReasoning   []string // values such as {"off","low","medium","high","minimal","xhigh","max"}
     CostClass            string   // "local" | "cheap" | "medium" | "expensive"
     Quota                *QuotaState // nil if not applicable; live field
+    CapabilityMatrix     HarnessCapabilityMatrix
+}
+
+type HarnessCapabilityStatus string
+
+const (
+    HarnessCapabilityRequired      HarnessCapabilityStatus = "required"
+    HarnessCapabilityOptional      HarnessCapabilityStatus = "optional"
+    HarnessCapabilityUnsupported   HarnessCapabilityStatus = "unsupported"
+    HarnessCapabilityNotApplicable HarnessCapabilityStatus = "not_applicable"
+)
+
+type HarnessCapability struct {
+    Status HarnessCapabilityStatus
+    Detail string // human-readable reason tied to the current implementation
+}
+
+type HarnessCapabilityMatrix struct {
+    ExecutePrompt     HarnessCapability
+    ModelDiscovery    HarnessCapability
+    ModelPinning      HarnessCapability
+    WorkdirContext    HarnessCapability
+    ReasoningLevels   HarnessCapability
+    PermissionModes   HarnessCapability
+    ProgressEvents    HarnessCapability
+    UsageCapture      HarnessCapability
+    FinalText         HarnessCapability
+    ToolEvents        HarnessCapability
+    QuotaStatus       HarnessCapability
+    RecordReplay      HarnessCapability
 }
 
 type ProviderInfo struct {
@@ -319,6 +350,48 @@ type Event struct {
     Data     json.RawMessage    // shape depends on Type; see schemas below
 }
 ```
+
+## Harness Capability Matrix
+
+`ListHarnesses` exposes `HarnessInfo.CapabilityMatrix` so consumers can decide
+which harnesses are eligible without reading internal registry structs. Status
+semantics:
+
+- `required`: the service contract relies on this capability for that harness.
+- `optional`: the harness supports the capability, but callers must tolerate its
+  absence on other harnesses.
+- `unsupported`: the capability is meaningful for the harness class but is not
+  currently available.
+- `not_applicable`: the capability does not apply to that harness class.
+
+Current builtin matrix:
+
+| Harness | ExecutePrompt | ModelDiscovery | ModelPinning | WorkdirContext | ReasoningLevels | PermissionModes | ProgressEvents | UsageCapture | FinalText | ToolEvents | QuotaStatus | RecordReplay |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| codex | required | unsupported | optional | optional | optional | optional | required | optional | unsupported | unsupported | optional | unsupported |
+| claude | required | unsupported | optional | optional | optional | optional | required | optional | unsupported | optional | optional | unsupported |
+| gemini | unsupported | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| opencode | unsupported | unsupported | optional | optional | optional | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| agent | required | optional | optional | optional | optional | unsupported | required | optional | unsupported | optional | not_applicable | unsupported |
+| pi | unsupported | unsupported | optional | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| virtual | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | unsupported | not_applicable | not_applicable | required |
+| script | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | unsupported | not_applicable | not_applicable | required |
+| openrouter | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | unsupported | unsupported |
+| lmstudio | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | not_applicable | unsupported |
+| omlx | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | not_applicable | unsupported |
+
+Notes:
+
+- `ExecutePrompt=required` means `Service.Execute` has a wired dispatch path
+  today. Registered subprocess runners that are not wired through
+  `Service.Execute` remain `unsupported` in that row even when lower-level
+  runner code exists.
+- `FinalText=unsupported` until final events expose normalized final response
+  text as a stable public field. Consumers should continue to read text deltas
+  or session logs during the migration window.
+- `RecordReplay=required` only for test-only harnesses (`virtual`, `script`).
+  Production harnesses do not currently expose deterministic record/replay
+  through this service contract.
 
 ## Event JSON shapes
 
