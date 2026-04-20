@@ -55,9 +55,25 @@ func TestResolvePreset(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "default", got)
 
-	_, err = resolvePreset("codex", cfg)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `preset "codex" was removed`)
+	// Deprecated alias codex resolves to cheap with a warning
+	got, err = resolvePreset("codex", cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "cheap", got)
+
+	// Deprecated alias "agent" resolves to default
+	got, err = resolvePreset("agent", cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "default", got)
+
+	// Deprecated alias "claude" resolves to smart
+	got, err = resolvePreset("claude", cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "smart", got)
+
+	// Deprecated alias "cursor" resolves to default
+	got, err = resolvePreset("cursor", cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "default", got)
 }
 
 func TestResolveRunReasoningNormalizesExplicitValues(t *testing.T) {

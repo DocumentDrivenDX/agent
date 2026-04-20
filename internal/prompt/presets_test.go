@@ -43,11 +43,31 @@ func TestResolvePresetName(t *testing.T) {
 		assert.Equal(t, "smart", got)
 	})
 
-	t.Run("removed preset errors", func(t *testing.T) {
-		_, err := ResolvePresetName("codex")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `preset "codex" was removed`)
-		assert.Contains(t, err.Error(), `"cheap"`)
+	t.Run("deprecated aliases resolve to replacements", func(t *testing.T) {
+		// agent -> default
+		got, err := ResolvePresetName("agent")
+		require.NoError(t, err)
+		assert.Equal(t, "default", got)
+
+		// claude -> smart
+		got, err = ResolvePresetName("claude")
+		require.NoError(t, err)
+		assert.Equal(t, "smart", got)
+
+		// codex -> cheap
+		got, err = ResolvePresetName("codex")
+		require.NoError(t, err)
+		assert.Equal(t, "cheap", got)
+
+		// cursor -> default
+		got, err = ResolvePresetName("cursor")
+		require.NoError(t, err)
+		assert.Equal(t, "default", got)
+
+		// worker -> default
+		got, err = ResolvePresetName("worker")
+		require.NoError(t, err)
+		assert.Equal(t, "default", got)
 	})
 
 	t.Run("unknown preset errors", func(t *testing.T) {

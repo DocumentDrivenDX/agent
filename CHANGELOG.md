@@ -5,6 +5,13 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Added
+- **Deprecation warnings for harness-flavored preset names.** Old preset names
+  (`agent`, `worker`, `cursor`, `claude`, `codex`) now emit a stderr warning
+  and resolve to their intent-flavored equivalents (`default`, `smart`, `cheap`)
+  instead of failing. The warnings will become errors in a future release.
+  (`agent-a365bcf2`)
+
 ## [v0.5.0] — 2026-04-19
 
 ### Breaking
@@ -24,12 +31,13 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 - The standalone `ddx-agent` binary continues to use the internal native loop,
   but that loop is no longer part of the exported Go API.
 
-### Breaking
-- **Removed harness-flavored prompt preset names.** The system prompt preset
-  surface now accepts only intent-flavored names: `default`, `smart`, `cheap`,
-  `minimal`, and `benchmark`. The old `agent`, `worker`, `cursor`, `claude`,
-  and `codex` names now fail with a clear replacement hint instead of
-  resolving as aliases. (`.execute-bead-wt-agent-a365bcf2-20260418T023201-36db884d-346c73b4`)
+### Changed
+- **Deprecated harness-flavored prompt preset names.** The old `agent`, `worker`,
+  `cursor`, `claude`, and `codex` names now emit a stderr warning and resolve
+  to their intent-flavored equivalents: `agent`/`worker`/`cursor` → `default`,
+  `claude` → `smart`, `codex` → `cheap`. The warnings will become errors in a
+  future release. Canonical names (`default`, `smart`, `cheap`, `minimal`,
+  `benchmark`) are unchanged. (`.execute-bead-wt-agent-a365bcf2-20260419T235909-68f00fa1`)
 - **Renamed the file-discovery tool from `glob` to `find`.** The built-in tool
   catalog now exposes only `find`; there is no `glob` compatibility alias.
   (`agent-1b00b3ea`)
