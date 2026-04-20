@@ -80,6 +80,11 @@ type DdxAgent interface {
     // (used by dry-run-then-execute flows).
     ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
 
+    // RecordRouteAttempt records caller feedback about a routed candidate.
+    // Non-success statuses create a same-process cooldown keyed by
+    // harness/provider/model/endpoint; success clears matching active failures.
+    RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
+
     // RouteStatus returns global routing state across all routes: cooldowns,
     // recent decisions, observation-derived per-(provider,model) latency.
     // Distinct from per-request ResolveRoute — this is the read-only operator
@@ -91,10 +96,9 @@ type DdxAgent interface {
 func New(opts Options) (DdxAgent, error)
 ```
 
-**Eight methods total.** `Execute` is the primary verb; `TailSessionLog`,
+**Nine methods total.** `Execute` is the primary verb; `TailSessionLog`,
 `ListHarnesses`, `ListProviders`, `ListModels`, `HealthCheck`, `ResolveRoute`,
-`RouteStatus` are the supporting surface. (Counted as "7 + New" in earlier
-drafts; interface has 8 methods.)
+`RecordRouteAttempt`, and `RouteStatus` are the supporting surface.
 
 ## Public types
 
@@ -225,6 +229,18 @@ type Candidate struct {
     PerfSignal    PerfSignal
 }
 
+type RouteAttempt struct {
+    Harness   string
+    Provider  string
+    Model     string
+    Endpoint  string
+    Status    string        // "success" clears active failures; other values record failure
+    Reason    string        // machine-readable failure reason when available
+    Error     string        // human-readable failure detail
+    Duration  time.Duration
+    Timestamp time.Time     // zero = service clock
+}
+
 type HarnessInfo struct {
     Name                 string
     Type                 string   // "native" | "subprocess"
@@ -316,6 +332,7 @@ type CooldownState struct {
     Until     time.Time
     FailCount int
     LastError string
+    LastAttempt time.Time
 }
 
 type RouteStatusReport struct {
@@ -667,6 +684,20 @@ Cost caps, timeout limits, permission policy, and determinism controls apply
 across both passes as one execution budget. The agent-side contract defines the
 fields and semantics; the DDx execute-loop implementation is tracked in the
 paired DDx repo bead `ddx-785d02f7`.
+
+## Route Attempt Feedback
+
+`RecordRouteAttempt` is deterministic, process-local routing feedback. It does
+not persist across process restarts. The active TTL is `ServiceConfig`
+`HealthCooldown`; when that is unset the default is 30 seconds.
+
+Candidate keying uses the tuple `(Harness, Provider, Model, Endpoint)`.
+Consumers should provide every field they know. A non-success `Status` records
+an active failure and future `ResolveRoute` calls demote matching candidates
+inside the same process until the TTL expires. `Status="success"` clears
+matching active failures so a recovered candidate is eligible without waiting
+for TTL expiry. `RouteStatus` reports active route-attempt cooldowns on matching
+candidates with `Reason`, `LastError`, `LastAttempt`, and `Until` timestamps.
 
 ## Harness Integration Testing
 

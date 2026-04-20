@@ -22,6 +22,7 @@ type DdxAgent interface {
 	ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 	HealthCheck(ctx context.Context, target HealthTarget) error
 	ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
+	RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
 	RouteStatus(ctx context.Context) (*RouteStatusReport, error)
 }
 
@@ -123,10 +124,11 @@ type HarnessInfo struct {
 
 // CooldownState describes an active routing cooldown for a provider.
 type CooldownState struct {
-	Reason    string    // "consecutive_failures" | "manual" | etc.
-	Until     time.Time // when the cooldown expires
-	FailCount int       // number of consecutive failures that triggered the cooldown
-	LastError string    // last recorded error message, if available
+	Reason      string    // "consecutive_failures" | "route_attempt_failure" | "manual" | etc.
+	Until       time.Time // when the cooldown expires
+	FailCount   int       // number of consecutive failures that triggered the cooldown
+	LastError   string    // last recorded error message, if available
+	LastAttempt time.Time // when the feedback was recorded
 }
 
 // ProviderInfo describes a provider with live status per CONTRACT-003.
@@ -200,6 +202,21 @@ type RouteDecision struct {
 	Provider string
 	Model    string
 	Reason   string
+}
+
+// RouteAttempt is caller feedback about one attempted route candidate.
+// Status="success" clears matching active failures; any other non-empty status
+// records a same-process failure until the service health cooldown expires.
+type RouteAttempt struct {
+	Harness   string
+	Provider  string
+	Model     string
+	Endpoint  string
+	Status    string
+	Reason    string
+	Error     string
+	Duration  time.Duration
+	Timestamp time.Time // zero = time.Now()
 }
 
 // RouteStatusReport is returned by RouteStatus.
@@ -295,12 +312,31 @@ type service struct {
 	// lastDecisionCache maps route key → (decision, time). Populated by
 	// ResolveRoute; read by RouteStatus.
 	lastDecisionCache map[string]lastDecisionEntry
+
+	routeAttemptMu sync.RWMutex
+	routeAttempts  map[routeAttemptKey]routeAttemptRecord
 }
 
 // lastDecisionEntry caches the most recent RouteDecision for a route key.
 type lastDecisionEntry struct {
 	decision *RouteDecision
 	at       time.Time
+}
+
+type routeAttemptKey struct {
+	Harness  string
+	Provider string
+	Model    string
+	Endpoint string
+}
+
+type routeAttemptRecord struct {
+	key        routeAttemptKey
+	status     string
+	reason     string
+	err        string
+	duration   time.Duration
+	recordedAt time.Time
 }
 
 // loadServiceConfig, when non-nil, is called by New to load a ServiceConfig

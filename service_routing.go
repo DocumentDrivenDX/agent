@@ -33,6 +33,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		Permissions:        req.Permissions,
 		ProviderPreference: providerPreferenceForProfile(profile),
 	}
+	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
 		return nil, err
@@ -46,6 +47,49 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	// Cache the decision so RouteStatus can surface LastDecision.
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
+}
+
+func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
+	if in == nil {
+		return
+	}
+	ttl := s.routeAttemptTTL()
+	records := s.activeRouteAttempts(time.Now(), ttl)
+	if len(records) == 0 {
+		return
+	}
+	if in.ProviderCooldowns == nil {
+		in.ProviderCooldowns = make(map[string]time.Time)
+	}
+	if in.CooldownDuration <= 0 {
+		in.CooldownDuration = ttl
+	}
+	for _, record := range records {
+		if record.key.Provider != "" {
+			existing, ok := in.ProviderCooldowns[record.key.Provider]
+			if !ok || record.recordedAt.After(existing) {
+				in.ProviderCooldowns[record.key.Provider] = record.recordedAt
+			}
+		}
+		if record.key.Provider == "" && record.key.Harness != "" {
+			for i := range in.Harnesses {
+				if in.Harnesses[i].Name == record.key.Harness {
+					in.Harnesses[i].InCooldown = true
+				}
+			}
+		}
+	}
+}
+
+func (s *service) routeAttemptTTL() time.Duration {
+	if s.opts.ServiceConfig == nil {
+		return defaultRouteAttemptCooldown
+	}
+	ttl := s.opts.ServiceConfig.HealthCooldown()
+	if ttl <= 0 {
+		return defaultRouteAttemptCooldown
+	}
+	return ttl
 }
 
 // reqProfileFromModelRef returns ref when ref is a known profile alias,
