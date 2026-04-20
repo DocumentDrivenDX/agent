@@ -79,6 +79,11 @@ maintainability, Unicode/wide-character support, alternate screen behavior,
 resize behavior, OSC/title handling, color/style support, API fit, and test
 coverage.
 
+The selected emulator backend and version must be recorded in
+`manifest.terminal.emulator` for every cassette whose frames were derived
+through that backend. Frame assertions either re-derive frames from raw output
+with the manifest-pinned emulator or fail with a clear emulator mismatch.
+
 Candidate families include:
 
 - `github.com/hinshun/vt10x`
@@ -133,6 +138,7 @@ are designed.
 | Terminal model handles raw byte streams, resize, input-driven redraw, and volatile normalization | Harness probes parse regex-stripped ANSI text |
 | `output.raw` and `frames.jsonl` are both generated from the same PTY stream | Cassette contains frames without raw evidence |
 | Terminal backend can be replaced behind one interface | Harness adapters import a concrete emulator package |
+| Cassettes record the emulator name/version used for frame derivation | Frame assertions pass or fail differently after an emulator upgrade with no manifest mismatch |
 
 ## References
 

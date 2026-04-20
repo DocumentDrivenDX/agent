@@ -125,27 +125,35 @@ append-only event streams. Version `1` contains:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `manifest.version` | Yes | Cassette schema version. Starts at `1`; incompatible changes increment the major version. |
+| `manifest.id` | Yes | Stable UUID generated when the cassette is recorded. Assertion specs must reference this ID so they cannot silently attach to a different recording. |
+| `manifest.content_digest` | Yes | Digest metadata for recorded evidence, including at least `sha256` over `output.raw`. Assertion specs must reference the digest they were authored against. |
 | `manifest.harness` | Yes | Harness name, binary path fingerprint, binary version string when available, and capability row snapshot. |
 | `manifest.command` | Yes | Scrubbed argv, working directory policy, environment allowlist names, timeout settings, and permission mode. |
-| `manifest.terminal` | Yes | Initial rows/cols, resize events, locale, TERM value, and PTY mode flags needed for replay. |
+| `manifest.terminal` | Yes | Initial rows/cols, resize events, locale, TERM value, PTY mode flags, and terminal emulator identity `{name, version}` used to derive frames. |
 | `manifest.timing` | Yes | Clock policy, timestamp resolution, replay default, and any scaling/collapse policy used by tests. Version `1` defaults to 100ms timestamp resolution, but recorders may choose a finer `resolution_ms` without a schema bump. |
 | `manifest.provenance` | Yes | Agent git SHA, contract version, OS/arch, recorded-at timestamp, and recorder version. |
-| `input.jsonl` | Yes | User/input events: bytes sent to stdin, paste boundaries, control keys, resize events, and signal events. Every record includes monotonic `t_ms`. |
+| `input.jsonl` | Yes | User/input events: bytes sent to stdin, paste boundaries, control keys, resize events, and signal events. Every record includes monotonic `seq` and `t_ms`. |
 | `output.raw` | Yes | Raw output bytes from the PTY, exactly as observed after environment scrubbing. This is the byte-for-byte evidence stream. |
-| `output.jsonl` | Yes | Timed raw output chunks from the PTY. Every record includes monotonic `t_ms`, byte offsets into `output.raw`, chunk length, and the chunk data or a reference to the raw byte range. This is the authoritative timing source for buffering, delay, and emulator replay tests. |
-| `frames.jsonl` | Yes | Screen snapshots or frame diffs at monotonic `t_ms` timestamps for human review and deterministic replay assertions. |
-| `service-events.jsonl` | Yes | Opaque service-event JSON emitted during the run, including routing, tool, final, and typed-drain-compatible payloads. Every record includes monotonic `t_ms`. |
+| `output.jsonl` | Yes | Timed raw output chunks from the PTY. Every record includes monotonic `seq` and `t_ms`, byte offset into `output.raw`, chunk length, and optional chunk digest. Inline chunk bytes are forbidden in version `1`; replay reads bytes from `output.raw` by offset to avoid JSON byte-encoding ambiguity. |
+| `frames.jsonl` | Yes | Screen snapshots or frame diffs at monotonic `seq` and `t_ms` timestamps for human review and deterministic replay assertions. Frames are derived artifacts, not the byte-level evidence source. |
+| `service-events.jsonl` | Yes | Opaque service-event JSON emitted during the run, including routing, tool, final, and typed-drain-compatible payloads. Every record includes monotonic `seq` and `t_ms`. |
 | `final.json` | Yes | Exit status, signal, duration, final metadata, usage, cost, routing actual, session log path, and normalized final text. |
 | `quota.json` | When applicable | Scrubbed quota/status probe output and parsed quota windows used to accept or reject the record run. |
 | `scrub-report.json` | Yes | Redaction rules applied, environment values removed, secret-pattern hit counts, and fields intentionally preserved. |
 | `assertions.json` or `assertions.yaml` | Test fixtures only | Time-coded semantic assertions for automated tests. This is a sidecar test spec, not observed evidence, and may be regenerated or tightened without changing the recorded PTY facts. |
 
-Timing is event-driven. The recorder writes a monotonic `t_ms` timestamp on
-every observed input event, raw output chunk, resize, signal, derived frame,
-service event, and final event. Fixed-interval frame sampling is optional and
-derived; it is not the authoritative recording model. This keeps recordings
-compact while preserving the exact timeline needed to test terminal emulation,
-buffering, delays, and interactions.
+Because the child process runs under a PTY, stdout and stderr are normally
+merged by the terminal slave and recorded together in `output.raw`. If a future
+harness exposes a separate non-PTY stderr stream, that stream must either be
+normalized into service events or added as an explicit optional artifact; it
+must not be silently dropped.
+
+Timing is event-driven. The recorder writes a monotonic `seq` and monotonic
+`t_ms` timestamp on every observed input event, raw output chunk, resize,
+signal, derived frame, service event, and final event. Fixed-interval frame
+sampling is optional and derived; it is not the authoritative recording model.
+This keeps recordings compact while preserving the exact timeline needed to
+test terminal emulation, buffering, delays, and interactions.
 
 Timestamps are stored as monotonic milliseconds from cassette start, quantized
 to `manifest.timing.resolution_ms`. Version `1` uses `resolution_ms: 100` by
@@ -167,10 +175,27 @@ one timestamp resolution. Terminal emulator tests replay `output.jsonl` at full
 speed under a virtual clock, so assertions run at the same logical place in the
 timeline without waiting on wall-clock sleeps.
 
+Event order is authoritative by `seq`, not by `t_ms` alone. Multiple events may
+share the same quantized timestamp. Replay and assertion evaluation must process
+same-`t_ms` events in ascending `seq` order. `seq` is global across all cassette
+streams, assigned at observation time, and must be contiguous after merge. If a
+reader needs a deterministic merge for older diagnostic artifacts that lack
+`seq`, the fallback ordering is resize/signal, input, output chunk, derived
+frame, service event, final; accepted version-1 cassettes must not rely on that
+fallback.
+
 Nondeterministic terminal content normalization is separate from secret
 scrubbing. Scrubbing removes sensitive values. Normalization handles volatile
 screen facts such as clocks, PIDs, elapsed durations, and animation counters so
 semantic frame assertions remain stable without weakening raw evidence storage.
+
+Default scrubbing and normalization rules are part of the cassette contract.
+Version `1` starts with: explicit environment allowlist, `HOME` and worktree
+path rewriting, bearer/API token patterns, account identifiers where configured,
+UUID/request/session identifiers, RFC3339 and local timestamp values, elapsed
+durations, PIDs, transient socket/file names, and animation counters. Harness
+adapters may register extension rules, but the scrub report must list every
+rule applied and every intentionally preserved volatile field.
 
 ## Schema Evolution
 
@@ -181,6 +206,11 @@ same major version. Additive optional fields do not require a schema bump;
 renaming, removing, or changing the meaning of required fields requires a new
 major version. Writers stamp the supported `manifest.version` and refuse to
 overwrite a cassette written with a newer major version.
+
+Recorders must compute timing from a monotonic elapsed clock such as
+`time.Since(recordingStart)` or an injected monotonic test clock. They must not
+derive `t_ms` from wall-clock timestamps after serialization. Tests must cover a
+wall-clock jump during recording without changing monotonic event order.
 
 ## Record Mode
 
@@ -198,6 +228,17 @@ If a failure happens after cassette creation starts, the recorder writes an
 explicit failed-run artifact only under a diagnostic path, never as accepted
 golden-master evidence.
 
+Replay mode is parallel-safe. Record mode is not assumed to be parallel-safe for
+authenticated harnesses. Recorders must serialize per harness account and fail
+fast on lock contention rather than running two Claude or Codex record jobs
+against the same credential, quota window, or session store.
+
+Accepted authenticated cassettes must carry freshness metadata sufficient for
+the capability matrix: `captured_at`, harness binary version, auth/account
+class, and any freshness window used for a `supported` claim. Stale cassettes
+remain useful parser fixtures, but they cannot promote or retain live
+capability support without a documented refresh policy.
+
 ## Replay Mode
 
 Replay mode never uses credentials and never contacts a provider. It feeds the
@@ -205,6 +246,14 @@ recorded input/output/frame streams through the same parser, service-event
 decoder, and typed drain assertions used by live mode. Replay can prove parser,
 event-shape, timing behavior, cancellation, cleanup, and PTY transport behavior;
 it cannot prove that a live external harness still works today.
+
+`output.raw` plus `output.jsonl` is the authoritative replay input for terminal
+emulator assertions. `frames.jsonl` is stored for human review, debugging, and
+fast smoke checks, but correctness assertions that validate terminal rendering
+must be able to re-derive frames from `output.raw`/`output.jsonl` through the
+manifest-pinned emulator. When the emulator backend or version changes, the
+reader must either reject stale frame-derived assertions with a clear emulator
+mismatch or require cassette re-recording/regeneration.
 
 Replay is deterministic by default:
 
@@ -214,6 +263,13 @@ Replay is deterministic by default:
 - terminal size and resize events come from `manifest.terminal`;
 - service-event assertions compare typed payloads after documented scrub rules,
   not raw secrets or machine-specific paths.
+
+Realtime and scaled replay exist to validate the cassette replay scheduler:
+given a recorded event sequence and timestamp resolution, the scheduler must
+emit events in `seq` order, sleep according to recorded deltas within one
+resolution tick for `realtime`, multiply deltas by the requested factor for
+`scaled`, and avoid wall-clock sleeps in `collapsed` mode while preserving the
+same logical `t_ms` positions for assertions.
 
 ## Automated Cassette Assertion Framework
 
@@ -230,7 +286,8 @@ The project will build a test-only cassette assertion framework on top of
 That framework owns:
 
 - scenario definitions that name the cassette, terminal size, replay mode,
-  fixture driver, environment policy, and expected artifacts;
+  fixture driver, environment policy, expected artifacts, and expected
+  `manifest.id`/`manifest.content_digest` values;
 - time-coded assertions over frames, raw output chunks, input events, resize
   events, service events, final metadata, exit status, and timing gaps;
 - a virtual clock for `collapsed` replay so time-coded tests run quickly while
@@ -242,6 +299,11 @@ That framework owns:
   unique artifact output paths, and deterministic cleanup;
 - structured failure reports that include the failed assertion, nearest frame
   timestamps, relevant screen excerpts, and service-event context.
+
+Assertion specs must bind to the cassette they were authored against by
+`manifest.id` and content digest. CI must fail when an assertion file points to
+a different cassette ID or digest, even if the current predicates happen to
+pass.
 
 Assertion specs must support at least these predicate families:
 
@@ -268,10 +330,15 @@ Adding a new weird terminal case should require adding a scenario fixture and
 assertion spec, not writing one-off sleeps or parser-specific test plumbing.
 Required synthetic fixture families include partial ANSI/VT escape sequences,
 one-byte chunking, alternate screen, cursor addressing, screen clears, SGR
-style changes, OSC/title sequences, bracketed paste, Unicode wide and combining
+style changes, OSC title, OSC 8 hyperlinks, OSC 52 clipboard writes, bell,
+DECRQM/mode-query responses, line-drawing and alternate character sets,
+bracketed paste, SGR mouse mode, focus-in/out, Unicode wide and combining
 characters, resize during output, resize during an escape sequence, rapid
-redraw/spinner frames, delayed output, no-newline prompts, large buffered
-output, EOF during redraw, cancellation, and timeout.
+redraw/spinner frames, delayed output, no-newline prompts, PTY backpressure or
+large buffered output, final output burst at process exit, EOF during redraw,
+cancellation, and timeout. Sixel and image protocols are out of scope for the
+first implementation unless a selected primary harness emits them; if observed,
+they become explicit gap fixtures rather than silently ignored behavior.
 
 ## PTY Library Test Strategy
 

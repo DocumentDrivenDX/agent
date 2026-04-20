@@ -69,6 +69,10 @@ automated time-coded assertion support, licensing, maintenance health, and API
 fit. The evaluation must explicitly decide whether the first implementation
 remains under `internal/pty` or is split out immediately.
 
+The selected dependency stack must run the SPIKE-001 `top` scenario end to end
+or explicitly reaffirm the SPIKE-001 stack without substitution. A paper matrix
+alone is not sufficient to unblock implementation.
+
 The default is to keep the first implementation under `internal/pty` with
 separable package boundaries. Split it into a standalone project only when one
 of these triggers occurs:
@@ -120,6 +124,7 @@ of these triggers occurs:
 | Success Metric | Review Trigger |
 |----------------|----------------|
 | `agent-949a5ba4` cites a completed build-vs-buy matrix before choosing dependencies | Implementation imports a terminal/PTY dependency without documented comparison |
+| Selected dependencies run the SPIKE-001 `top` scenario end to end | Build-vs-buy approves a stack that has not handled a real full-screen TUI |
 | Dependency choices support fast replay and time-coded assertion tests without live credentials | The test plan depends on manual TUI inspection or wall-clock sleeps |
 | PTY code wraps adopted PTY/emulator dependencies behind package interfaces | Raw ANSI parsing or platform PTY code appears without a rejection rationale |
 | Cassette design reuses existing recording concepts where possible and explains every DDX-specific extension | New recording schema duplicates asciicast without service-event justification |
