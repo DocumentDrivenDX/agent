@@ -58,8 +58,6 @@ func TestResolvePresetName(t *testing.T) {
 	})
 }
 
-
-
 func TestNewFromPreset(t *testing.T) {
 	for _, name := range PresetNames() {
 		t.Run(name, func(t *testing.T) {

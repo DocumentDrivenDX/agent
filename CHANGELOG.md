@@ -25,12 +25,10 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   but that loop is no longer part of the exported Go API.
 
 ### Changed
-- **Deprecated harness-flavored prompt preset names.** The old `agent`, `worker`,
-  `cursor`, `claude`, and `codex` names now emit a stderr warning and resolve
-  to their intent-flavored equivalents: `agent`/`worker`/`cursor` → `default`,
-  `claude` → `smart`, `codex` → `cheap`. The warnings will become errors in a
-  future release. Canonical names (`default`, `smart`, `cheap`, `minimal`,
-  `benchmark`) are unchanged. (`.execute-bead-wt-agent-a365bcf2-20260419T235909-68f00fa1`)
+- **Removed harness-flavored prompt preset names.** The old `agent`, `worker`,
+  `cursor`, `claude`, and `codex` names now return clear errors. Use the
+  canonical names (`default`, `smart`, `cheap`, `minimal`, `benchmark`)
+  instead. (`agent-ff9c0289`)
 - **Renamed the file-discovery tool from `glob` to `find`.** The built-in tool
   catalog now exposes only `find`; there is no `glob` compatibility alias.
   (`agent-1b00b3ea`)
