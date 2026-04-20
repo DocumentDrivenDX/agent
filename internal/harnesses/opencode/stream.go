@@ -87,6 +87,9 @@ func parseOpencodeStream(ctx context.Context, r io.Reader, out chan<- harnesses.
 	if output == "" {
 		return agg, nil
 	}
+	if errMessage, ok := opencodeErrorMessage(output); ok {
+		return agg, errors.New("opencode error: " + errMessage)
+	}
 
 	// Try to parse as a JSON envelope to extract usage.
 	// opencode may emit usage in the envelope or as the last non-empty line.
@@ -127,4 +130,30 @@ func parseOpencodeStream(ctx context.Context, r io.Reader, out chan<- harnesses.
 	}
 
 	return agg, nil
+}
+
+func opencodeErrorMessage(output string) (string, bool) {
+	var envelope struct {
+		Type  string `json:"type"`
+		Error struct {
+			Name string `json:"name"`
+			Data struct {
+				Message string `json:"message"`
+			} `json:"data"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
+		return "", false
+	}
+	if envelope.Type != "error" {
+		return "", false
+	}
+	switch {
+	case envelope.Error.Data.Message != "":
+		return envelope.Error.Data.Message, true
+	case envelope.Error.Name != "":
+		return envelope.Error.Name, true
+	default:
+		return "unknown error", true
+	}
 }

@@ -20,6 +20,8 @@ import (
 )
 
 const harnessCassetteRoot = "testdata/harness-cassettes"
+const harnessGoldenRecordText = "harness golden record ok"
+const harnessGoldenRecordPrompt = "Reply with exactly: " + harnessGoldenRecordText
 
 func TestHarnessGoldenReplay_ServiceExecute(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -289,14 +291,15 @@ func TestHarnessGoldenRecordModeLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
+	for _, harness := range harnessGoldenRecordHarnesses() {
 		t.Run(harness, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
+			workDir := prepareHarnessRecordWorkDir(t, harness)
 			events, err := svc.Execute(ctx, ServiceExecuteRequest{
-				Prompt:      "Reply with exactly: harness golden record ok",
+				Prompt:      harnessGoldenRecordPrompt,
 				Harness:     harness,
-				WorkDir:     t.TempDir(),
+				WorkDir:     workDir,
 				Permissions: "safe",
 				Reasoning:   ReasoningLow,
 				Timeout:     90 * time.Second,
@@ -317,8 +320,11 @@ func TestHarnessGoldenRecordModeLive(t *testing.T) {
 			if result.FinalStatus != "success" {
 				t.Fatalf("record mode %s failed before cassette write: status=%q error=%q", harness, result.FinalStatus, result.TerminalError)
 			}
+			if !strings.Contains(result.FinalText, harnessGoldenRecordText) {
+				t.Fatalf("record mode %s produced unusable cassette: final_text=%q, want to contain %q", harness, result.FinalText, harnessGoldenRecordText)
+			}
 			writeVersionedHarnessCassette(t, cassetteDir, harness, ServiceExecuteRequest{
-				Prompt:      "Reply with exactly: harness golden record ok",
+				Prompt:      harnessGoldenRecordPrompt,
 				Harness:     harness,
 				WorkDir:     "<tempdir>",
 				Permissions: "safe",
@@ -332,6 +338,38 @@ func TestHarnessGoldenRecordModeLive(t *testing.T) {
 			}, rawEvents, result)
 		})
 	}
+}
+
+func harnessGoldenRecordHarnesses() []string {
+	raw := strings.TrimSpace(os.Getenv("AGENT_HARNESS_RECORD_HARNESSES"))
+	if raw == "" {
+		return []string{"claude", "codex"}
+	}
+	parts := strings.Split(raw, ",")
+	harnesses := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if harness := strings.TrimSpace(part); harness != "" {
+			harnesses = append(harnesses, harness)
+		}
+	}
+	if len(harnesses) == 0 {
+		return []string{"claude", "codex"}
+	}
+	return harnesses
+}
+
+func prepareHarnessRecordWorkDir(t *testing.T, harness string) string {
+	t.Helper()
+	workDir := t.TempDir()
+	if harness != "codex" {
+		return workDir
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = workDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("prepare codex record workdir: git init: %v", err)
+	}
+	return workDir
 }
 
 func drainRawExecute(ctx context.Context, events <-chan ServiceEvent) ([]ServiceEvent, *DrainExecuteResult, error) {
@@ -404,13 +442,17 @@ func writeVersionedHarnessCassette(t *testing.T, cassetteRoot, harness string, r
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("create cassette dir: %v", err)
 	}
+	workDirPolicy := "tempdir"
+	if harness == "codex" {
+		workDirPolicy = "tempdir-git-repo"
+	}
 	writeCassetteJSON(t, filepath.Join(dir, "manifest.json"), map[string]any{
 		"version":     1,
 		"harness":     harness,
 		"accepted":    true,
 		"recorded_at": time.Now().UTC().Format(time.RFC3339),
 		"command": map[string]any{
-			"workdir_policy":  "tempdir",
+			"workdir_policy":  workDirPolicy,
 			"env_allowlist":   []string{"PATH"},
 			"timeout_ms":      req.Timeout.Milliseconds(),
 			"permission_mode": req.Permissions,
@@ -487,9 +529,14 @@ func writeCassetteFrames(t *testing.T, path string, events []ServiceEvent) {
 
 func preflightLiveHarnessRecordMode(t *testing.T) {
 	t.Helper()
-	for _, binary := range []string{"claude", "codex", "pi", "opencode"} {
+	for _, binary := range harnessGoldenRecordHarnesses() {
 		if _, err := exec.LookPath(binary); err != nil {
 			t.Fatalf("record mode requires %s in PATH: %v", binary, err)
+		}
+	}
+	if containsString(harnessGoldenRecordHarnesses(), "codex") {
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Fatalf("record mode requires git in PATH to prepare codex workdirs: %v", err)
 		}
 	}
 	for _, binary := range []string{"tmux"} {
@@ -497,6 +544,15 @@ func preflightLiveHarnessRecordMode(t *testing.T) {
 			t.Fatalf("record mode quota preflight requires %s in PATH until direct PTY quota capture lands: %v", binary, err)
 		}
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func assertGoldenCapabilities(t *testing.T, svc DdxAgent) {

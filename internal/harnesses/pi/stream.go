@@ -24,7 +24,8 @@ type piEvent struct {
 	Type     string `json:"type"`
 	Response string `json:"response,omitempty"`
 	Message  struct {
-		Usage struct {
+		Content []piContentBlock `json:"content"`
+		Usage   struct {
 			Input  int `json:"input"`
 			Output int `json:"output"`
 			Cost   struct {
@@ -41,6 +42,16 @@ type piEvent struct {
 			} `json:"cost"`
 		} `json:"usage"`
 	} `json:"partial"`
+	AssistantMessageEvent struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+		Delta   string `json:"delta"`
+	} `json:"assistantMessageEvent"`
+}
+
+type piContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // streamAggregate captures running totals from the pi stream.
@@ -103,9 +114,8 @@ func parsePiStream(ctx context.Context, r io.Reader, out chan<- harnesses.Event,
 		}
 	}
 
-	// Extract final response text (last line with a non-empty "response" field,
-	// per DDx extractOutputPiGemini). If no structured response, concatenate
-	// any text delta lines.
+	// Extract final response text. Prefer the legacy "response" field, then
+	// current pi JSONL text_end/message content shapes.
 	for i := len(lines) - 1; i >= 0; i-- {
 		var ev piEvent
 		if err := json.Unmarshal([]byte(lines[i]), &ev); err != nil {
@@ -113,6 +123,20 @@ func parsePiStream(ctx context.Context, r io.Reader, out chan<- harnesses.Event,
 		}
 		if ev.Response != "" {
 			agg.FinalText = ev.Response
+			break
+		}
+		if ev.AssistantMessageEvent.Type == "text_end" && strings.TrimSpace(ev.AssistantMessageEvent.Content) != "" {
+			agg.FinalText = strings.TrimSpace(ev.AssistantMessageEvent.Content)
+			break
+		}
+		for j := len(ev.Message.Content) - 1; j >= 0; j-- {
+			block := ev.Message.Content[j]
+			if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
+				agg.FinalText = strings.TrimSpace(block.Text)
+				break
+			}
+		}
+		if agg.FinalText != "" {
 			break
 		}
 	}

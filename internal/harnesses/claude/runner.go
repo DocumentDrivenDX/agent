@@ -208,8 +208,17 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 // configured BaseArgs, pipes stdout through the parser, and returns the
 // aggregated stream state plus exit metadata.
 func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {
-	args := append([]string{}, r.BaseArgs...)
-	if r.PromptMode == "arg" && req.Prompt != "" {
+	base := r.BaseArgs
+	if base == nil {
+		base = []string{"--print", "-p", "--verbose", "--output-format", "stream-json"}
+	}
+	args := append([]string{}, base...)
+
+	promptMode := r.PromptMode
+	if promptMode == "" {
+		promptMode = "arg"
+	}
+	if promptMode == "arg" && req.Prompt != "" {
 		args = append(args, req.Prompt)
 	}
 
@@ -220,7 +229,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
-	if r.PromptMode != "arg" {
+	if promptMode != "arg" {
 		cmd.Stdin = strings.NewReader(req.Prompt)
 	}
 	// Put the child in its own process group so we can signal the entire
@@ -354,7 +363,11 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 // text_delta event so callers still receive the model's text.
 func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (*streamAggregate, int, string, error, string) {
 	args := []string{"--print", "-p", "--output-format", "json"}
-	if r.PromptMode == "arg" && req.Prompt != "" {
+	promptMode := r.PromptMode
+	if promptMode == "" {
+		promptMode = "arg"
+	}
+	if promptMode == "arg" && req.Prompt != "" {
 		args = append(args, req.Prompt)
 	}
 
@@ -365,7 +378,7 @@ func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.Exe
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
-	if r.PromptMode != "arg" {
+	if promptMode != "arg" {
 		cmd.Stdin = strings.NewReader(req.Prompt)
 	}
 	setProcessGroup(cmd)

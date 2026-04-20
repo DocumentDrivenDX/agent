@@ -139,3 +139,20 @@ func TestParseOpencodeStream_WithUsage(t *testing.T) {
 		t.Errorf("expected text_delta, got %q", events[0].Type)
 	}
 }
+
+func TestParseOpencodeStream_ErrorEnvelope(t *testing.T) {
+	input := `{"type":"error","error":{"name":"APIError","data":{"message":"Invalid model identifier \"*\"."}}}`
+	out := make(chan harnesses.Event, 16)
+	var seq int64
+	_, err := parseOpencodeStream(context.Background(), strings.NewReader(input), out, nil, &seq)
+	close(out)
+	if err == nil {
+		t.Fatal("expected opencode error envelope to fail parsing")
+	}
+	if !strings.Contains(err.Error(), `Invalid model identifier "*"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("expected no emitted events for error envelope, got %d", len(out))
+	}
+}

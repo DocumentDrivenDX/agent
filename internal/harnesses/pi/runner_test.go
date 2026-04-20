@@ -151,3 +151,28 @@ func TestParsePiStream_EventTypes(t *testing.T) {
 		t.Errorf("expected text_delta, got %q", events[0].Type)
 	}
 }
+
+func TestParsePiStream_CurrentTextEndShape(t *testing.T) {
+	input := `{"type":"message_update","assistantMessageEvent":{"type":"text_end","content":"\n\nharness golden record ok"},"message":{"usage":{"input":1589,"output":70,"cost":{"total":0}}}}`
+	out := make(chan harnesses.Event, 16)
+	var seq int64
+	agg, err := parsePiStream(context.Background(), strings.NewReader(input), out, nil, &seq)
+	close(out)
+	if err != nil {
+		t.Fatalf("parsePiStream: %v", err)
+	}
+	if agg.FinalText != "harness golden record ok" {
+		t.Fatalf("FinalText: got %q", agg.FinalText)
+	}
+	if agg.InputTokens != 1589 || agg.OutputTokens != 70 {
+		t.Fatalf("usage: got input=%d output=%d", agg.InputTokens, agg.OutputTokens)
+	}
+	var delta harnesses.TextDeltaData
+	ev := <-out
+	if err := json.Unmarshal(ev.Data, &delta); err != nil {
+		t.Fatalf("text delta: %v", err)
+	}
+	if delta.Text != "harness golden record ok" {
+		t.Fatalf("text delta: got %q", delta.Text)
+	}
+}

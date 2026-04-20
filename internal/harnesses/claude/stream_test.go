@@ -340,7 +340,7 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	binPath := writeFakeClaudeBinary(t, tmp)
 	logDir := filepath.Join(tmp, "session-logs")
 
-	r := &Runner{Binary: binPath, PromptMode: "stdin"}
+	r := &Runner{Binary: binPath}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
