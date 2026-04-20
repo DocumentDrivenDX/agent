@@ -48,12 +48,21 @@ capabilities already shipped.
 8. `bash` accepts a command and optional timeout, runs in the working directory,
    and captures stdout, stderr, and exit code
 9. `bash` kills on timeout or context cancellation
-10. `bash` supports an opt-in output filter. `mode: rtk` proxies allowlisted
-    shell commands such as `git status` and `go test` through an installed
-    `rtk` binary, falls back to raw execution with a marker when unavailable,
-    and never changes exit-code, stderr, timeout, or cancellation semantics.
-    The filter applies only to `bash`; built-in `read`, `find`, `grep`, `ls`,
-    and related tools are not intercepted.
+10. `bash` supports an opt-in output filter. The filter applies **only to `bash`**;
+    built-in `read`, `find`, `grep`, `ls`, and related tools are **not intercepted**.
+    Filtering has two phases:
+    a. **Before execution**: the filter may rewrite an allowlisted command to a
+       proxy command such as `rtk git status`.
+    b. **After execution**: the filter annotates the result and may apply internal
+       post-processing for modes that do not proxy execution. The bash tool then
+       applies bounded truncation to the final stdout/stderr.
+    If the filter is unavailable or errors, the command result is still returned
+    with normal truncation and a marker (`[output filter unavailable: ...]`).
+    Filtering must not change exit code, stderr, timeout, or cancellation semantics.
+    RTK mode executes `rtk` as the command proxy for allowlisted commands rather
+    than post-processing arbitrary output. Commands not recognized or unsafe to
+    rewrite run normally. If a rewritten command exits nonzero or times out, the
+    agent preserves that result and does not re-run the original command.
 
 #### Navigation, patching, and task-tracking tools
 
@@ -110,6 +119,7 @@ capabilities already shipped.
 ## Dependencies
 
 - **Other features**: FEAT-001 (agent loop calls tools)
+- **Governing design**: [Provider Identity, Routing Policy, and Bash Output Filtering](./../../02-design/plan-2026-04-19-provider-routing-tool-output.md)
 - **PRD requirements**: P0-2
 
 ## Out of Scope

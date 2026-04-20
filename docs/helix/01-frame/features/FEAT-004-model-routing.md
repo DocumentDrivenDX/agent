@@ -70,8 +70,10 @@ prompt behavior and must not be reused for model policy or routing.
 
 #### Phase 1 (P0): Named Providers
 
-1. `Config` specifies named providers with type (`openai-compat` or
-   `anthropic`), base URL, API key, and optional headers.
+1. `Config` specifies named providers with a concrete `type` (`openai`, `openrouter`,
+   `lmstudio`, `omlx`, `ollama`, or `anthropic`) plus base URL, API key, headers,
+   and optional endpoint pools for local providers. `type: openai-compat` is
+   rejected at config load; use the actual model source instead.
 2. A provider may carry a pinned default model for explicit direct selection,
    but provider config is not the canonical source of alias/profile policy.
 3. The CLI can select a provider directly by name.
@@ -182,6 +184,9 @@ prompt behavior and must not be reused for model policy or routing.
 #### Phase 2C (P1): Provider Preference and Quota-Aware Scoring
 
 31. Callers can express a preference for local vs. subscription candidates through `ProviderPreference`.
+    `ProviderPreference` appears on `ExecuteRequest`, `RouteRequest`, and
+    `internal/routing.Request`. `ResolveRoute` validates the value; empty
+    normalizes to `local-first`.
 32. Supported `ProviderPreference` values:
     - `local-first` (default) — prefer local candidates in the same tier; fall back to subscription if local is unavailable or cooling down.
     - `subscription-first` — prefer subscription candidates with available quota; fall back to local if subscription is exhausted or stale.
@@ -190,7 +195,7 @@ prompt behavior and must not be reused for model policy or routing.
 33. The routing engine uses live quota signals to influence subscription candidate scoring:
     - `QuotaOK` — false when a subscription provider is exhausted.
     - `QuotaPercentUsed` — known usage percentage; applies a penalty when high (>= 80%).
-    - `QuotaStale` — applies a penalty when the latest quota probe is older than the freshness window.
+    - `QuotaStale` — applies a penalty when the latest quota probe is older than the configured freshness window.
     - `QuotaTrend` — biases score based on burn rate (`healthy`, `burning`, `exhausting`).
 34. Quota and preference signals only affect ranking and filtering within the eligible candidate set that satisfies the requested model/tier intent; they do not trigger automatic tier escalation.
 
@@ -258,6 +263,7 @@ prompt behavior and must not be reused for model policy or routing.
 ## Dependencies
 
 - **Other features**: FEAT-003 (providers)
+- **Governing design**: [Provider Identity, Routing Policy, and Bash Output Filtering](./../../02-design/plan-2026-04-19-provider-routing-tool-output.md)
 - **PRD requirements**: P0-3, P1-1, P1-10, P2-4
 
 ## Out of Scope

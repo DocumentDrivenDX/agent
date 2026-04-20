@@ -54,11 +54,19 @@ agent/                          # root module: github.com/your-org/agent
 │   └── catalog/models.yaml     # embedded manifest snapshot and default catalog data
 ├── provider/
 │   ├── openai/
-│   │   └── openai.go           # OpenAI-compatible provider (LM Studio, Ollama, OpenAI, etc.)
+│   │   └── openai.go           # OpenAI API provider (api.openai.com)
+│   ├── openrouter/
+│   │   └── openrouter.go       # OpenRouter provider
+│   ├── lmstudio/
+│   │   └── lmstudio.go         # LM Studio provider (local inference)
+│   ├── omlx/
+│   │   └── omlx.go             # oMLX provider (local inference)
+│   ├── ollama/
+│   │   └── ollama.go           # Ollama provider (local inference)
 │   ├── anthropic/
 │   │   └── anthropic.go        # Anthropic Claude provider
 │   └── virtual/
-│       └── virtual.go           # Virtual provider for deterministic replay
+│       └── virtual.go          # Virtual provider for deterministic replay
 ├── tool/
 │   ├── read.go                 # file read tool
 │   ├── write.go                # file write tool

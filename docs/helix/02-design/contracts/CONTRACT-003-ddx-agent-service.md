@@ -248,7 +248,7 @@ type HarnessInfo struct {
 
 type ProviderInfo struct {
     Name          string
-    Type          string  // "openai-compat" | "anthropic" | "virtual"
+    Type          string  // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic" | "virtual"
     BaseURL       string
     Status        string  // "connected" | "unreachable" | "error: <msg>"
     ModelCount    int

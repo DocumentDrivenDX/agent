@@ -57,24 +57,23 @@ model_catalog:
 
 providers:
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: http://vidar:1234/v1
     api_key: lmstudio
     reasoning: off
-    flavor: lmstudio
 
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
     api_key: lmstudio
 
   grendel:
-    type: openai-compat
+    type: lmstudio
     base_url: http://grendel:1234/v1
     api_key: lmstudio
 
   openrouter:
-    type: openai-compat
+    type: openrouter
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
     headers:
@@ -86,11 +85,10 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}
 
   vidar-omlx:
-    type: openai-compat
+    type: omlx
     base_url: http://vidar:1235/v1
     model: Qwen3.5-27B-4bit
     reasoning: off
-    flavor: omlx
 
 routing:
   default_model_ref: code-medium
@@ -144,7 +142,6 @@ Per-provider optional fields (in addition to `type`, `base_url`, `api_key`, `hea
 | `reasoning` | scalar string/int | Single public reasoning control: `auto`, `off`, `low`, `medium`, `high`, supported extended values such as `minimal`, `xhigh` / `x-high`, and `max`, or numeric values such as `0`, `2048`, and `8192` |
 | `max_tokens` | int | Max output tokens per turn; `0` = use provider default |
 | `context_window` | int | Explicit context window override; `0` = attempt live discovery |
-| `flavor` | string | Server flavor hint: `lmstudio`, `omlx`, `openrouter`, `ollama` |
 
 Older split provider config names are rejected with a clear error. Provider-
 specific wire terms such as `thinking`, `effort`, `variant`, and token budgets
@@ -301,10 +298,10 @@ Discovery is keyed by server flavor:
 
 Undiscoverable values stay zero and the compaction layer uses its own defaults.
 
-**D11: Flavor field replaces fragile port heuristics.** Port-based provider
+**D11: Provider type replaces flavor heuristics for limit discovery.** Port-based provider
 detection (e.g. 1234 = lmstudio, 1235 = omlx) fails when servers run on
-non-default ports (omlx defaults to 8000). The `flavor` field lets operators
-declare the server type explicitly. When flavor is absent the system:
+non-default ports (omlx defaults to 8000). The explicit `type` field lets operators
+declare the server type. When type is absent the system:
 
 1. Tries URL-based detection first (reliable for `openrouter.ai`, ollama on
    11434, etc.)
@@ -315,30 +312,29 @@ declare the server type explicitly. When flavor is absent the system:
 **D12: omlx is a first-class supported provider.** omlx is a local inference
 runtime that speaks the OpenAI-compatible chat API and exposes additional
 endpoints: `GET /v1/models/status` returns per-model `max_context_window` and
-`max_tokens`. Set `flavor: omlx` to use dedicated limit discovery and avoid
-probe ambiguity. See the `vidar-omlx` provider entry in the config example
-above.
+`max_tokens`. Set `type: omlx` to use dedicated limit discovery and avoid probe
+ambiguity. See the `vidar-omlx` provider entry in the config example above.
 
-**D13: Protocol capabilities are flavor-keyed and conservative.** The provider
+**D13: Protocol capabilities are type-keyed and conservative.** The provider
 exposes `SupportsTools()`, `SupportsStream()`, and `SupportsStructuredOutput()`
-accessors that return the effective capability for the resolved flavor.
+accessors that return the effective capability for the resolved type.
 Downstream routing consults these before dispatch to avoid dispatch-and-fail on
 mismatched prompts (e.g. 80k-token prompt against a 32k-context model, or
-tool-using prompt against a flavor without tool translation). Unknown flavors
+tool-using prompt against a type without tool translation). Unknown types
 return `false` for all protocol flags so routing rejects rather than dispatches.
 This surface is distinct from the benchmark-based capability scoring used by
 smart-routing (`CapabilityScore` / `CapabilityWeight`); the two axes do not
 interact.
 
-**D14: `DetectedFlavor()` layers on top of `providerSystem` without replacing
+**D14: `DetectedType()` layers on top of `providerSystem` without replacing
 it.** `providerSystem` (URL-heuristic, eager, non-blocking) remains the source
 of truth for per-response telemetry and cost attribution because those fire on
-every response and cannot afford a network probe. `DetectedFlavor()` is the
+every response and cannot afford a network probe. `DetectedType()` is the
 probe-confirmed accessor used for pre-dispatch gating (capability flags,
 routing tags, introspection). It runs the probe at most once per provider via
 `sync.Once`, caches the result, and falls back to `providerSystem` when the
 probe is inconclusive. The two accessors serve different audiences by design;
-callers of telemetry must not migrate to `DetectedFlavor()` without a
+callers of telemetry must not migrate to `DetectedType()` without a
 CONTRACT-001 review.
 
 **D15: `reasoning` is the public model-reasoning control.** The public surface
