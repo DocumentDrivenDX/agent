@@ -72,7 +72,7 @@ func harnessCapabilityMatrix(name string, cfg harnesses.HarnessConfig) HarnessCa
 
 func serviceExecuteWired(name string, cfg harnesses.HarnessConfig) bool {
 	switch name {
-	case "agent", "claude", "codex":
+	case "agent", "claude", "codex", "gemini", "opencode", "pi":
 		return true
 	default:
 		return cfg.IsHTTPProvider
@@ -113,7 +113,7 @@ func workdirContextCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 	if name == "agent" || cfg.WorkDirFlag != "" {
 		return capOptional("harness accepts an explicit workdir/context")
 	}
-	if name == "claude" {
+	if name == "claude" || name == "gemini" || name == "pi" {
 		return capOptional("service runner sets the subprocess working directory")
 	}
 	return capUnsupported("no explicit workdir/context support is registered")

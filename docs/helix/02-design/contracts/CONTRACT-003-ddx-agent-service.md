@@ -440,10 +440,10 @@ Current builtin matrix:
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | codex | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | optional | unsupported |
 | claude | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
-| gemini | unsupported | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
-| opencode | unsupported | unsupported | optional | optional | optional | optional | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
+| gemini | required | unsupported | optional | optional | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
+| opencode | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | unsupported | unsupported |
 | agent | required | optional | optional | optional | optional | unsupported | required | optional | optional | optional | not_applicable | unsupported |
-| pi | unsupported | unsupported | optional | unsupported | optional | unsupported | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
+| pi | required | unsupported | optional | optional | optional | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
 | virtual | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | not_applicable | not_applicable | not_applicable | required |
 | script | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | not_applicable | not_applicable | not_applicable | required |
 | openrouter | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |

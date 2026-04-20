@@ -12,6 +12,9 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
+	opencodeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/opencode"
+	piharness "github.com/DocumentDrivenDX/agent/internal/harnesses/pi"
 	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 )
 
@@ -184,15 +187,19 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &claudeharness.Runner{})
 	case "codex":
 		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &codexharness.Runner{})
+	case "gemini":
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &geminiharness.Runner{})
+	case "opencode":
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &opencodeharness.Runner{})
+	case "pi":
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &piharness.Runner{})
 	default:
 		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
 			s.runNative(runCtx, req, decision, meta, out, &seq, start)
 			return
 		}
-		// Unknown / unimplemented subprocess harnesses (gemini/opencode/pi)
-		// fail with an explicit final event; the runners exist in
-		// internal/harnesses/<name> and a follow-up bead will wire them
-		// into this switch.
+		// Unknown / unimplemented subprocess harnesses fail with an explicit
+		// final event so callers do not silently fall back.
 		emitFinal(out, &seq, meta, harnesses.FinalData{
 			Status:     "failed",
 			Error:      fmt.Sprintf("harness %q dispatch not yet wired in service.Execute", decision.Harness),
@@ -477,6 +484,9 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 		if ev.Metadata == nil {
 			ev.Metadata = meta
 		}
+		if ev.Type == harnesses.EventTypeFinal {
+			ev = stampSubprocessFinalRouting(ev, decision)
+		}
 		// Re-sequence events so a single Execute presents a monotonically
 		// increasing sequence to the consumer.
 		ev.Sequence = seq.Add(1) - 1
@@ -486,6 +496,26 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			return
 		}
 	}
+}
+
+func stampSubprocessFinalRouting(ev ServiceEvent, decision RouteDecision) ServiceEvent {
+	var final harnesses.FinalData
+	if err := json.Unmarshal(ev.Data, &final); err != nil {
+		return ev
+	}
+	if final.RoutingActual == nil {
+		final.RoutingActual = &harnesses.RoutingActual{
+			Harness:  decision.Harness,
+			Provider: decision.Provider,
+			Model:    decision.Model,
+		}
+	}
+	raw, err := json.Marshal(final)
+	if err != nil {
+		return ev
+	}
+	ev.Data = raw
+	return ev
 }
 
 // emitFinal wraps a FinalData into a ServiceEvent and writes it to out.
