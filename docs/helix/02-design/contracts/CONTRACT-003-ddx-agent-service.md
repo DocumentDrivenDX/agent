@@ -668,6 +668,20 @@ across both passes as one execution budget. The agent-side contract defines the
 fields and semantics; the DDx execute-loop implementation is tracked in the
 paired DDx repo bead `ddx-785d02f7`.
 
+## Harness Integration Testing
+
+Real subprocess harness support uses versioned PTY cassettes as golden-master
+evidence. The transport decision is [ADR-002: PTY Cassette Transport for
+Harness Golden Masters](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md).
+
+ADR-002 selects direct PTY ownership inside DDX Agent as the canonical
+transport for live execution, record mode, replay mode, cancellation, quota
+probes, and inspection. tmux is not a required dependency for harness execution
+or cassette evidence. Replay-mode tests can prove parser, event, cleanup, and
+transport behavior, but a harness capability is not promoted to or retained as
+`supported` without fresh record-mode evidence from the real authenticated
+harness when that capability depends on an external binary or subscription.
+
 ## Behaviors the contract guarantees
 
 The agent owns these execution-time behaviors. Callers do not opt in or out.
