@@ -974,10 +974,12 @@ and cassette transport for live execution, record mode, replay mode,
 cancellation, quota probes, model-list probes, and inspection. tmux is not part
 of the core harness/cassette design, and tmux-only evidence must not promote a
 capability to final `supported` status. Replay-mode tests can prove parser,
-event, cleanup, and transport behavior, but a harness capability is not promoted
-to or retained as `supported` without fresh record-mode evidence from the real
-authenticated harness when that capability depends on an external binary or
-subscription.
+event, cleanup, timing, and transport behavior, but a harness capability is not
+promoted to or retained as `supported` without fresh record-mode evidence from
+the real authenticated harness when that capability depends on an external
+binary or subscription. PTY cassette record/replay is part of the `internal/pty`
+library boundary, with version-1 cassette timestamps quantized to 100ms by
+default and replay supporting realtime, scaled, and collapsed timing modes.
 
 ## Behaviors the contract guarantees
 

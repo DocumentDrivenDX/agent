@@ -45,12 +45,15 @@ go test -tags=integration -run TestHarnessGoldenRecordModeLive .
 Each cassette directory contains:
 
 - `manifest.json` — version, harness, scrubbed command policy, timeout, and
-  permission mode.
-- `input.json` — prompt, reasoning, permission, and request metadata.
-- `frames.jsonl` — replayable output/service-event frames with normalized
-  timing deltas.
-- `service-events.jsonl` — CONTRACT-003 `ServiceEvent` stream consumed by
-  deterministic replay tests.
+  permission mode, plus terminal and timing metadata. Version `1` uses
+  `manifest.timing.resolution_ms: 100` by default.
+- `input.jsonl` — timed prompt/input, paste, control-key, resize, and signal
+  events with monotonic `t_ms` timestamps.
+- `output.raw` — scrubbed raw PTY output bytes.
+- `frames.jsonl` — timed screen snapshots or frame diffs with monotonic `t_ms`
+  timestamps.
+- `service-events.jsonl` — timed opaque service-event JSON consumed by
+  deterministic replay tests above the cassette library.
 - `final.json` — normalized final event payload.
 - `quota.json` — quota/status evidence when applicable.
 - `scrub-report.json` — redaction and safety report.
@@ -76,6 +79,11 @@ needs ordinary Unix process tests and at least two additional TUI shapes, such
 as a pager and editor/curses-style program. Harness probes then layer on top of
 that library to test quota/status extraction, model listings, reasoning levels,
 token usage, and failure normalization for Claude and Codex.
+
+Replay mode supports `realtime`, `scaled`, and `collapsed` timing. Human
+inspection should use `realtime` playback so screen changes preserve recorded
+100ms timing. CI replay should use `collapsed` timing unless the test is
+specifically proving replay scheduling.
 
 ## Evidence Rules
 

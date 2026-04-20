@@ -46,9 +46,11 @@ failure modes, but it must not be part of the core harness capability story.
 ## Decision
 
 DDX Agent will own direct PTY lifecycle in-process using Go `os/exec` plus a
-small reusable PTY library. tmux is not part of the core harness execution,
-model-list probing, quota probing, cassette recording, cassette replay,
-cancellation, or inspection design.
+small reusable PTY library. That library includes cassette recording and
+playback as a first-class layer; recording/replay is not a separate harness
+helper bolted on beside the PTY code. tmux is not part of the core harness
+execution, model-list probing, quota probing, cassette recording, cassette
+replay, cancellation, or inspection design.
 
 Existing tmux quota helpers are legacy experiments. They can remain only as
 temporary diagnostics while direct PTY replacements are being built, and their
@@ -59,10 +61,10 @@ If a future operator project wants tmux attach/switch UX, it must live outside
 the core service/cassette path and consume DDX Agent outputs like any other
 client. The DDX Agent baseline is direct PTY only.
 
-The cassette recorder and player remain part of this repository until another
-consumer needs the same API. If reuse appears, split the PTY cassette player
-into a separate project only after the cassette format has one versioned
-contract and at least two real consumers.
+The cassette recorder and player remain part of `internal/pty` for the baseline
+implementation. If reuse appears later, extract the mature PTY library as a
+whole rather than splitting cassette playback from session and terminal
+modeling prematurely.
 
 **Key Points**: Direct PTY only | tmux helpers are legacy diagnostics |
 cassettes are versioned evidence artifacts
@@ -77,7 +79,7 @@ live inside it.
 |-------|-------------------|------|--------------|
 | Raw PTY session | `internal/pty/session` | `Start`, command argv/env/workdir, terminal size, PTY file descriptors, process groups, stdin bytes, resize, raw output stream, `Wait`, timeout, cancellation, `Close`/`Kill` cleanup | Claude/Codex parsing, model names, quota semantics, cassette schema, service events |
 | Terminal model | `internal/pty/terminal` | Byte-to-frame derivation, normalized screen snapshots, key encoding, expect/wait predicates, frame diffing, capture metadata | Process spawning, harness-specific slash commands, quota/model interpretation |
-| Cassette record/replay | `internal/pty/cassette` | Versioned manifest, input/output/frame streams, timing normalization, scrub reports, deterministic playback driver, read-only inspection inputs | Live credentials, provider calls, harness-specific capability decisions |
+| Cassette record/replay | `internal/pty/cassette` | Versioned manifest, input/output/frame streams, event timestamps, timing normalization, scrub reports, replay scheduler, deterministic and real-time playback drivers, read-only inspection inputs | Live credentials, provider calls, harness-specific capability decisions |
 | Harness probes | `internal/harnesses/<name>` | Claude/Codex prompt flows, quota/status/model-list extraction, reasoning-level discovery, normalized errors, capability matrix updates | PTY lifecycle primitives or cassette file-format internals |
 
 No package below `internal/pty` may import `internal/harnesses`. The PTY
@@ -85,6 +87,23 @@ library must be testable with synthetic programs and ordinary Unix TUIs before
 Claude or Codex are involved. Claude and Codex quota/model probes are acceptance
 tests for the harness adapters, not proof that the PTY library is complete by
 themselves.
+
+## Data Flow
+
+The cassette layer observes the PTY library; it does not replace or wrap
+harness-specific parsing.
+
+```text
+internal/pty/session raw bytes and input events
+  -> internal/pty/terminal frame derivation and screen normalization
+  -> internal/harnesses/<name> adapter parsing and service-event emission
+  -> internal/pty/cassette tee writes raw output, timed input, frames,
+     opaque service-event JSON, final metadata, and scrub reports
+```
+
+`internal/pty/cassette` may store and replay opaque service-event JSON, but it
+must not import harness adapters or CONTRACT-003 typed-event decoders. Service
+assertions stay above the cassette library.
 
 ## Cassette Data Contract
 
@@ -97,18 +116,35 @@ append-only event streams. Version `1` contains:
 | `manifest.harness` | Yes | Harness name, binary path fingerprint, binary version string when available, and capability row snapshot. |
 | `manifest.command` | Yes | Scrubbed argv, working directory policy, environment allowlist names, timeout settings, and permission mode. |
 | `manifest.terminal` | Yes | Initial rows/cols, resize events, locale, TERM value, and PTY mode flags needed for replay. |
+| `manifest.timing` | Yes | Clock policy, timestamp resolution, replay default, and any scaling/collapse policy used by tests. Version `1` defaults to 100ms timestamp resolution. |
 | `manifest.provenance` | Yes | Agent git SHA, contract version, OS/arch, recorded-at timestamp, and recorder version. |
-| `input.jsonl` | Yes | User/input events: bytes sent to stdin, paste boundaries, control keys, resize events, signal events, and timing deltas. |
+| `input.jsonl` | Yes | User/input events: bytes sent to stdin, paste boundaries, control keys, resize events, and signal events. Every record includes monotonic `t_ms`. |
 | `output.raw` | Yes | Raw output bytes from the PTY, exactly as observed after environment scrubbing. |
-| `frames.jsonl` | Yes | Screen snapshots or frame diffs at normalized timestamps for human review and deterministic replay assertions. |
-| `service-events.jsonl` | Yes | CONTRACT-003 service events emitted during the run, including routing, tool, final, and typed-drain-compatible payloads. |
+| `frames.jsonl` | Yes | Screen snapshots or frame diffs at monotonic `t_ms` timestamps for human review and deterministic replay assertions. |
+| `service-events.jsonl` | Yes | Opaque service-event JSON emitted during the run, including routing, tool, final, and typed-drain-compatible payloads. Every record includes monotonic `t_ms`. |
 | `final.json` | Yes | Exit status, signal, duration, final metadata, usage, cost, routing actual, session log path, and normalized final text. |
 | `quota.json` | When applicable | Scrubbed quota/status probe output and parsed quota windows used to accept or reject the record run. |
 | `scrub-report.json` | Yes | Redaction rules applied, environment values removed, secret-pattern hit counts, and fields intentionally preserved. |
 
-Timing is stored as monotonic deltas from cassette start. Replay may scale or
-collapse delays, but it must preserve event order, resize ordering, process
-exit, and final service metadata.
+Timing is stored as monotonic milliseconds from cassette start, quantized to
+`manifest.timing.resolution_ms`. Version `1` uses `resolution_ms: 100` by
+default so replay preserves the shape of a real TUI session without pretending
+to be nanosecond-accurate. Replay supports three timing modes:
+
+- `realtime`: sleep according to recorded `t_ms` values at the recorded
+  resolution; this is the default for human inspection and visual playback.
+- `scaled`: multiply recorded delays by a caller-provided factor while
+  preserving event order and relative pacing.
+- `collapsed`: ignore sleeps and replay in event order for fast deterministic
+  CI assertions.
+
+Replay must preserve event order, resize ordering, process exit, final service
+metadata, and the recorded timing relation within one timestamp resolution.
+
+Nondeterministic terminal content normalization is separate from secret
+scrubbing. Scrubbing removes sensitive values. Normalization handles volatile
+screen facts such as clocks, PIDs, elapsed durations, and animation counters so
+semantic frame assertions remain stable without weakening raw evidence storage.
 
 ## Record Mode
 
@@ -131,12 +167,13 @@ golden-master evidence.
 Replay mode never uses credentials and never contacts a provider. It feeds the
 recorded input/output/frame streams through the same parser, service-event
 decoder, and typed drain assertions used by live mode. Replay can prove parser,
-event-shape, cancellation, cleanup, and PTY transport behavior; it cannot prove
-that a live external harness still works today.
+event-shape, timing behavior, cancellation, cleanup, and PTY transport behavior;
+it cannot prove that a live external harness still works today.
 
 Replay is deterministic by default:
 
-- timestamps are interpreted as ordered deltas, not wall-clock requirements;
+- CI uses `collapsed` timing unless a test explicitly asks for `realtime` or
+  `scaled` playback;
 - environment is reconstructed only from the cassette allowlist;
 - terminal size and resize events come from `manifest.terminal`;
 - service-event assertions compare typed payloads after documented scrub rules,
