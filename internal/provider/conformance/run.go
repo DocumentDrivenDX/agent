@@ -23,7 +23,7 @@ type Subject struct {
 	ListModels  func(context.Context) ([]string, error)
 }
 
-// Capabilities declares the scenarios that apply to a provider or flavor. Add
+// Capabilities declares the scenarios that apply to a provider. Add
 // fields as the shared catalog grows rather than baking provider names into Run.
 type Capabilities struct {
 	Name              string

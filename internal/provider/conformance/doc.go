@@ -1,6 +1,6 @@
 // Package conformance contains shared provider behavior tests.
 //
-// To register a new provider or provider flavor, add a package-local test that
+// To register a new provider, add a package-local test that
 // builds a shaped double server, returns a Subject from a Factory, and calls
 // Run with a Capabilities descriptor. Keep protocol-specific HTTP fixtures in
 // the provider package so this package only depends on agent.Provider behavior.

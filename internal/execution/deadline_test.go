@@ -65,7 +65,6 @@ func TestTimeoutProviderChatStalledServer(t *testing.T) {
 		BaseURL: srv.URL + "/v1",
 		APIKey:  "not-needed",
 		Model:   "stub-model",
-		Flavor:  "openai", // skip the flavor probe
 	})
 	requestTimeout := 500 * time.Millisecond
 	idleTimeout := 500 * time.Millisecond
@@ -115,7 +114,6 @@ func TestTimeoutProviderChatStreamStalledServer(t *testing.T) {
 		BaseURL: srv.URL + "/v1",
 		APIKey:  "not-needed",
 		Model:   "stub-model",
-		Flavor:  "openai",
 	})
 	requestTimeout := 10 * time.Second // keep this loose so we isolate idle-read
 	idleTimeout := 400 * time.Millisecond
@@ -161,7 +159,6 @@ func TestTimeoutProviderForwardsMetadata(t *testing.T) {
 		BaseURL: "http://127.0.0.1:1/v1",
 		APIKey:  "not-needed",
 		Model:   "stub-model",
-		Flavor:  "openai",
 	})
 	wrapped := WrapProviderWithDeadlines(inner)
 
@@ -170,7 +167,7 @@ func TestTimeoutProviderForwardsMetadata(t *testing.T) {
 	})
 	require.True(t, ok)
 	provName, modelName := ssm.SessionStartMetadata()
-	assert.Equal(t, "local", provName)
+	assert.Equal(t, "openai", provName)
 	assert.Equal(t, "stub-model", modelName)
 
 	csm, ok := wrapped.(interface {

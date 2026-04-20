@@ -208,8 +208,8 @@ func TestChat_AttemptMetadataIncludesServerIdentityAndCacheUsage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, resp.Attempt)
-	assert.Equal(t, "local", resp.Attempt.ProviderName)
-	assert.Equal(t, "local", resp.Attempt.ProviderSystem)
+	assert.Equal(t, "openai", resp.Attempt.ProviderName)
+	assert.Equal(t, "openai", resp.Attempt.ProviderSystem)
 	assert.Equal(t, parsed.Hostname(), resp.Attempt.ServerAddress)
 	assert.NotZero(t, resp.Attempt.ServerPort)
 	assert.Equal(t, "gpt-4o", resp.Attempt.RequestedModel)
@@ -514,15 +514,15 @@ func TestThinkingSerializationReasoningPolicy(t *testing.T) {
 	}
 }
 
-func TestReasoningSerializationUnsupportedFlavors(t *testing.T) {
-	for _, flavor := range []string{"omlx", "openrouter", "openai", "ollama"} {
-		t.Run(flavor+"/default provider budget drops", func(t *testing.T) {
-			body, err := captureOpenAIChatBody(t, flavor, agent.ReasoningTokens(8192), agent.Options{})
+func TestReasoningSerializationUnsupportedProviders(t *testing.T) {
+	for _, providerType := range []string{"omlx", "openrouter", "openai", "ollama"} {
+		t.Run(providerType+"/default provider budget drops", func(t *testing.T) {
+			body, err := captureOpenAIChatBody(t, providerType, agent.ReasoningTokens(8192), agent.Options{})
 			require.NoError(t, err)
 			assertReasoningWireBudget(t, body, false, 0)
 		})
-		t.Run(flavor+"/explicit request fails before serialization", func(t *testing.T) {
-			body, err := captureOpenAIChatBody(t, flavor, "", agent.Options{Reasoning: agent.ReasoningLow})
+		t.Run(providerType+"/explicit request fails before serialization", func(t *testing.T) {
+			body, err := captureOpenAIChatBody(t, providerType, "", agent.Options{Reasoning: agent.ReasoningLow})
 			require.Error(t, err)
 			assert.Nil(t, body)
 		})
@@ -546,7 +546,7 @@ func TestSamplingOptionsSerialization(t *testing.T) {
 	})
 }
 
-func captureOpenAIChatBody(t *testing.T, flavor string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
+func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	t.Helper()
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -563,17 +563,18 @@ func captureOpenAIChatBody(t *testing.T, flavor string, providerReasoning agent.
 	defer srv.Close()
 
 	p := openai.New(openai.Config{
-		BaseURL:   srv.URL + "/v1",
-		APIKey:    "test",
-		Model:     "gpt-4o",
-		Flavor:    flavor,
-		Reasoning: providerReasoning,
+		BaseURL:        srv.URL + "/v1",
+		APIKey:         "test",
+		Model:          "gpt-4o",
+		ProviderSystem: providerType,
+		Capabilities:   capabilitiesForTestProvider(providerType),
+		Reasoning:      providerReasoning,
 	})
 	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
 	return capturedBody, err
 }
 
-func captureOpenAIStreamBody(t *testing.T, flavor string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
+func captureOpenAIStreamBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	t.Helper()
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -586,11 +587,12 @@ func captureOpenAIStreamBody(t *testing.T, flavor string, providerReasoning agen
 	defer srv.Close()
 
 	p := openai.New(openai.Config{
-		BaseURL:   srv.URL + "/v1",
-		APIKey:    "test",
-		Model:     "gpt-4o",
-		Flavor:    flavor,
-		Reasoning: providerReasoning,
+		BaseURL:        srv.URL + "/v1",
+		APIKey:         "test",
+		Model:          "gpt-4o",
+		ProviderSystem: providerType,
+		Capabilities:   capabilitiesForTestProvider(providerType),
+		Reasoning:      providerReasoning,
 	})
 	ch, err := p.ChatStream(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
 	if err != nil {
@@ -602,6 +604,17 @@ func captureOpenAIStreamBody(t *testing.T, flavor string, providerReasoning agen
 		}
 	}
 	return capturedBody, nil
+}
+
+func capabilitiesForTestProvider(providerType string) *openai.ProtocolCapabilities {
+	caps := openai.OpenAIProtocolCapabilities
+	switch providerType {
+	case "lmstudio":
+		caps.Thinking = true
+	case "ollama":
+		caps.StructuredOutput = false
+	}
+	return &caps
 }
 
 func assertReasoningWireBudget(t *testing.T, body []byte, wantThinking bool, wantBudget int) {
@@ -628,25 +641,22 @@ func assertSamplingWireOptions(t *testing.T, body []byte, wantTemperature float6
 	assert.Equal(t, float64(wantSeed), reqBody["seed"])
 }
 
-func TestNew_LocalOpenAICompatibleBaseURLsResolveProviderIdentity(t *testing.T) {
+func TestNew_BaseURLControlsEndpointMetadataOnly(t *testing.T) {
 	tests := []struct {
 		name    string
 		baseURL string
-		system  string
 		host    string
 		port    int
 	}{
 		{
 			name:    "lmstudio default local endpoint",
 			baseURL: "http://localhost:1234/v1",
-			system:  "lmstudio",
 			host:    "localhost",
 			port:    1234,
 		},
 		{
-			name:    "ollama lmstudioible endpoint",
+			name:    "ollama compatible endpoint",
 			baseURL: "http://127.0.0.1:11434/v1",
-			system:  "ollama",
 			host:    "127.0.0.1",
 			port:    11434,
 		},
@@ -659,64 +669,23 @@ func TestNew_LocalOpenAICompatibleBaseURLsResolveProviderIdentity(t *testing.T) 
 				Model:   "gpt-4o",
 			})
 			system, host, port := p.ChatStartMetadata()
-			assert.Equal(t, tt.system, system)
+			assert.Equal(t, "openai", system)
 			assert.Equal(t, tt.host, host)
 			assert.Equal(t, tt.port, port)
 		})
 	}
 }
 
-func TestOpenAIIdentity_CloudAndPortHeuristics(t *testing.T) {
-	tests := []struct {
-		name    string
-		baseURL string
-		system  string
-	}{
-		{
-			name:    "minimax cloud endpoint",
-			baseURL: "https://api.minimaxi.chat/v1",
-			system:  "minimax",
-		},
-		{
-			name:    "qwen/dashscope cloud endpoint",
-			baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-			system:  "qwen",
-		},
-		{
-			name:    "z.ai cloud endpoint",
-			baseURL: "https://api.z.ai/v1",
-			system:  "zai",
-		},
-		{
-			name:    "named host port 11434 treated as ollama",
-			baseURL: "http://vidar:11434/v1",
-			system:  "ollama",
-		},
-		{
-			name:    "named host port 1234 treated as lmstudio",
-			baseURL: "http://vidar:1234/v1",
-			system:  "lmstudio",
-		},
-		{
-			name:    "named host non-standard port treated as local",
-			baseURL: "http://vidar:8080/v1",
-			system:  "local",
-		},
-		{
-			name:    "unknown host standard HTTPS port falls through to openai",
-			baseURL: "https://api.example.com/v1",
-			system:  "openai",
-		},
-	}
+func TestNew_ExplicitProviderSystemControlsIdentity(t *testing.T) {
+	p := openai.New(openai.Config{
+		BaseURL:        "http://vidar:1234/v1",
+		Model:          "qwen",
+		ProviderName:   "studio",
+		ProviderSystem: "lmstudio",
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := openai.New(openai.Config{
-				BaseURL: tt.baseURL,
-				Model:   "gpt-4o",
-			})
-			system, _, _ := p.ChatStartMetadata()
-			assert.Equal(t, tt.system, system)
-		})
-	}
+	system, host, port := p.ChatStartMetadata()
+	assert.Equal(t, "lmstudio", system)
+	assert.Equal(t, "vidar", host)
+	assert.Equal(t, 1234, port)
 }

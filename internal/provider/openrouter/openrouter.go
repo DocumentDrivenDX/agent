@@ -51,7 +51,6 @@ func New(cfg Config) *openai.Provider {
 		Reasoning:            cfg.Reasoning,
 		Capabilities:         &ProtocolCapabilities,
 		UsageCostAttribution: UsageCostAttribution,
-		Flavor:               "openrouter",
 	})
 }
 

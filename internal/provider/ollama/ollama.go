@@ -40,6 +40,5 @@ func New(cfg Config) *openai.Provider {
 		Headers:        cfg.Headers,
 		Reasoning:      cfg.Reasoning,
 		Capabilities:   &ProtocolCapabilities,
-		Flavor:         "ollama",
 	})
 }

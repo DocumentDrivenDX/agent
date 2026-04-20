@@ -120,54 +120,6 @@ func getAndDecode(ctx context.Context, timeout time.Duration, endpoint, apiKey s
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func resolveProviderFlavor(ctx context.Context, baseURL, flavor string) string {
-	if flavor != "" {
-		return strings.ToLower(strings.TrimSpace(flavor))
-	}
-
-	// openAIIdentity gives a reliable answer for well-known URLs (openrouter.ai,
-	// ollama on 11434, etc.) without a network round-trip. Only probe when it
-	// returns an ambiguous result ("local" or "openai").
-	detected, _, _ := openAIIdentity(baseURL)
-	switch detected {
-	case "local", "openai":
-		if probed := probeProviderFlavor(ctx, baseURL); probed != "" {
-			return probed
-		}
-		return detected
-	default:
-		return detected
-	}
-}
-
-func probeProviderFlavor(ctx context.Context, baseURL string) string {
-	if isOMLX(ctx, baseURL) {
-		return "omlx"
-	}
-	if isLMStudio(ctx, baseURL) {
-		return "lmstudio"
-	}
-	return ""
-}
-
-func isOMLX(ctx context.Context, baseURL string) bool {
-	base := strings.TrimRight(baseURL, "/")
-	endpoint := base + "/models/status"
-	var status struct {
-		Models []json.RawMessage `json:"models"`
-	}
-	return getAndDecode(ctx, 2*time.Second, endpoint, "", nil, &status) == nil && status.Models != nil
-}
-
-func isLMStudio(ctx context.Context, baseURL string) bool {
-	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
-	endpoint := root + "/api/v0/models"
-	var list struct {
-		Data []json.RawMessage `json:"data"`
-	}
-	return getAndDecode(ctx, 2*time.Second, endpoint, "", nil, &list) == nil && list.Data != nil
-}
-
 // NormalizeModelID resolves a caller-supplied model name against the server's
 // canonical model catalog (the IDs returned by GET /v1/models). If the name
 // matches a catalog entry exactly (case-insensitive), that entry is returned.

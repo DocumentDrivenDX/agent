@@ -18,7 +18,7 @@ import (
 
 type openAICompatDescriptor struct {
 	name              string
-	flavor            string
+	providerType      string
 	model             string
 	supportsThinking  bool
 	supportsToolCalls bool
@@ -26,11 +26,11 @@ type openAICompatDescriptor struct {
 
 func TestConformance_OpenAICompatShapedDoubles(t *testing.T) {
 	descriptors := []openAICompatDescriptor{
-		{name: "omlx", flavor: "omlx", model: "qwen3-omlx", supportsToolCalls: true},
-		{name: "lmstudio", flavor: "lmstudio", model: "qwen3-lmstudio", supportsThinking: true, supportsToolCalls: true},
-		{name: "openrouter", flavor: "openrouter", model: "openai/gpt-4o-mini", supportsToolCalls: true},
-		{name: "openai", flavor: "openai", model: "gpt-4o-mini", supportsToolCalls: true},
-		{name: "ollama", flavor: "ollama", model: "llama3.2", supportsToolCalls: true},
+		{name: "omlx", providerType: "omlx", model: "qwen3-omlx", supportsToolCalls: true},
+		{name: "lmstudio", providerType: "lmstudio", model: "qwen3-lmstudio", supportsThinking: true, supportsToolCalls: true},
+		{name: "openrouter", providerType: "openrouter", model: "openai/gpt-4o-mini", supportsToolCalls: true},
+		{name: "openai", providerType: "openai", model: "gpt-4o-mini", supportsToolCalls: true},
+		{name: "ollama", providerType: "ollama", model: "llama3.2", supportsToolCalls: true},
 	}
 
 	for _, desc := range descriptors {
@@ -42,14 +42,12 @@ func TestConformance_OpenAICompatShapedDoubles(t *testing.T) {
 				t.Cleanup(srv.Close)
 
 				p := New(Config{
-					BaseURL: srv.URL + "/v1",
-					APIKey:  "test-key",
-					Flavor:  desc.flavor,
+					BaseURL:        srv.URL + "/v1",
+					APIKey:         "test-key",
+					ProviderName:   desc.name,
+					ProviderSystem: desc.providerType,
+					Capabilities:   protocolCapabilitiesForDescriptor(desc),
 				})
-				// The shaped server is local, but this conformance case should
-				// exercise flavor-specific response handling such as OpenRouter
-				// usage.cost preservation.
-				p.providerSystem = desc.flavor
 
 				return conformance.Subject{
 					Provider: p,
@@ -94,7 +92,7 @@ func TestConformance_OpenAICompatShapedDoubles(t *testing.T) {
 func TestConformance_OpenAICompatLive(t *testing.T) {
 	descriptors := []struct {
 		name              string
-		flavor            string
+		providerType      string
 		urlEnv            string
 		apiKeyEnv         string
 		modelEnv          string
@@ -103,11 +101,11 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 		supportsThinking  bool
 		supportsToolCalls bool
 	}{
-		{name: "omlx", flavor: "omlx", urlEnv: "OMLX_URL", modelEnv: "OMLX_MODEL", supportsToolCalls: false},
-		{name: "lmstudio", flavor: "lmstudio", urlEnv: "LMSTUDIO_URL", modelEnv: "LMSTUDIO_MODEL", supportsThinking: true, supportsToolCalls: false},
-		{name: "openrouter", flavor: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", defaultBaseURL: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini", supportsToolCalls: true},
-		{name: "openai", flavor: "openai", apiKeyEnv: "OPENAI_API_KEY", modelEnv: "OPENAI_MODEL", defaultBaseURL: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", supportsToolCalls: true},
-		{name: "ollama", flavor: "ollama", urlEnv: "OLLAMA_URL", modelEnv: "OLLAMA_MODEL", defaultBaseURL: "http://localhost:11434/v1", supportsToolCalls: false},
+		{name: "omlx", providerType: "omlx", urlEnv: "OMLX_URL", modelEnv: "OMLX_MODEL", supportsToolCalls: false},
+		{name: "lmstudio", providerType: "lmstudio", urlEnv: "LMSTUDIO_URL", modelEnv: "LMSTUDIO_MODEL", supportsThinking: true, supportsToolCalls: false},
+		{name: "openrouter", providerType: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", defaultBaseURL: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini", supportsToolCalls: true},
+		{name: "openai", providerType: "openai", apiKeyEnv: "OPENAI_API_KEY", modelEnv: "OPENAI_MODEL", defaultBaseURL: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", supportsToolCalls: true},
+		{name: "ollama", providerType: "ollama", urlEnv: "OLLAMA_URL", modelEnv: "OLLAMA_MODEL", defaultBaseURL: "http://localhost:11434/v1", supportsToolCalls: false},
 	}
 
 	for _, desc := range descriptors {
@@ -144,12 +142,19 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 			}
 
 			p := New(Config{
-				BaseURL: baseURL,
-				APIKey:  apiKey,
-				Model:   model,
-				Flavor:  desc.flavor,
+				BaseURL:        baseURL,
+				APIKey:         apiKey,
+				Model:          model,
+				ProviderName:   desc.name,
+				ProviderSystem: desc.providerType,
+				Capabilities: &ProtocolCapabilities{
+					Tools:            true,
+					Stream:           true,
+					StructuredOutput: desc.providerType != "ollama",
+					Thinking:         desc.supportsThinking,
+				},
 			})
-			if desc.flavor == "omlx" && p.SupportsThinking() {
+			if desc.providerType == "omlx" && p.SupportsThinking() {
 				t.Fatal("omlx live capability contract requires SupportsThinking()==false")
 			}
 
@@ -174,6 +179,15 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 			})
 		})
 	}
+}
+
+func protocolCapabilitiesForDescriptor(desc openAICompatDescriptor) *ProtocolCapabilities {
+	caps := OpenAIProtocolCapabilities
+	caps.Thinking = desc.supportsThinking
+	if desc.providerType == "ollama" {
+		caps.StructuredOutput = false
+	}
+	return &caps
 }
 
 func newOpenAICompatConformanceServer(t *testing.T, desc openAICompatDescriptor) (*httptest.Server, *int32) {
@@ -288,7 +302,7 @@ func writeOpenAISSE(w http.ResponseWriter, desc openAICompatDescriptor, chunks [
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	flusher, _ := w.(http.Flusher)
-	if desc.flavor == "omlx" {
+	if desc.providerType == "omlx" {
 		_, _ = io.WriteString(w, ": keep-alive\n\n")
 		if flusher != nil {
 			flusher.Flush()
@@ -299,7 +313,7 @@ func writeOpenAISSE(w http.ResponseWriter, desc openAICompatDescriptor, chunks [
 		if flusher != nil {
 			flusher.Flush()
 		}
-		if desc.flavor == "omlx" {
+		if desc.providerType == "omlx" {
 			_, _ = io.WriteString(w, ": keep-alive\n\n")
 			if flusher != nil {
 				flusher.Flush()
@@ -340,7 +354,7 @@ func openAIUsage(desc openAICompatDescriptor, promptTokens, completionTokens int
 		"completion_tokens": completionTokens,
 		"total_tokens":      promptTokens + completionTokens,
 	}
-	if desc.flavor == "openrouter" {
+	if desc.providerType == "openrouter" {
 		usage["cost"] = 0.000001
 	}
 	return usage

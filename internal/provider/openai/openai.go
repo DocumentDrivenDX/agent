@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	reasoningpolicy "github.com/DocumentDrivenDX/agent/internal/reasoning"
@@ -26,8 +25,7 @@ type Provider struct {
 	baseURL          string            // stored for lazy model discovery
 	apiKey           string            // stored for lazy model discovery
 	providerName     string
-	providerSystem   string // URL-heuristic tag; eager, zero-cost, used in hot telemetry paths
-	configFlavor     string // explicit Config.Flavor when set; empty means auto-detect via probe
+	providerSystem   string
 	capabilities     *ProtocolCapabilities
 	usageCost        func(rawUsage string) (*agent.CostAttribution, bool)
 	serverAddress    string
@@ -38,10 +36,6 @@ type Provider struct {
 	discoverOnce     sync.Once
 	discoverErr      error
 	discoveredModels []ScoredModel // full ranked list; populated on first use when model == ""
-
-	// lazy flavor detection — probe runs at most once per Provider instance
-	flavorOnce     sync.Once
-	detectedFlavor string
 }
 
 // Config holds configuration for the OpenAI-compatible provider.
@@ -50,8 +44,8 @@ type Config struct {
 	APIKey       string // optional for local providers
 	Model        string // e.g., "qwen3.5-7b", "gpt-4o". Empty = auto-discover.
 	ProviderName string // logical provider identity; default "openai"
-	// ProviderSystem is the telemetry/cost system identity. When empty, it is
-	// inferred from BaseURL for compatibility with pre-split callers.
+	// ProviderSystem is the telemetry/cost system identity. When empty, it
+	// defaults to "openai". Concrete provider wrappers set their own type.
 	ProviderSystem string
 	ModelPattern   string // case-insensitive regex to prefer among auto-discovered models
 	// KnownModels maps concrete model IDs to catalog target IDs for the
@@ -62,20 +56,17 @@ type Config struct {
 	Headers     map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
 	Reasoning   reasoningpolicy.Reasoning
 	// Capabilities supplies provider-owned protocol capability claims. When nil,
-	// legacy direct openai.Provider callers fall back to flavor detection.
+	// direct openai.Provider callers use OpenAI protocol defaults.
 	Capabilities *ProtocolCapabilities
 	// UsageCostAttribution extracts provider-owned gateway cost metadata from
 	// the raw usage object, when that provider reports one.
 	UsageCostAttribution func(rawUsage string) (*agent.CostAttribution, bool)
-	// Flavor is an optional explicit server-type hint ("lmstudio", "omlx",
-	// "openrouter", "ollama"). When set, DetectedFlavor() returns this value
-	// without probing. When empty, DetectedFlavor() runs a one-time probe.
-	Flavor string
 }
 
 // New creates a new OpenAI-compatible provider.
 func New(cfg Config) *Provider {
-	providerSystem, serverAddress, serverPort := openAIIdentity(cfg.BaseURL)
+	serverAddress, serverPort := endpointMetadata(cfg.BaseURL)
+	providerSystem := "openai"
 	if cfg.ProviderSystem != "" {
 		providerSystem = cfg.ProviderSystem
 	}
@@ -96,41 +87,12 @@ func New(cfg Config) *Provider {
 		apiKey:           cfg.APIKey,
 		providerName:     providerName,
 		providerSystem:   providerSystem,
-		configFlavor:     cfg.Flavor,
 		capabilities:     cfg.Capabilities,
 		usageCost:        cfg.UsageCostAttribution,
 		serverAddress:    serverAddress,
 		serverPort:       serverPort,
 		reasoningDefault: cfg.Reasoning,
 	}
-}
-
-// DetectedFlavor returns the effective server flavor for this provider.
-// Resolution order:
-//
-//  1. Config.Flavor (if set at construction) — returned verbatim, no probe.
-//  2. Cached probe result — computed on first call by contacting
-//     /v1/models/status (omlx) and /api/v0/models (lmstudio).
-//  3. URL-heuristic providerSystem — fallback when probe is inconclusive.
-//
-// This accessor is intended for pre-dispatch gating (capability introspection,
-// routing decisions) where the caller is willing to block once on a short
-// network probe. Do not use it in per-response hot paths; use
-// ChatStartMetadata() for telemetry, which is eager and non-blocking.
-func (p *Provider) DetectedFlavor() string {
-	p.flavorOnce.Do(func() {
-		if p.configFlavor != "" {
-			p.detectedFlavor = strings.ToLower(strings.TrimSpace(p.configFlavor))
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		p.detectedFlavor = resolveProviderFlavor(ctx, p.baseURL, "")
-	})
-	if p.detectedFlavor != "" {
-		return p.detectedFlavor
-	}
-	return p.providerSystem
 }
 
 // DiscoveredModels returns the full ranked list of models discovered from the
@@ -293,8 +255,7 @@ func (p *Provider) costAttribution(rawUsage string) *agent.CostAttribution {
 
 // reasoningRequestOptions builds per-request options. For thinking models
 // (Qwen3, DeepSeek-R1 etc.) apply a budget cap via the non-standard `thinking`
-// body field only for flavors that tolerate it. Sending it to omlx causes
-// silent SSE termination after the first delta (agent-04639431 wire evidence).
+// body field only for providers that declare support.
 func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.RequestOption, error) {
 	policy, err := reasoningpolicy.Parse(opts.Reasoning)
 	if err != nil {
@@ -320,7 +281,7 @@ func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.Request
 	}
 	if !p.SupportsThinking() {
 		if explicitRequest {
-			return nil, fmt.Errorf("openai: reasoning=%q is not supported by flavor %q", policy.Value, p.DetectedFlavor())
+			return nil, fmt.Errorf("openai: reasoning=%q is not supported by provider type %q", policy.Value, p.providerSystem)
 		}
 		return nil, nil
 	}
@@ -333,18 +294,17 @@ func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.Request
 var _ agent.Provider = (*Provider)(nil)
 var _ agent.StreamingProvider = (*Provider)(nil)
 
-func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serverPort int) {
-	providerSystem = "openai"
+func endpointMetadata(baseURL string) (serverAddress string, serverPort int) {
 	serverAddress = "api.openai.com"
 	serverPort = 443
 
 	if baseURL == "" {
-		return providerSystem, serverAddress, serverPort
+		return serverAddress, serverPort
 	}
 
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
-		return providerSystem, serverAddress, serverPort
+		return serverAddress, serverPort
 	}
 
 	host := parsed.Hostname()
@@ -360,46 +320,7 @@ func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serve
 		serverPort = 80
 	}
 
-	switch {
-	case strings.Contains(host, "openrouter.ai"):
-		providerSystem = "openrouter"
-	case host == "localhost" || host == "127.0.0.1":
-		switch serverPort {
-		case 11434:
-			providerSystem = "ollama"
-		case 1234:
-			providerSystem = "lmstudio"
-		case 1235:
-			providerSystem = "omlx"
-		default:
-			providerSystem = "local"
-		}
-	case strings.Contains(host, "openai.com"):
-		providerSystem = "openai"
-	case strings.Contains(host, "minimaxi.chat"):
-		providerSystem = "minimax"
-	case strings.Contains(host, "dashscope.aliyuncs.com"):
-		providerSystem = "qwen"
-	case strings.Contains(host, "z.ai"):
-		providerSystem = "zai"
-	default:
-		// Non-standard port on a named host → treat as local inference runtime.
-		if serverPort != 0 && serverPort != 80 && serverPort != 443 {
-			switch serverPort {
-			case 11434:
-				providerSystem = "ollama"
-			case 1234:
-				providerSystem = "lmstudio"
-			case 1235:
-				providerSystem = "omlx"
-			default:
-				providerSystem = "local"
-			}
-		}
-		// Standard ports (0, 80, 443) on an unknown host fall through to "openai".
-	}
-
-	return providerSystem, serverAddress, serverPort
+	return serverAddress, serverPort
 }
 
 func streamAttemptCost(cost *agent.CostAttribution) *agent.CostAttribution {

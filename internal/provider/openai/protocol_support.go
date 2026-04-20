@@ -1,11 +1,10 @@
 package openai
 
-// Protocol-level capability flags describe what the resolved
-// provider+flavor can actually honor on the wire: tool calls, streaming, and
-// structured-output modes. They are distinct from routing-layer capability
-// (a benchmark-quality score used by smart routing). Callers use these flags
-// to gate dispatch — refusing to send a tool-using prompt at a flavor that
-// does not translate tools is cheaper than dispatching and failing mid-stream.
+// Protocol-level capability flags describe what the concrete provider can
+// honor on the OpenAI-compatible wire: tool calls, streaming, and structured
+// output modes. They are distinct from routing-layer capability (a
+// benchmark-quality score used by smart routing). Callers use these flags to
+// gate dispatch before sending unsupported request shapes.
 
 // ProtocolCapabilities declares provider-owned protocol capability claims.
 type ProtocolCapabilities struct {
@@ -23,43 +22,14 @@ var (
 	UnknownProtocolCapabilities ProtocolCapabilities
 )
 
-// legacyProtocolCapabilities is the static flavor → capability table for
-// direct openai.Provider callers that have not supplied provider-owned claims.
-// Values reflect
-// what each flavor is claimed (by its vendor docs) to support at the HTTP
-// surface. Unknown flavors default to the zero value (all false), which is the
-// conservative choice — routing rejects rather than dispatches.
-//
-// When wire evidence (see ddx-6a5dfe35) contradicts a claim, revise the table
-// here rather than adding per-model overrides. Per-model capability is
-// explicitly out of scope for this surface (see agent-767549c7 out-of-scope
-// section).
-var legacyProtocolCapabilities = map[string]ProtocolCapabilities{
-	// Wire evidence (agent-04639431, DocumentDrivenDX/ddx ddx-6a5dfe35)
-	// shows omlx opens an SSE stream then silently terminates after the
-	// first delta when `thinking` is present — hard-off for omlx.
-	// OpenAI proper uses reasoning_effort, not `thinking`. Keep off.
-	"openai":     OpenAIProtocolCapabilities,
-	"openrouter": {Tools: true, Stream: true, StructuredOutput: true, Thinking: false},
-	// LM Studio: the field was originally added for this flavor (openai.go
-	// comment "LM Studio and compatible servers recognise"). Keep on.
-	"lmstudio": {Tools: true, Stream: true, StructuredOutput: true, Thinking: true},
-	// omlx: Tools/Stream/StructuredOutput are documented. Thinking is NOT
-	// — wire evidence (agent-04639431) shows silent SSE termination when
-	// `thinking` is present. Strip it.
-	"omlx":   {Tools: true, Stream: true, StructuredOutput: true, Thinking: false},
-	"ollama": {Tools: true, Stream: true, StructuredOutput: false, Thinking: false},
-	// "local" and "" fall through to zero-value (all false) by design.
-}
-
 func (p *Provider) protocolCapabilities() ProtocolCapabilities {
 	if p.capabilities != nil {
 		return *p.capabilities
 	}
-	return legacyProtocolCapabilities[p.DetectedFlavor()]
+	return OpenAIProtocolCapabilities
 }
 
-// SupportsTools reports whether the resolved provider+flavor accepts a `tools`
+// SupportsTools reports whether the concrete provider accepts a `tools`
 // field on `/v1/chat/completions` and returns structured `tool_calls` in the
 // response.
 func (p *Provider) SupportsTools() bool {
@@ -79,13 +49,10 @@ func (p *Provider) SupportsStructuredOutput() bool {
 	return p.protocolCapabilities().StructuredOutput
 }
 
-// SupportsThinking reports whether the flavor accepts the non-standard
+// SupportsThinking reports whether the provider accepts the non-standard
 // `thinking` request-body field used to cap reasoning-token budgets on
-// LM Studio and compatible servers. Flavors returning false MUST have the
-// field stripped at serialization time — see openai.go for the injection
-// gate. Omlx and openrouter return false because including `thinking`
-// causes either a silent stream termination (omlx, agent-04639431) or a
-// rejection / passthrough-to-unsupporting-backend (openrouter).
+// LM Studio and compatible servers. Providers returning false MUST have the
+// field stripped at serialization time.
 func (p *Provider) SupportsThinking() bool {
 	return p.protocolCapabilities().Thinking
 }

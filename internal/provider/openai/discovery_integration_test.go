@@ -157,24 +157,6 @@ func TestIntegration_LookupModelLimits_Omlx(t *testing.T) {
 	t.Fatalf("model %q not found in oMLX status payload", model)
 }
 
-func TestIntegration_ProbeProviderFlavor_LMStudio(t *testing.T) {
-	baseURL := lmStudioURLForDiscovery(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	assert.Equal(t, "lmstudio", openai.New(openai.Config{BaseURL: baseURL}).DetectedFlavor())
-}
-
-func TestIntegration_ProbeProviderFlavor_Omlx(t *testing.T) {
-	baseURL := omlxURL(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	assert.Equal(t, "omlx", openai.New(openai.Config{BaseURL: baseURL}).DetectedFlavor())
-}
-
 func TestIntegration_DiscoverModels_LMStudio(t *testing.T) {
 	baseURL := lmStudioURLForDiscovery(t)
 
