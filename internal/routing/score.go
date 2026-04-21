@@ -2,11 +2,12 @@ package routing
 
 // costClassRank maps cost class to numeric rank (lower = cheaper).
 var costClassRank = map[string]int{
-	"local":     0,
-	"cheap":     1,
-	"medium":    2,
-	"expensive": 3,
-	"":          2, // unknown = medium
+	"local":        0,
+	"cheap":        1,
+	"medium":       2,
+	"expensive":    3,
+	"experimental": -1,
+	"":             2, // unknown = medium
 }
 
 // scorePolicy returns a score for a candidate under the named profile.
@@ -119,6 +120,9 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 	if cand.ObservedTokensPerSec > 0 {
 		// Small additive bonus, scaled.
 		base += cand.ObservedTokensPerSec / 100.0
+	}
+	if cand.CostClass == "experimental" {
+		base -= 75
 	}
 
 	return base

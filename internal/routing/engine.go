@@ -445,6 +445,8 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 			if p.DefaultModel == "" && h.DefaultModel == "" {
 				return "", fmt.Sprintf("profile %q not available on surface %q", req.Profile, h.Surface)
 			}
+		} else if p.DefaultModel == "" && h.DefaultModel == "" {
+			return "", fmt.Sprintf("profile %q not available on surface %q", req.Profile, h.Surface)
 		}
 		// No catalog hit; fall through to default.
 	}

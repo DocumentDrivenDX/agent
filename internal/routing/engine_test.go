@@ -436,6 +436,92 @@ func TestSmartPrefersCloud(t *testing.T) {
 	}
 }
 
+func TestProfileRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:            "gemini",
+				Surface:         "gemini",
+				CostClass:       "experimental",
+				Available:       true,
+				QuotaOK:         true,
+				SubscriptionOK:  true,
+				ExactPinSupport: true,
+				SupportsTools:   true,
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			return "", false
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "smart"}, in)
+	if err == nil {
+		t.Fatal("expected unsupported profile surface to be rejected")
+	}
+	if dec == nil || len(dec.Candidates) != 1 {
+		t.Fatalf("expected one rejected candidate, got %#v", dec)
+	}
+	c := dec.Candidates[0]
+	if c.Eligible {
+		t.Fatalf("gemini candidate should be ineligible for profile routing: %#v", c)
+	}
+	if c.Model != "" {
+		t.Fatalf("unsupported profile should not produce an empty-model eligible route, got model %q", c.Model)
+	}
+	if !strings.Contains(c.Reason, `profile "smart" not available on surface "gemini"`) {
+		t.Fatalf("unexpected rejection reason: %q", c.Reason)
+	}
+}
+
+func TestSmartDoesNotSelectExperimentalGeminiOverModeledAgent(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:            "agent",
+				Surface:         "embedded-openai",
+				CostClass:       "local",
+				IsLocal:         true,
+				Available:       true,
+				QuotaOK:         true,
+				SubscriptionOK:  true,
+				ExactPinSupport: true,
+				SupportsTools:   true,
+				DefaultModel:    "qwen3.5-27b",
+			},
+			{
+				Name:            "gemini",
+				Surface:         "gemini",
+				CostClass:       "experimental",
+				Available:       true,
+				QuotaOK:         true,
+				SubscriptionOK:  true,
+				ExactPinSupport: true,
+				SupportsTools:   true,
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			if ref == "smart" && surface == "embedded-openai" {
+				return "qwen3.5-27b", true
+			}
+			return "", false
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "smart"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "agent" {
+		t.Fatalf("smart should use modeled agent route, got harness=%q model=%q", dec.Harness, dec.Model)
+	}
+	for _, c := range dec.Candidates {
+		if c.Harness == "gemini" && c.Eligible {
+			t.Fatalf("gemini should not be eligible without a smart profile model: %#v", c)
+		}
+	}
+}
+
 func TestStableTieBreakerAlphabetical(t *testing.T) {
 	// Two equal-score candidates → alphabetical winner.
 	in := Inputs{

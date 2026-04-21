@@ -52,7 +52,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		ExactPinSupport:      true,
 		SupportedPermissions: nil,
 		SupportedReasoning:   nil,
-		CostClass:            "medium",
+		CostClass:            "experimental",
 	}
 	path := r.Binary
 	if path == "" {
