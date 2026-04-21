@@ -368,18 +368,19 @@ func TestNonClaudeSubscriptionQuotaStale(t *testing.T) {
 	// without a durable quota cache): QuotaOK=true (hardcoded), QuotaStale=true
 	// (no durable cache → conservative stale signal), QuotaTrend=Unknown.
 	codexEntry := HarnessEntry{
-		Name:            "codex",
-		Surface:         "codex",
-		CostClass:       "medium",
-		IsSubscription:  true,
-		Available:       true,
-		QuotaOK:         true, // hardcoded for non-Claude
-		QuotaStale:      true, // no durable cache → stale
-		QuotaTrend:      QuotaTrendUnknown,
-		SubscriptionOK:  true, // eligible when SubscriptionOK=true
-		DefaultModel:    "gpt-5.4",
-		ExactPinSupport: true,
-		SupportsTools:   true,
+		Name:                "codex",
+		Surface:             "codex",
+		CostClass:           "medium",
+		IsSubscription:      true,
+		AutoRoutingEligible: true,
+		Available:           true,
+		QuotaOK:             true, // hardcoded for non-Claude
+		QuotaStale:          true, // no durable cache → stale
+		QuotaTrend:          QuotaTrendUnknown,
+		SubscriptionOK:      true, // eligible when SubscriptionOK=true
+		DefaultModel:        "gpt-5.4",
+		ExactPinSupport:     true,
+		SupportsTools:       true,
 	}
 
 	in := Inputs{

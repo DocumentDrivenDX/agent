@@ -130,22 +130,23 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 		}
 		st := statusByName[name]
 		entry := routing.HarnessEntry{
-			Name:               name,
-			Surface:            cfg.Surface,
-			CostClass:          cfg.CostClass,
-			IsLocal:            cfg.IsLocal,
-			IsSubscription:     cfg.IsSubscription,
-			IsHTTPProvider:     cfg.IsHTTPProvider,
-			TestOnly:           cfg.TestOnly,
-			ExactPinSupport:    cfg.ExactPinSupport,
-			DefaultModel:       cfg.DefaultModel,
-			SupportedReasoning: supportedReasoning(cfg),
-			MaxReasoningTokens: cfg.MaxReasoningTokens,
-			SupportedPerms:     supportedPermissions(cfg),
-			SupportsTools:      true, // all builtin harnesses support tools today
-			Available:          st.Available,
-			QuotaOK:            true,
-			QuotaTrend:         routing.QuotaTrendUnknown,
+			Name:                name,
+			Surface:             cfg.Surface,
+			CostClass:           cfg.CostClass,
+			IsLocal:             cfg.IsLocal,
+			IsSubscription:      cfg.IsSubscription,
+			IsHTTPProvider:      cfg.IsHTTPProvider,
+			AutoRoutingEligible: cfg.AutoRoutingEligible,
+			TestOnly:            cfg.TestOnly,
+			ExactPinSupport:     cfg.ExactPinSupport,
+			DefaultModel:        cfg.DefaultModel,
+			SupportedReasoning:  supportedReasoning(cfg),
+			MaxReasoningTokens:  cfg.MaxReasoningTokens,
+			SupportedPerms:      supportedPermissions(cfg),
+			SupportsTools:       true, // all builtin harnesses support tools today
+			Available:           st.Available,
+			QuotaOK:             true,
+			QuotaTrend:          routing.QuotaTrendUnknown,
 			// SubscriptionOK defaults to true. Non-Claude subscription harnesses
 			// (codex) have no durable quota cache today; they are marked false
 			// below after the claude block so they are ineligible by default.

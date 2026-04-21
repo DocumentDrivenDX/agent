@@ -125,27 +125,46 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	codex, _ := r.Get("codex")
 	assert.True(t, codex.IsSubscription)
 	assert.False(t, codex.IsLocal)
+	assert.True(t, codex.AutoRoutingEligible)
 	assert.True(t, codex.ExactPinSupport)
 
 	agent, _ := r.Get("agent")
 	assert.True(t, agent.IsLocal)
 	assert.Equal(t, "local", agent.CostClass)
+	assert.True(t, agent.AutoRoutingEligible)
+
+	claude, _ := r.Get("claude")
+	assert.True(t, claude.AutoRoutingEligible)
+
+	gemini, _ := r.Get("gemini")
+	assert.False(t, gemini.AutoRoutingEligible)
+
+	opencode, _ := r.Get("opencode")
+	assert.False(t, opencode.AutoRoutingEligible)
+
+	pi, _ := r.Get("pi")
+	assert.False(t, pi.AutoRoutingEligible)
 
 	virtual, _ := r.Get("virtual")
 	assert.True(t, virtual.TestOnly)
+	assert.False(t, virtual.AutoRoutingEligible)
 
 	script, _ := r.Get("script")
 	assert.True(t, script.TestOnly)
+	assert.False(t, script.AutoRoutingEligible)
 
 	openrouter, _ := r.Get("openrouter")
 	assert.True(t, openrouter.IsHTTPProvider)
+	assert.False(t, openrouter.AutoRoutingEligible)
 
 	lmstudio, _ := r.Get("lmstudio")
 	assert.True(t, lmstudio.IsHTTPProvider)
 	assert.True(t, lmstudio.IsLocal)
+	assert.False(t, lmstudio.AutoRoutingEligible)
 
 	omlx, _ := r.Get("omlx")
 	assert.True(t, omlx.IsHTTPProvider)
 	assert.True(t, omlx.IsLocal)
 	assert.Equal(t, "local", omlx.CostClass)
+	assert.False(t, omlx.AutoRoutingEligible)
 }

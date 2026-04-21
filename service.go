@@ -169,6 +169,7 @@ type HarnessInfo struct {
 	Error                string
 	IsLocal              bool
 	IsSubscription       bool
+	AutoRoutingEligible  bool
 	TestOnly             bool
 	ExactPinSupport      bool
 	DefaultModel         string   // built-in default model when no override is supplied
@@ -628,6 +629,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 			Error:                st.Error,
 			IsLocal:              cfg.IsLocal,
 			IsSubscription:       cfg.IsSubscription,
+			AutoRoutingEligible:  cfg.AutoRoutingEligible,
 			TestOnly:             cfg.TestOnly,
 			ExactPinSupport:      cfg.ExactPinSupport,
 			DefaultModel:         cfg.DefaultModel,

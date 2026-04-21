@@ -57,19 +57,20 @@ const (
 // It is the routing engine's view of a registered harness; the engine does
 // not import the harnesses package directly to keep the dependency narrow.
 type HarnessEntry struct {
-	Name               string
-	Surface            string
-	CostClass          string
-	IsLocal            bool
-	IsSubscription     bool
-	IsHTTPProvider     bool
-	TestOnly           bool
-	ExactPinSupport    bool
-	DefaultModel       string
-	SupportedReasoning []string
-	MaxReasoningTokens int
-	SupportedPerms     []string
-	SupportsTools      bool
+	Name                string
+	Surface             string
+	CostClass           string
+	IsLocal             bool
+	IsSubscription      bool
+	IsHTTPProvider      bool
+	AutoRoutingEligible bool
+	TestOnly            bool
+	ExactPinSupport     bool
+	DefaultModel        string
+	SupportedReasoning  []string
+	MaxReasoningTokens  int
+	SupportedPerms      []string
+	SupportsTools       bool
 
 	// Available reflects the harness's discovered availability.
 	Available bool
@@ -183,6 +184,12 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 	for _, h := range in.Harnesses {
 		// TestOnly harnesses (script/virtual) only reachable via explicit override.
 		if h.TestOnly && canonicalHarness != h.Name {
+			continue
+		}
+		// Automatic profile/tier routing is restricted to harnesses with full
+		// coverage. Explicit Harness pins can still use experimental/ad-hoc
+		// harnesses.
+		if canonicalHarness == "" && !h.AutoRoutingEligible {
 			continue
 		}
 		// Hard harness override: skip non-matching harnesses.

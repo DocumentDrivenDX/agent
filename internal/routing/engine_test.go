@@ -12,17 +12,18 @@ func newTestRoutingEngine() Inputs {
 	return Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:               "agent",
-				Surface:            "embedded-openai",
-				CostClass:          "local",
-				IsLocal:            true,
-				ExactPinSupport:    true,
-				Available:          true,
-				QuotaOK:            true,
-				SubscriptionOK:     true,
-				SupportedReasoning: []string{"low", "medium", "high"},
-				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
-				SupportsTools:      true,
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedReasoning:  []string{"low", "medium", "high"},
+				SupportedPerms:      []string{"safe", "supervised", "unrestricted"},
+				SupportsTools:       true,
 				Providers: []ProviderEntry{
 					{
 						Name:          "vidar-omlx",
@@ -42,32 +43,34 @@ func newTestRoutingEngine() Inputs {
 				},
 			},
 			{
-				Name:               "codex",
-				Surface:            "codex",
-				CostClass:          "medium",
-				IsSubscription:     true,
-				ExactPinSupport:    true,
-				Available:          true,
-				QuotaOK:            true,
-				SubscriptionOK:     true,
-				SupportedReasoning: []string{"low", "medium", "high"},
-				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
-				SupportsTools:      true,
-				DefaultModel:       "gpt-5.4",
+				Name:                "codex",
+				Surface:             "codex",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedReasoning:  []string{"low", "medium", "high"},
+				SupportedPerms:      []string{"safe", "supervised", "unrestricted"},
+				SupportsTools:       true,
+				DefaultModel:        "gpt-5.4",
 			},
 			{
-				Name:               "claude",
-				Surface:            "claude",
-				CostClass:          "medium",
-				IsSubscription:     true,
-				ExactPinSupport:    true,
-				Available:          true,
-				QuotaOK:            true,
-				SubscriptionOK:     true,
-				SupportedReasoning: []string{"low", "medium", "high"},
-				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
-				SupportsTools:      true,
-				DefaultModel:       "claude-sonnet-4-6",
+				Name:                "claude",
+				Surface:             "claude",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedReasoning:  []string{"low", "medium", "high"},
+				SupportedPerms:      []string{"safe", "supervised", "unrestricted"},
+				SupportsTools:       true,
+				DefaultModel:        "claude-sonnet-4-6",
 			},
 		},
 		CatalogResolver: func(ref, surface string) (string, bool) {
@@ -223,14 +226,15 @@ func TestSmellCapabilityGating(t *testing.T) {
 		// A harness with no SupportedReasoning must reject reasoning=high.
 		in := newTestRoutingEngine()
 		in.Harnesses = append(in.Harnesses, HarnessEntry{
-			Name:            "no-reasoning-harness",
-			Surface:         "test",
-			CostClass:       "medium",
-			Available:       true,
-			QuotaOK:         true,
-			SubscriptionOK:  true,
-			ExactPinSupport: true,
-			DefaultModel:    "x",
+			Name:                "no-reasoning-harness",
+			Surface:             "test",
+			CostClass:           "medium",
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			DefaultModel:        "x",
 		})
 		req := Request{Profile: "standard", Reasoning: "high"}
 		dec, err := Resolve(req, in)
@@ -410,6 +414,73 @@ func TestSmellTestOnlyHarnessExcluded(t *testing.T) {
 	}
 }
 
+func TestAutoRoutingEligibilityGate(t *testing.T) {
+	in := newTestRoutingEngine()
+	for _, h := range []HarnessEntry{
+		{
+			Name:            "gemini",
+			Surface:         "gemini",
+			CostClass:       "experimental",
+			Available:       true,
+			QuotaOK:         true,
+			SubscriptionOK:  true,
+			ExactPinSupport: true,
+			SupportsTools:   true,
+			DefaultModel:    "gemini-test",
+		},
+		{
+			Name:            "opencode",
+			Surface:         "embedded-openai",
+			CostClass:       "medium",
+			Available:       true,
+			QuotaOK:         true,
+			SubscriptionOK:  true,
+			ExactPinSupport: true,
+			SupportsTools:   true,
+			DefaultModel:    "opencode-test",
+		},
+		{
+			Name:            "pi",
+			Surface:         "pi",
+			CostClass:       "medium",
+			Available:       true,
+			QuotaOK:         true,
+			SubscriptionOK:  true,
+			ExactPinSupport: true,
+			SupportsTools:   true,
+			DefaultModel:    "pi-test",
+		},
+	} {
+		in.Harnesses = append(in.Harnesses, h)
+	}
+
+	dec, err := Resolve(Request{Profile: "smart"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	for _, c := range dec.Candidates {
+		switch c.Harness {
+		case "agent", "codex", "claude":
+			// Full-coverage harnesses may appear in automatic routing.
+		case "gemini", "opencode", "pi":
+			t.Fatalf("non-full-coverage harness %q leaked into automatic routing candidates", c.Harness)
+		default:
+			t.Fatalf("unexpected harness %q in automatic routing candidates", c.Harness)
+		}
+	}
+
+	for _, name := range []string{"gemini", "opencode", "pi"} {
+		req := Request{Harness: name, Model: name + "-test"}
+		dec, err := Resolve(req, in)
+		if err != nil {
+			t.Fatalf("explicit Harness=%s must remain routable: %v", name, err)
+		}
+		if dec.Harness != name {
+			t.Fatalf("explicit Harness=%s: got %q", name, dec.Harness)
+		}
+	}
+}
+
 // === Profile policy semantics ported from DDx routing_test.go ===
 
 func TestCheapPrefersLocal(t *testing.T) {
@@ -440,14 +511,15 @@ func TestProfileRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:            "gemini",
-				Surface:         "gemini",
-				CostClass:       "experimental",
-				Available:       true,
-				QuotaOK:         true,
-				SubscriptionOK:  true,
-				ExactPinSupport: true,
-				SupportsTools:   true,
+				Name:                "gemini",
+				Surface:             "gemini",
+				CostClass:           "experimental",
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
 			},
 		},
 		CatalogResolver: func(ref, surface string) (string, bool) {
@@ -478,16 +550,17 @@ func TestSmartDoesNotSelectExperimentalGeminiOverModeledAgent(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:            "agent",
-				Surface:         "embedded-openai",
-				CostClass:       "local",
-				IsLocal:         true,
-				Available:       true,
-				QuotaOK:         true,
-				SubscriptionOK:  true,
-				ExactPinSupport: true,
-				SupportsTools:   true,
-				DefaultModel:    "qwen3.5-27b",
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				DefaultModel:        "qwen3.5-27b",
 			},
 			{
 				Name:            "gemini",
@@ -526,8 +599,8 @@ func TestStableTieBreakerAlphabetical(t *testing.T) {
 	// Two equal-score candidates → alphabetical winner.
 	in := Inputs{
 		Harnesses: []HarnessEntry{
-			{Name: "zharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "z", ExactPinSupport: true, SupportsTools: true},
-			{Name: "aharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "a", ExactPinSupport: true, SupportsTools: true},
+			{Name: "zharness", Surface: "x", CostClass: "medium", AutoRoutingEligible: true, Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "z", ExactPinSupport: true, SupportsTools: true},
+			{Name: "aharness", Surface: "x", CostClass: "medium", AutoRoutingEligible: true, Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "a", ExactPinSupport: true, SupportsTools: true},
 		},
 	}
 	req := Request{Profile: "standard"}
@@ -543,7 +616,7 @@ func TestStableTieBreakerAlphabetical(t *testing.T) {
 func TestNoViableCandidate(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
-			{Name: "down", Available: false},
+			{Name: "down", AutoRoutingEligible: true, Available: false},
 		},
 	}
 	req := Request{Profile: "cheap"}

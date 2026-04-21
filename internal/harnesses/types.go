@@ -192,6 +192,7 @@ type HarnessInfo struct {
 	Error                string
 	IsLocal              bool
 	IsSubscription       bool
+	AutoRoutingEligible  bool
 	ExactPinSupport      bool
 	DefaultModel         string
 	SupportedPermissions []string

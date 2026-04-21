@@ -62,6 +62,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.IsSubscription != true {
 			t.Errorf("codex IsSubscription: want true")
 		}
+		if !h.AutoRoutingEligible {
+			t.Errorf("codex AutoRoutingEligible: want true")
+		}
 		if h.IsLocal {
 			t.Errorf("codex IsLocal: want false")
 		}
@@ -87,6 +90,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.IsSubscription != true {
 			t.Errorf("claude IsSubscription: want true")
 		}
+		if !h.AutoRoutingEligible {
+			t.Errorf("claude AutoRoutingEligible: want true")
+		}
 		if h.Type != "subprocess" {
 			t.Errorf("claude Type: want subprocess, got %q", h.Type)
 		}
@@ -104,6 +110,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 		if !h.IsLocal {
 			t.Errorf("agent IsLocal: want true")
+		}
+		if !h.AutoRoutingEligible {
+			t.Errorf("agent AutoRoutingEligible: want true")
 		}
 		if h.CostClass != "local" {
 			t.Errorf("agent CostClass: want local, got %q", h.CostClass)
@@ -153,6 +162,9 @@ func TestListHarnesses_shape(t *testing.T) {
 
 	t.Run("gemini_permissions_nil", func(t *testing.T) {
 		h := byName["gemini"]
+		if h.AutoRoutingEligible {
+			t.Errorf("gemini AutoRoutingEligible: want false")
+		}
 		// gemini has no PermissionArgs → SupportedPermissions should be nil/empty
 		if len(h.SupportedPermissions) != 0 {
 			t.Errorf("gemini SupportedPermissions: want empty, got %v", h.SupportedPermissions)
@@ -161,6 +173,9 @@ func TestListHarnesses_shape(t *testing.T) {
 
 	t.Run("opencode_permissions_all_levels", func(t *testing.T) {
 		h := byName["opencode"]
+		if h.AutoRoutingEligible {
+			t.Errorf("opencode AutoRoutingEligible: want false")
+		}
 		assertContains(t, h.SupportedPermissions, "safe", "opencode permissions")
 		assertContains(t, h.SupportedPermissions, "supervised", "opencode permissions")
 		assertContains(t, h.SupportedPermissions, "unrestricted", "opencode permissions")
@@ -170,6 +185,13 @@ func TestListHarnesses_shape(t *testing.T) {
 		assertContains(t, h.SupportedReasoning, "high", "opencode reasoning")
 		assertContains(t, h.SupportedReasoning, "minimal", "opencode reasoning")
 		assertContains(t, h.SupportedReasoning, "max", "opencode reasoning")
+	})
+
+	t.Run("pi_explicit_only", func(t *testing.T) {
+		h := byName["pi"]
+		if h.AutoRoutingEligible {
+			t.Errorf("pi AutoRoutingEligible: want false")
+		}
 	})
 
 	t.Run("capability_matrix_all_harnesses", func(t *testing.T) {

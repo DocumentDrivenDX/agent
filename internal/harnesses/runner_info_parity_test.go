@@ -49,6 +49,9 @@ func TestRunnerInfoMatchesRegistryMetadata(t *testing.T) {
 			if tc.info.IsSubscription != cfg.IsSubscription {
 				t.Fatalf("IsSubscription: got %v, want %v", tc.info.IsSubscription, cfg.IsSubscription)
 			}
+			if tc.info.AutoRoutingEligible != cfg.AutoRoutingEligible {
+				t.Fatalf("AutoRoutingEligible: got %v, want %v", tc.info.AutoRoutingEligible, cfg.AutoRoutingEligible)
+			}
 			assertStringSet(t, "SupportedPermissions", tc.info.SupportedPermissions, registryPermissions(cfg))
 			assertStringSet(t, "SupportedReasoning", tc.info.SupportedReasoning, cfg.ReasoningLevels)
 		})
