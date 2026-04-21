@@ -22,8 +22,10 @@ import (
 //	type=turn.completed, usage.input_tokens=N, usage.output_tokens=N
 //	(other types are passed through silently)
 type codexEvent struct {
-	Type string `json:"type"`
-	Item struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	Fresh  *bool  `json:"fresh"`
+	Item   struct {
 		ID               string          `json:"id"`
 		Type             string          `json:"type"`
 		Text             string          `json:"text"`
@@ -33,7 +35,8 @@ type codexEvent struct {
 		ExitCode         *int            `json:"exit_code"`
 		Status           string          `json:"status"`
 	} `json:"item"`
-	Usage json.RawMessage `json:"usage"`
+	Usage      json.RawMessage `json:"usage"`
+	CapturedAt string          `json:"captured_at"`
 }
 
 // streamAggregate captures running totals from the codex stream.
@@ -136,6 +139,8 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 			}
 		case "turn.completed":
 			agg.recordUsage(ev.Usage)
+		case "ddx.usage_source":
+			agg.recordUsageSource(ev.Source, ev.Fresh, ev.CapturedAt, ev.Usage)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
@@ -145,23 +150,32 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 }
 
 func (a *streamAggregate) recordUsage(raw json.RawMessage) {
+	a.recordUsageSource(harnesses.UsageSourceNativeStream, harnesses.BoolPtr(true), "", raw)
+}
+
+func (a *streamAggregate) recordUsageSource(source string, fresh *bool, capturedAt string, raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
+	}
+	if source == "" {
+		source = harnesses.UsageSourceFallback
 	}
 	counts, err := harnesses.ParseUsageJSON(raw)
 	if err != nil {
 		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
-			Source:  harnesses.UsageSourceNativeStream,
-			Fresh:   harnesses.BoolPtr(true),
-			Warning: err.Error(),
+			Source:     source,
+			Fresh:      fresh,
+			CapturedAt: capturedAt,
+			Warning:    err.Error(),
 		})
 		return
 	}
 	if counts.Any() {
 		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
-			Source: harnesses.UsageSourceNativeStream,
-			Fresh:  harnesses.BoolPtr(true),
-			Counts: counts,
+			Source:     source,
+			Fresh:      fresh,
+			CapturedAt: capturedAt,
+			Counts:     counts,
 		})
 	}
 }

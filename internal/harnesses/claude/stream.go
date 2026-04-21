@@ -19,9 +19,12 @@ type claudeStreamEvent struct {
 	Subtype string          `json:"subtype"`
 	Message json.RawMessage `json:"message"`
 	Result  string          `json:"result"`
+	Source  string          `json:"source"`
+	Fresh   *bool           `json:"fresh"`
 
 	// result-event fields
 	Usage           json.RawMessage `json:"usage"`
+	CapturedAt      string          `json:"captured_at"`
 	TotalCostUSD    float64         `json:"total_cost_usd"`
 	DurationMsField int64           `json:"duration_ms"`
 	SessionID       string          `json:"session_id"`
@@ -227,6 +230,8 @@ func parseClaudeStream(ctx context.Context, r io.Reader, out chan<- harnesses.Ev
 			if ev.IsError {
 				agg.IsError = true
 			}
+		case "ddx.usage_source":
+			agg.recordUsageSource(ev.Source, ev.Fresh, ev.CapturedAt, ev.Usage)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
@@ -236,23 +241,32 @@ func parseClaudeStream(ctx context.Context, r io.Reader, out chan<- harnesses.Ev
 }
 
 func (a *streamAggregate) recordUsage(raw json.RawMessage) {
+	a.recordUsageSource(harnesses.UsageSourceNativeStream, harnesses.BoolPtr(true), "", raw)
+}
+
+func (a *streamAggregate) recordUsageSource(source string, fresh *bool, capturedAt string, raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
+	}
+	if source == "" {
+		source = harnesses.UsageSourceFallback
 	}
 	counts, err := harnesses.ParseUsageJSON(raw)
 	if err != nil {
 		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
-			Source:  harnesses.UsageSourceNativeStream,
-			Fresh:   harnesses.BoolPtr(true),
-			Warning: err.Error(),
+			Source:     source,
+			Fresh:      fresh,
+			CapturedAt: capturedAt,
+			Warning:    err.Error(),
 		})
 		return
 	}
 	if counts.Any() {
 		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
-			Source: harnesses.UsageSourceNativeStream,
-			Fresh:  harnesses.BoolPtr(true),
-			Counts: counts,
+			Source:     source,
+			Fresh:      fresh,
+			CapturedAt: capturedAt,
+			Counts:     counts,
 		})
 	}
 }

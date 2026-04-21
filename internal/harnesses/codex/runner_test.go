@@ -277,13 +277,12 @@ func TestParseCodexStream_UsageCassettes(t *testing.T) {
 		wantCache        int
 		wantReasoning    int
 		wantMalformed    bool
-		addDisagreement  bool
 		wantDisagreement bool
 	}{
 		{name: "present", wantUsage: true, wantInput: 12, wantOutput: 4, wantCache: 5, wantReasoning: 2},
 		{name: "absent"},
 		{name: "malformed", wantMalformed: true},
-		{name: "disagree", wantUsage: true, wantInput: 30, wantOutput: 6, addDisagreement: true, wantDisagreement: true},
+		{name: "disagree", wantUsage: true, wantInput: 30, wantOutput: 6, wantDisagreement: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -298,19 +297,7 @@ func TestParseCodexStream_UsageCassettes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseCodexStream: %v", err)
 			}
-			candidates := append([]harnesses.UsageCandidate(nil), agg.UsageSources...)
-			if tc.addDisagreement {
-				candidates = append(candidates, harnesses.UsageCandidate{
-					Source: harnesses.UsageSourceStatusOutput,
-					Fresh:  harnesses.BoolPtr(false),
-					Counts: harnesses.UsageTokenCounts{
-						InputTokens:  harnesses.IntPtr(29),
-						OutputTokens: harnesses.IntPtr(6),
-						TotalTokens:  harnesses.IntPtr(35),
-					},
-				})
-			}
-			usage, warnings := harnesses.ResolveFinalUsage(candidates)
+			usage, warnings := harnesses.ResolveFinalUsage(agg.UsageSources)
 			if !tc.wantUsage {
 				if usage != nil {
 					t.Fatalf("usage: got %#v, want nil", usage)

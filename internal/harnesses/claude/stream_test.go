@@ -256,33 +256,20 @@ func TestParseClaudeStream_UsageCassettes(t *testing.T) {
 		wantOutput        int
 		wantCache         int
 		wantMalformed     bool
-		addDisagreement   bool
 		wantDisagreement  bool
 		wantSelectedInput int
 	}{
 		{name: "present", wantUsage: true, wantInput: 10, wantOutput: 2, wantCache: 7, wantSelectedInput: 10},
 		{name: "absent"},
 		{name: "malformed", wantMalformed: true},
-		{name: "disagree", wantUsage: true, wantInput: 21, wantOutput: 9, addDisagreement: true, wantDisagreement: true, wantSelectedInput: 21},
+		{name: "disagree", wantUsage: true, wantInput: 21, wantOutput: 9, wantDisagreement: true, wantSelectedInput: 21},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join("testdata", "usage_cassettes", tc.name+".jsonl"))
 			require.NoError(t, err)
 			_, agg := runParser(t, string(data))
-			candidates := append([]harnesses.UsageCandidate(nil), agg.UsageSources...)
-			if tc.addDisagreement {
-				candidates = append(candidates, harnesses.UsageCandidate{
-					Source: harnesses.UsageSourceTranscript,
-					Fresh:  harnesses.BoolPtr(false),
-					Counts: harnesses.UsageTokenCounts{
-						InputTokens:  harnesses.IntPtr(20),
-						OutputTokens: harnesses.IntPtr(9),
-						TotalTokens:  harnesses.IntPtr(29),
-					},
-				})
-			}
-			usage, warnings := harnesses.ResolveFinalUsage(candidates)
+			usage, warnings := harnesses.ResolveFinalUsage(agg.UsageSources)
 			if !tc.wantUsage {
 				assert.Nil(t, usage)
 			} else {
