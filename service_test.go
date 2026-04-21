@@ -125,6 +125,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 		assertContains(t, h.SupportedPermissions, "safe", "agent permissions")
 		assertContains(t, h.SupportedPermissions, "unrestricted", "agent permissions")
+		assertContains(t, h.SupportedReasoning, "low", "agent reasoning")
+		assertContains(t, h.SupportedReasoning, "medium", "agent reasoning")
+		assertContains(t, h.SupportedReasoning, "high", "agent reasoning")
 	})
 
 	t.Run("openrouter_native", func(t *testing.T) {

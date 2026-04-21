@@ -43,9 +43,25 @@ can exist in a broader matrix, but this primary baseline is deliberately strict.
 
 | Harness | Run | FinalText | ProgressEvents | Cancel | WorkdirContext | PermissionModes | ListModels | SetModel | ListReasoning | SetReasoning | TokenUsage | QuotaStatus | ErrorStatus | RequestMetadata |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| agent | pass/gap | pass/gap | pass/gap | pass/gap | pass/gap | `safe`, `unrestricted` | pass/gap | pass/gap | pass/gap | pass/gap | pass/gap | n/a | pass/gap | pass/gap |
+| agent | pass | pass | pass | pass | pass | `safe`, `unrestricted` | pass | pass | pass | pass | pass | n/a | pass | pass |
 | codex | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | `safe`, `supervised`, `unrestricted` | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked |
 | claude | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | `safe`, `supervised`, `unrestricted` | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked |
+
+## Native Agent Evidence
+
+The native `agent` harness is eligible for automatic routing because its core
+capabilities are covered through `Service.Execute` with provider test doubles.
+Current evidence:
+
+| Capability | Evidence |
+|---|---|
+| Run, FinalText, TokenUsage, RequestMetadata | `service_execute_test.go:TestExecute_NativePathWithFakeProvider` asserts success, normalized final text, input/output/total usage, and `routing_actual` harness/provider/model metadata. |
+| ProgressEvents, WorkdirContext, RequestMetadata | `service_execute_test.go:TestExecute_NativeReadToolEmitsToolEvents` asserts routing plus tool-call/tool-result progress events, metadata propagation, and reading a sentinel file from `WorkDir`. |
+| Cancel and timeout status | `service_execute_test.go:TestExecute_OSCancelDuringStreaming` and `service_execute_test.go:TestExecute_TimeoutWallClock` assert cancelled/timed-out/failed terminal statuses instead of success. |
+| PermissionModes | `service_execute_test.go:TestExecute_NativeSafePermissionExposesReadOnlyTools`, `TestExecute_NativeUnrestrictedToolsForwarded`, and `TestExecute_NativeSupervisedPermissionRejected` assert the documented `safe`/`unrestricted` modes and explicit `supervised` rejection. |
+| SetReasoning | `service_execute_test.go:TestExecute_NativeReasoningForwarded` asserts requested reasoning is forwarded to the native provider path. |
+| ListModels and SetModel | `service_models_test.go` covers native provider model listing and harness-filtered model selection; `service_route_attempts_test.go` and `service_routestatus_test.go` cover resolved provider/model decisions through `ResolveRoute`. |
+| QuotaStatus | n/a for the native harness; quota belongs to the selected provider backend. |
 
 ## Capability Contracts
 

@@ -94,6 +94,18 @@ func finalText(t *testing.T, ev *agent.ServiceEvent) string {
 	return payload.FinalText
 }
 
+func finalData(t *testing.T, ev *agent.ServiceEvent) agent.ServiceFinalData {
+	t.Helper()
+	if ev == nil {
+		t.Fatal("expected final event")
+	}
+	var payload agent.ServiceFinalData
+	if err := json.Unmarshal(ev.Data, &payload); err != nil {
+		t.Fatalf("unmarshal final: %v", err)
+	}
+	return payload
+}
+
 func eventPayload[T any](t *testing.T, ev agent.ServiceEvent) T {
 	t.Helper()
 	var payload T
@@ -170,6 +182,16 @@ func TestExecute_NativePathWithFakeProvider(t *testing.T) {
 	}
 	if got := finalText(t, final); got != "hello world" {
 		t.Errorf("final_text: want %q, got %q", "hello world", got)
+	}
+	payload := finalData(t, final)
+	if payload.Usage == nil || payload.Usage.InputTokens == nil || payload.Usage.OutputTokens == nil || payload.Usage.TotalTokens == nil {
+		t.Fatalf("usage: expected input/output/total tokens, got %#v", payload.Usage)
+	}
+	if *payload.Usage.InputTokens != 10 || *payload.Usage.OutputTokens != 5 || *payload.Usage.TotalTokens != 15 {
+		t.Fatalf("usage tokens: got %#v, want input=10 output=5 total=15", payload.Usage)
+	}
+	if payload.RoutingActual == nil || payload.RoutingActual.Harness != "agent" || payload.RoutingActual.Provider != "fake" || payload.RoutingActual.Model != "fake-model" {
+		t.Fatalf("routing_actual: got %#v", payload.RoutingActual)
 	}
 	// First event is the routing_decision.
 	if events[0].Type != "routing_decision" {
