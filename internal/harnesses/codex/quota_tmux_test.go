@@ -27,6 +27,26 @@ func TestParseCodexStatusOutput_PrimaryWindow(t *testing.T) {
 	assert.Equal(t, "ok", primary.State)
 }
 
+func TestParseCodexStatusOutput_PrimaryWindowVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want float64
+	}{
+		{name: "bullet", text: "gpt-5.4 high • 75% left • /work", want: 25},
+		{name: "remaining", text: "\x1b[1;32mgpt-5.4\x1b[0m high · 8% remaining · /work", want: 92},
+		{name: "no effort", text: "gpt-5.4 · 12% left · /work", want: 88},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			windows := parseCodexStatusOutput(tc.text)
+			require.Len(t, windows, 1)
+			assert.Equal(t, "5h", windows[0].Name)
+			assert.Equal(t, tc.want, windows[0].UsedPercent)
+		})
+	}
+}
+
 func TestParseCodexStatusOutput_WeeklyWarning(t *testing.T) {
 	windows := parseCodexStatusOutput(fixtureCodexStatusOutput)
 	require.Len(t, windows, 2)
@@ -38,6 +58,16 @@ func TestParseCodexStatusOutput_WeeklyWarning(t *testing.T) {
 	// "less than 5%" left → usedFloor = 95, state checked at 96
 	assert.Equal(t, 95.0, weekly.UsedPercent)
 	assert.Equal(t, "blocked", weekly.State)
+}
+
+func TestParseCodexStatusOutput_WeeklyExactRemaining(t *testing.T) {
+	windows := parseCodexStatusOutput(`
+gpt-5.4 high · 50% left · /work
+You have 12% of your weekly limit remaining.
+`)
+	require.Len(t, windows, 2)
+	assert.Equal(t, 88.0, windows[1].UsedPercent)
+	assert.Equal(t, "ok", windows[1].State)
 }
 
 func TestParseCodexStatusOutput_NoOutput(t *testing.T) {

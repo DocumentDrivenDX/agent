@@ -140,12 +140,12 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	assert.False(t, gemini.AutoRoutingEligible)
 
 	opencode, _ := r.Get("opencode")
-	assert.True(t, opencode.AutoRoutingEligible)
+	assert.False(t, opencode.AutoRoutingEligible)
 	assert.Equal(t, "opencode/gpt-5.4", opencode.DefaultModel)
 	assert.Contains(t, opencode.Models, "opencode/gpt-5.4")
 
 	pi, _ := r.Get("pi")
-	assert.True(t, pi.AutoRoutingEligible)
+	assert.False(t, pi.AutoRoutingEligible)
 	assert.Equal(t, "gemini-2.5-flash", pi.DefaultModel)
 	assert.Contains(t, pi.Models, "gemini-2.5-pro")
 

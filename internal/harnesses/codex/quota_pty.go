@@ -61,6 +61,7 @@ func RefreshCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (Cod
 		CapturedAt: time.Now().UTC(),
 		Windows:    windows,
 		Source:     "pty",
+		Account:    readCodexAccountOrNil(),
 	}, nil
 }
 
@@ -99,7 +100,7 @@ func captureCodexQuotaViaPTY(ctx context.Context, timeout time.Duration, opts ..
 		Env:                cfg.env,
 		Command:            "/status\r",
 		ReadyMarkers:       []string{"›", "> "},
-		DoneMarkers:        []string{"/status", "% left"},
+		DoneWhen:           codexQuotaOutputComplete,
 		ResetBeforeCommand: true,
 		Timeout:            timeout,
 		Size:               session.Size{Rows: 50, Cols: 220},
@@ -124,6 +125,15 @@ func captureCodexQuotaViaPTY(ctx context.Context, timeout time.Duration, opts ..
 	return windows, result, nil
 }
 
+func readCodexAccountOrNil() *harnesses.AccountInfo {
+	account, _ := ReadCodexAccount()
+	return account
+}
+
+func codexQuotaOutputComplete(text string) bool {
+	return strings.Contains(text, "/status") && len(parseCodexStatusOutput(text)) > 0
+}
+
 func quotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 	records := make([]map[string]any, 0, len(windows))
 	for _, window := range windows {
@@ -136,5 +146,10 @@ func quotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 			"state":          window.State,
 		})
 	}
-	return cassette.QuotaRecord{Source: "pty", Status: string(ptyquota.StatusOK), Windows: records}
+	metadata := map[string]any{}
+	if account, ok := ReadCodexAccount(); ok {
+		metadata["plan_type"] = account.PlanType
+		metadata["org_name"] = account.OrgName
+	}
+	return cassette.QuotaRecord{Source: "pty", Status: string(ptyquota.StatusOK), Windows: records, Metadata: metadata}
 }

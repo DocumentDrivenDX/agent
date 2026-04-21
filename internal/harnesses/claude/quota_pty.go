@@ -76,6 +76,9 @@ func ReadClaudeQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, *harnesse
 	if len(windows) == 0 {
 		return nil, account, fmt.Errorf("no quota windows found in claude quota cassette")
 	}
+	if err := validateClaudeQuotaEvidence(windows, account); err != nil {
+		return nil, account, fmt.Errorf("incomplete claude quota cassette: %w", err)
+	}
 	return windows, account, nil
 }
 
@@ -105,8 +108,8 @@ func captureClaudeQuotaViaPTY(ctx context.Context, timeout time.Duration, opts .
 			if len(windows) == 0 {
 				return cassette.QuotaRecord{}, fmt.Errorf("no quota windows found in claude /usage output")
 			}
-			if !hasQuotaWindow(windows, "session") || (!hasQuotaWindow(windows, "weekly-all") && !hasQuotaWindow(windows, "weekly-sonnet")) {
-				return cassette.QuotaRecord{}, fmt.Errorf("incomplete claude /usage output")
+			if err := validateClaudeQuotaEvidence(windows, account); err != nil {
+				return cassette.QuotaRecord{}, fmt.Errorf("incomplete claude /usage output: %w", err)
 			}
 			return quotaRecord(windows, map[string]any{"plan_type": accountPlan(account)}), nil
 		},
@@ -119,6 +122,9 @@ func captureClaudeQuotaViaPTY(ctx context.Context, timeout time.Duration, opts .
 	}
 	if len(windows) == 0 {
 		return nil, account, result, fmt.Errorf("no quota windows found in claude /usage output")
+	}
+	if err := validateClaudeQuotaEvidence(windows, account); err != nil {
+		return nil, account, result, fmt.Errorf("incomplete claude /usage output: %w", err)
 	}
 	return windows, account, result, nil
 }
@@ -156,6 +162,19 @@ func hasQuotaWindow(windows []harnesses.QuotaWindow, limitID string) bool {
 func claudeUsageComplete(text string) bool {
 	windows, _ := parseClaudeUsageOutput(text)
 	return hasQuotaWindow(windows, "session") && (hasQuotaWindow(windows, "weekly-all") || hasQuotaWindow(windows, "weekly-sonnet"))
+}
+
+func validateClaudeQuotaEvidence(windows []harnesses.QuotaWindow, account *harnesses.AccountInfo) error {
+	if accountPlan(account) == "" {
+		return fmt.Errorf("missing account plan")
+	}
+	if !hasQuotaWindow(windows, "session") {
+		return fmt.Errorf("missing session window")
+	}
+	if !hasQuotaWindow(windows, "weekly-all") && !hasQuotaWindow(windows, "weekly-sonnet") {
+		return fmt.Errorf("missing weekly window")
+	}
+	return nil
 }
 
 func remainingPercent(used float64) int {

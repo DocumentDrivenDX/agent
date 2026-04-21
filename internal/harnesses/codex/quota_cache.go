@@ -18,6 +18,7 @@ type CodexQuotaSnapshot struct {
 	CapturedAt time.Time               `json:"captured_at"`
 	Windows    []harnesses.QuotaWindow `json:"windows"`
 	Source     string                  `json:"source"`
+	Account    *harnesses.AccountInfo  `json:"account,omitempty"`
 }
 
 const DefaultCodexQuotaStaleAfter = 5 * time.Minute
@@ -51,6 +52,11 @@ func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
 	}
 	if snapshot.Source == "" {
 		snapshot.Source = "pty"
+	}
+	if snapshot.Account == nil {
+		if account, ok := ReadCodexAccount(); ok {
+			snapshot.Account = account
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("create codex quota cache dir: %w", err)
@@ -148,6 +154,10 @@ func DecideCodexQuotaRouting(snapshot *CodexQuotaSnapshot, now time.Time, staleA
 	decision.Fresh = true
 	if len(snapshot.Windows) == 0 {
 		decision.Reason = "fresh snapshot has no quota windows; assume limited"
+		return decision
+	}
+	if !codexAccountSupportsAutoRouting(snapshot.Account) {
+		decision.Reason = "fresh snapshot has no subsidized account plan; assume limited"
 		return decision
 	}
 	for _, window := range snapshot.Windows {

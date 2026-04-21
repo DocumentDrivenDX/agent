@@ -79,6 +79,8 @@ func TestParseClaudeUsageOutput_PlanTypeVariants(t *testing.T) {
 		{"Opus 4.6 · Claude Team", "Claude Team"},
 		{"Claude Enterprise plan", "Claude Enterprise"},
 		{"Sonnet 4.6 · Claude Max", "Claude Max"},
+		{"Plan: Max", "Claude Max"},
+		{"Pro plan", "Claude Pro"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.wantPlan, func(t *testing.T) {
@@ -87,6 +89,17 @@ func TestParseClaudeUsageOutput_PlanTypeVariants(t *testing.T) {
 			assert.Equal(t, tc.wantPlan, acct.PlanType)
 		})
 	}
+}
+
+func TestParseClaudeUsageOutput_ANSIAndDecimalPercent(t *testing.T) {
+	windows, acct := parseClaudeUsageOutput("\x1b[1mPlan: Max\x1b[0m\r\nCurrent session\r\n<1% used\r\nResets soon\r\nCurrent week (all models)\r\n94.5% used\r\nResets Monday\r\n")
+	require.NotNil(t, acct)
+	assert.Equal(t, "Claude Max", acct.PlanType)
+	require.Len(t, windows, 2)
+	assert.Equal(t, 1.0, windows[0].UsedPercent)
+	assert.Equal(t, "ok", windows[0].State)
+	assert.Equal(t, 94.5, windows[1].UsedPercent)
+	assert.Equal(t, "blocked", windows[1].State)
 }
 
 func TestParseClaudeUsageOutput_NoSections(t *testing.T) {

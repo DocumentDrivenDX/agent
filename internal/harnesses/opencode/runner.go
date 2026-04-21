@@ -52,7 +52,6 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsSubscription:       false,
 		ExactPinSupport:      true,
 		DefaultModel:         "opencode/gpt-5.4",
-		AutoRoutingEligible:  true,
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   []string{"minimal", "low", "medium", "high", "max"},
 		CostClass:            "medium",

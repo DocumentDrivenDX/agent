@@ -102,16 +102,47 @@ classification rule, but only their TUI-only capabilities require PTY
 record/playback tests. If a secondary harness exposes the needed capability via
 a stable CLI/API path, its non-PTY capability test owns that evidence.
 
+## Automatic Routing Eligibility Standard
+
+Availability and basic runner coverage are not enough for profile routing. A
+harness may set `AutoRoutingEligible=true` only after the supported capability
+surface is backed by deterministic evidence and the routing layer has enough
+operational data to choose it without surprising cost, quota, or quality
+regressions.
+
+The required evidence set is:
+
+- prompt execution, final text, progress, cancellation, timeout, workdir,
+  permissions, error status, and request metadata;
+- model listing and model selection, with source metadata and freshness or a
+  versioned compatibility table;
+- reasoning listing and reasoning selection, or explicit unsupported metadata
+  with tests proving reasoning requests do not select the harness;
+- per-run token usage when the harness exposes it, including normalized input,
+  output, and total tokens;
+- quota, account, auth, or cost signals sufficient for routing. Subscription or
+  subsidized harnesses must have fresh durable quota/account evidence. Stale,
+  missing, blocked, or unauthenticated evidence keeps the harness out of
+  automatic routing. Non-subscription harnesses need concrete pricing or an
+  explicit no-quota policy before they can compete with subsidized primary
+  drivers; a coarse `CostClass` alone is not enough.
+
+Codex and Claude are the primary subscription drivers. If their quota probes are
+missing, stale, or blocked, the fix is to repair the probe/cache path and surface
+the blocker, not to silently promote a secondary harness. Secondary harnesses
+remain explicit-only until every row above is satisfied and routing tests prove
+they win only when they are the best eligible candidate.
+
 ## Secondary Harness Promotion Status
 
-`opencode` and `pi` are promoted for automatic routing because their required
-non-PTY capability surfaces are covered by package and service tests:
+`opencode`, `gemini`, and `pi` are supported for explicit execution only until
+they meet the automatic routing standard above:
 
 | Harness | Auto-routing status | Evidence |
 |---|---|---|
-| `opencode` | eligible | `internal/harnesses/opencode/runner_test.go` covers prompt delivery, `--dir`, `-m`, `--variant`, permission no-op semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/opencode/model_discovery_test.go` covers `opencode models` parsing and compatibility-table fallback metadata. `service_models_test.go`, `service_test.go`, `service_route_attempts_test.go`, and `internal/routing/engine_test.go` cover model listing, capability metadata, and automatic-routing eligibility. |
-| `pi` | eligible | `internal/harnesses/pi/runner_test.go` covers prompt delivery, subprocess workdir, `--model`, `--thinking`, permission unsupported semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/pi/model_discovery_test.go` covers `pi --help`, `pi --list-models`, and compatibility-table fallback metadata. `service_models_test.go`, `service_test.go`, `service_route_attempts_test.go`, and `internal/routing/engine_test.go` cover model listing, capability metadata, and automatic-routing eligibility. |
-| `gemini` | explicit-only | Package tests now cover `-m`, workdir, stdin delivery, unsupported reasoning/permission metadata, token totals from stats blocks, and text-based model extraction from supplied output. Promotion remains blocked on verified headless invocation, live or recorded CLI usage output, default model discovery, permission/approval-mode mapping, quota/account/auth status behavior, and profile/catalog routing evidence. |
+| `opencode` | explicit-only | `internal/harnesses/opencode/runner_test.go` covers prompt delivery, `--dir`, `-m`, `--variant`, permission no-op semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/opencode/model_discovery_test.go` covers `opencode models`, `opencode models --verbose`, reasoning variants, model limits, and per-model cost metadata. Promotion remains blocked on structured account/quota policy and recorded successful usage evidence; cost/model evidence alone cannot displace fresh subsidized Codex/Claude capacity. |
+| `gemini` | explicit-only | `internal/harnesses/gemini/runner_test.go` covers headless `-p` execution, `--output-format stream-json`, approval-mode mapping, workdir behavior, stdin fallback, explicit reasoning rejection, stream-json final text, token/cache usage, and non-JSON stdout noise. A live smoke on April 21, 2026 verified `gemini -p 'Reply exactly: OK' --output-format stream-json -m gemini-2.5-flash` returns usable stream-json and token stats. Promotion remains blocked on authoritative model-list discovery, quota/account/auth status behavior, concrete cost/pricing evidence, and profile/catalog routing evidence. |
+| `pi` | explicit-only, low priority | `internal/harnesses/pi/runner_test.go` covers prompt delivery, subprocess workdir, `--model`, `--thinking`, permission unsupported semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/pi/model_discovery_test.go` covers `pi --help`, `pi --list-models`, and compatibility-table fallback metadata. Pi is not a primary-routing target because it currently has no path to subsidized models; keep it opt-in unless a future policy explicitly accepts its cost/quota model. |
 
 Before Claude/Codex authenticated cassettes can promote capability rows, the
 underlying PTY library must pass its own conformance suite. That suite starts
@@ -188,8 +219,8 @@ complete means every row marked `record/playback required` passes in both:
 | `codex.status` | `codex` | Subscription/account/quota/status. | Start `codex --no-alt-screen` through direct PTY, run `/status`, wait for the rendered status panel, capture frames and service events, exit cleanly. | Parsed account class, current model/reasoning, quota windows including model-specific limits, freshness timestamp, and normalized blockers. | record/playback required. |
 | `codex.models` | `codex` | Available model list and reasoning-level path. | Start `codex --no-alt-screen`, type `/model`, complete/confirm the slash command when required, capture the model picker, and step into reasoning selection when needed without changing persisted state. | Non-empty model rows, selected/current marker, reasoning-effort choices or chooser transition, unsupported-value behavior. | record/playback required. |
 | n/a | `gemini` | No required TUI-only aspect is accepted yet. Headless mode, model setting, output format, approval mode, and session listing appear to be CLI surfaces, but the harness still lacks verified evidence for these surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only until the non-PTY blockers in the secondary promotion table pass. |
-| n/a | `opencode` | No required TUI-only aspect identified. `opencode models`, `opencode stats`, `opencode providers`, `opencode run`, and JSON output are CLI surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Non-PTY capability tests pass; automatic routing is allowed. |
-| n/a | `pi` | No required TUI-only aspect identified. `--list-models`, `--thinking`, `--models`, `--mode json`, and `--print` are CLI surfaces. `pi config` is configuration UI, not a core harness capability. | n/a unless future discovery finds an interactive-only capability. | n/a | Non-PTY capability tests pass; automatic routing is allowed. |
+| n/a | `opencode` | No required TUI-only aspect identified. `opencode models`, `opencode stats`, `opencode providers`, `opencode run`, and JSON output are CLI surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only until non-PTY evidence also includes concrete cost/account/quota routing policy. |
+| n/a | `pi` | No required TUI-only aspect identified. `--list-models`, `--thinking`, `--models`, `--mode json`, and `--print` are CLI surfaces. `pi config` is configuration UI, not a core harness capability. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only and low priority until a subsidized-model path exists. |
 
 Token usage remains a core capability, but it is not classified as TUI-only
 when the harness native run stream or batch JSON output exposes authoritative

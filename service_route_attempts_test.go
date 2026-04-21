@@ -212,13 +212,13 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}
 }
 
-func TestBuildRoutingInputs_PromotedSecondaryHarnessMetadata(t *testing.T) {
+func TestBuildRoutingInputs_SecondaryHarnessesRemainExplicitOnly(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 	inputs := svc.buildRoutingInputs()
 
 	opencode := routingHarnessEntry(t, inputs.Harnesses, "opencode")
-	if !opencode.AutoRoutingEligible || opencode.DefaultModel != "opencode/gpt-5.4" {
+	if opencode.AutoRoutingEligible || opencode.DefaultModel != "opencode/gpt-5.4" {
 		t.Fatalf("opencode routing metadata: AutoRoutingEligible=%v DefaultModel=%q", opencode.AutoRoutingEligible, opencode.DefaultModel)
 	}
 	if !containsRouteString(opencode.SupportedReasoning, "max") {
@@ -226,7 +226,7 @@ func TestBuildRoutingInputs_PromotedSecondaryHarnessMetadata(t *testing.T) {
 	}
 
 	pi := routingHarnessEntry(t, inputs.Harnesses, "pi")
-	if !pi.AutoRoutingEligible || pi.DefaultModel != "gemini-2.5-flash" {
+	if pi.AutoRoutingEligible || pi.DefaultModel != "gemini-2.5-flash" {
 		t.Fatalf("pi routing metadata: AutoRoutingEligible=%v DefaultModel=%q", pi.AutoRoutingEligible, pi.DefaultModel)
 	}
 	if !containsRouteString(pi.SupportedReasoning, "xhigh") {

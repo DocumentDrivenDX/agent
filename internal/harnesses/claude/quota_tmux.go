@@ -2,6 +2,7 @@ package claude
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -93,8 +94,9 @@ func ReadClaudeQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, *ha
 }
 
 var (
-	claudeUsedPercentPattern = regexp.MustCompile(`(\d+)%\s+used`)
-	claudePlanTypePattern    = regexp.MustCompile(`(?i)(Claude\s+(?:Max|Pro|Team|Enterprise|Free))`)
+	claudeUsedPercentPattern        = regexp.MustCompile(`<?(\d+(?:\.\d+)?)%\s+used`)
+	claudePlanTypePattern           = regexp.MustCompile(`(?i)(Claude\s+(?:Max|Pro|Team|Enterprise|Free))`)
+	claudeStandalonePlanTypePattern = regexp.MustCompile(`(?i)\b(Max|Pro|Team|Enterprise|Free)\b(?:\s+plan)?`)
 )
 
 type claudeUsageSection struct {
@@ -113,7 +115,7 @@ var claudeUsageSections = []claudeUsageSection{
 // parseClaudeUsageOutput parses text captured from a claude /usage pane.
 // Returns quota windows and optional account info (plan type from header).
 func parseClaudeUsageOutput(text string) ([]harnesses.QuotaWindow, *harnesses.AccountInfo) {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = stripANSI(strings.ReplaceAll(text, "\r\n", "\n"))
 	lines := strings.Split(text, "\n")
 
 	var acct *harnesses.AccountInfo
@@ -122,7 +124,11 @@ func parseClaudeUsageOutput(text string) ([]harnesses.QuotaWindow, *harnesses.Ac
 	// Extract plan type from header line.
 	for _, line := range lines {
 		if m := claudePlanTypePattern.FindString(line); m != "" {
-			acct = &harnesses.AccountInfo{PlanType: m}
+			acct = &harnesses.AccountInfo{PlanType: normalizeClaudePlanType(m)}
+			break
+		}
+		if m := claudeStandalonePlanTypePattern.FindStringSubmatch(line); len(m) > 1 {
+			acct = &harnesses.AccountInfo{PlanType: normalizeClaudePlanType(m[1])}
 			break
 		}
 	}
@@ -144,7 +150,7 @@ func parseClaudeUsageOutput(text string) ([]harnesses.QuotaWindow, *harnesses.Ac
 		}
 
 		// Scan ahead up to 5 lines for "% used" then "Resets".
-		var usedPct int
+		var usedPct float64
 		var resetsAt string
 		found := false
 
@@ -152,7 +158,7 @@ func parseClaudeUsageOutput(text string) ([]harnesses.QuotaWindow, *harnesses.Ac
 			next := strings.TrimSpace(lines[j])
 			if !found {
 				if m := claudeUsedPercentPattern.FindStringSubmatch(next); m != nil {
-					pct, _ := strconv.Atoi(m[1])
+					pct, _ := strconv.ParseFloat(m[1], 64)
 					usedPct = pct
 					found = true
 				}
@@ -173,13 +179,24 @@ func parseClaudeUsageOutput(text string) ([]harnesses.QuotaWindow, *harnesses.Ac
 			Name:          sec.Name,
 			LimitID:       sec.LimitID,
 			WindowMinutes: sec.WindowMins,
-			UsedPercent:   float64(usedPct),
+			UsedPercent:   usedPct,
 			ResetsAt:      resetsAt,
-			State:         harnesses.QuotaStateFromUsedPercent(usedPct),
+			State:         harnesses.QuotaStateFromUsedPercent(int(math.Ceil(usedPct))),
 		})
 	}
 
 	return windows, acct
+}
+
+func normalizeClaudePlanType(plan string) string {
+	plan = strings.TrimSpace(plan)
+	if plan == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(plan), "claude ") {
+		return plan
+	}
+	return "Claude " + plan
 }
 
 // extractResetsText strips the "Resets" prefix from a line.

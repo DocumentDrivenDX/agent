@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
@@ -226,6 +227,10 @@ func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, stal
 		decision.Reason = "cached snapshot is stale; assume limited"
 		return decision
 	}
+	if err := validateClaudeQuotaSnapshotForRouting(snapshot); err != nil {
+		decision.Reason = "cached snapshot is incomplete: " + err.Error() + "; assume limited"
+		return decision
+	}
 	decision.Fresh = true
 	if snapshot.FiveHourRemaining <= 0 || snapshot.WeeklyRemaining <= 0 {
 		decision.Reason = "fresh snapshot reports exhausted window; assume limited"
@@ -234,6 +239,31 @@ func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, stal
 	decision.PreferClaude = true
 	decision.Reason = "fresh snapshot has headroom"
 	return decision
+}
+
+func validateClaudeQuotaSnapshotForRouting(snapshot *ClaudeQuotaSnapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("missing snapshot")
+	}
+	if strings.TrimSpace(snapshot.Source) == "" {
+		return fmt.Errorf("missing source")
+	}
+	if snapshot.Account == nil || strings.TrimSpace(snapshot.Account.PlanType) == "" {
+		return fmt.Errorf("missing account plan")
+	}
+	if snapshot.FiveHourLimit <= 0 {
+		return fmt.Errorf("invalid 5h limit")
+	}
+	if snapshot.WeeklyLimit <= 0 {
+		return fmt.Errorf("invalid weekly limit")
+	}
+	if snapshot.FiveHourRemaining < 0 || snapshot.FiveHourRemaining > snapshot.FiveHourLimit {
+		return fmt.Errorf("invalid 5h remaining")
+	}
+	if snapshot.WeeklyRemaining < 0 || snapshot.WeeklyRemaining > snapshot.WeeklyLimit {
+		return fmt.Errorf("invalid weekly remaining")
+	}
+	return nil
 }
 
 // ReadClaudeQuotaRoutingDecision is a convenience wrapper that reads the

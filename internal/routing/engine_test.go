@@ -481,32 +481,43 @@ func TestAutoRoutingEligibilityGate(t *testing.T) {
 	}
 }
 
-func TestPromotedSecondaryHarnessesEnterAutoRouting(t *testing.T) {
+func TestSecondaryHarnessesRequireOperationalEvidenceForAutoRouting(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "opencode",
-				Surface:             "embedded-openai",
+				Name:                "codex",
+				Surface:             "codex",
 				CostClass:           "medium",
+				IsSubscription:      true,
 				AutoRoutingEligible: true,
 				Available:           true,
 				QuotaOK:             true,
 				SubscriptionOK:      true,
 				ExactPinSupport:     true,
 				SupportsTools:       true,
-				DefaultModel:        "opencode/gpt-5.4",
+				DefaultModel:        "gpt-5.4",
 			},
 			{
-				Name:                "pi",
-				Surface:             "pi",
-				CostClass:           "medium",
-				AutoRoutingEligible: true,
-				Available:           true,
-				QuotaOK:             true,
-				SubscriptionOK:      true,
-				ExactPinSupport:     true,
-				SupportsTools:       true,
-				DefaultModel:        "gemini-2.5-flash",
+				Name:            "opencode",
+				Surface:         "embedded-openai",
+				CostClass:       "medium",
+				Available:       true,
+				QuotaOK:         true,
+				SubscriptionOK:  true,
+				ExactPinSupport: true,
+				SupportsTools:   true,
+				DefaultModel:    "opencode/gpt-5.4",
+			},
+			{
+				Name:            "pi",
+				Surface:         "pi",
+				CostClass:       "medium",
+				Available:       true,
+				QuotaOK:         true,
+				SubscriptionOK:  true,
+				ExactPinSupport: true,
+				SupportsTools:   true,
+				DefaultModel:    "gemini-2.5-flash",
 			},
 			{
 				Name:            "gemini",
@@ -532,8 +543,8 @@ func TestPromotedSecondaryHarnessesEnterAutoRouting(t *testing.T) {
 		seen[c.Harness] = c
 	}
 	for _, name := range []string{"opencode", "pi"} {
-		if c, ok := seen[name]; !ok || !c.Eligible {
-			t.Fatalf("promoted harness %q should be eligible, got %#v", name, c)
+		if _, ok := seen[name]; ok {
+			t.Fatalf("secondary harness %q should remain outside auto-routing candidates without cost/quota evidence", name)
 		}
 	}
 	if _, ok := seen["gemini"]; ok {

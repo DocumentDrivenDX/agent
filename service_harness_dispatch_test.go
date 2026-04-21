@@ -19,8 +19,8 @@ func TestExecute_DispatchesAdditionalSubprocessHarnesses(t *testing.T) {
 	binDir := t.TempDir()
 	writeFakeHarness(t, binDir, "gemini", `#!/bin/sh
 cat <<'EOF'
-gemini service response
-{"stats":{"models":{"gemini":{"tokens":{"input":2,"total":5}}}}}
+{"type":"message","role":"assistant","content":"gemini service response","delta":true}
+{"type":"result","status":"success","stats":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}
 EOF
 `)
 	writeFakeHarness(t, binDir, "opencode", `#!/bin/sh
@@ -44,11 +44,12 @@ EOF
 	for _, tc := range []struct {
 		harness string
 		model   string
+		reason  agent.Reasoning
 		text    string
 	}{
 		{harness: "gemini", model: "fake-model", text: "gemini service response"},
-		{harness: "opencode", model: "opencode/gpt-5.4", text: "opencode service response"},
-		{harness: "pi", model: "gemini-2.5-flash", text: "pi service response"},
+		{harness: "opencode", model: "opencode/gpt-5.4", reason: agent.ReasoningLow, text: "opencode service response"},
+		{harness: "pi", model: "gemini-2.5-flash", reason: agent.ReasoningLow, text: "pi service response"},
 	} {
 		t.Run(tc.harness, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -60,7 +61,7 @@ EOF
 				Model:       tc.model,
 				WorkDir:     t.TempDir(),
 				Permissions: "safe",
-				Reasoning:   agent.ReasoningLow,
+				Reasoning:   tc.reason,
 				Metadata:    map[string]string{"harness": tc.harness},
 			})
 			if err != nil {

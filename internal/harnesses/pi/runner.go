@@ -53,7 +53,6 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsSubscription:       false,
 		ExactPinSupport:      true,
 		DefaultModel:         "gemini-2.5-flash",
-		AutoRoutingEligible:  true,
 		SupportedPermissions: nil,
 		SupportedReasoning:   []string{"minimal", "low", "medium", "high", "xhigh"},
 		CostClass:            "medium",

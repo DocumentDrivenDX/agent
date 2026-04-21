@@ -163,21 +163,20 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 	})
 
-	t.Run("gemini_permissions_nil", func(t *testing.T) {
+	t.Run("gemini_permissions_explicit_only", func(t *testing.T) {
 		h := byName["gemini"]
 		if h.AutoRoutingEligible {
 			t.Errorf("gemini AutoRoutingEligible: want false")
 		}
-		// gemini has no PermissionArgs → SupportedPermissions should be nil/empty
-		if len(h.SupportedPermissions) != 0 {
-			t.Errorf("gemini SupportedPermissions: want empty, got %v", h.SupportedPermissions)
-		}
+		assertContains(t, h.SupportedPermissions, "safe", "gemini permissions")
+		assertContains(t, h.SupportedPermissions, "supervised", "gemini permissions")
+		assertContains(t, h.SupportedPermissions, "unrestricted", "gemini permissions")
 	})
 
 	t.Run("opencode_permissions_all_levels", func(t *testing.T) {
 		h := byName["opencode"]
-		if !h.AutoRoutingEligible {
-			t.Errorf("opencode AutoRoutingEligible: want true")
+		if h.AutoRoutingEligible {
+			t.Errorf("opencode AutoRoutingEligible: want false until cost/quota evidence exists")
 		}
 		if h.DefaultModel != "opencode/gpt-5.4" {
 			t.Errorf("opencode DefaultModel: want opencode/gpt-5.4, got %q", h.DefaultModel)
@@ -193,10 +192,10 @@ func TestListHarnesses_shape(t *testing.T) {
 		assertContains(t, h.SupportedReasoning, "max", "opencode reasoning")
 	})
 
-	t.Run("pi_auto_routing_eligible", func(t *testing.T) {
+	t.Run("pi_explicit_only", func(t *testing.T) {
 		h := byName["pi"]
-		if !h.AutoRoutingEligible {
-			t.Errorf("pi AutoRoutingEligible: want true")
+		if h.AutoRoutingEligible {
+			t.Errorf("pi AutoRoutingEligible: want false until cost/quota evidence exists")
 		}
 		if h.DefaultModel != "gemini-2.5-flash" {
 			t.Errorf("pi DefaultModel: want gemini-2.5-flash, got %q", h.DefaultModel)
@@ -241,7 +240,7 @@ func TestListHarnesses_shape(t *testing.T) {
 				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
 				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
 				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
 				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
 				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),

@@ -18,10 +18,9 @@ import (
 
 const defaultEventBuffer = 64
 
-// Runner is the subprocess-backed gemini harness. It launches gemini with
-// the prompt on stdin (PromptMode=stdin), buffers stdout, and emits a
-// single text_delta + final event. Gemini does not have a stream-json mode,
-// so this is an emit-on-EOF implementation.
+// Runner is the subprocess-backed gemini harness. It launches gemini in
+// headless mode (-p/--prompt), buffers stream-json stdout, and emits
+// text_delta + final events after the process exits.
 //
 // When the output is valid JSON with a stats.models token block, usage is
 // extracted per the DDx ExtractUsage("gemini", ...) shape.
@@ -31,11 +30,12 @@ type Runner struct {
 	Binary string
 
 	// BaseArgs is prepended to the per-request argument list.
-	// Gemini default: [] (no base args)
+	// Gemini default: ["--output-format", "stream-json"].
 	BaseArgs []string
 
 	// PromptMode controls how the prompt is delivered.
-	// Gemini uses "stdin" (default).
+	// "arg" (default) sends "-p <prompt>"; "stdin" sends "-p ''" and writes
+	// the prompt to stdin. Gemini requires -p/--prompt for headless mode.
 	PromptMode string
 
 	// EventBuffer overrides the per-Execute channel buffer size.
@@ -50,7 +50,8 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsLocal:              false,
 		IsSubscription:       false,
 		ExactPinSupport:      true,
-		SupportedPermissions: nil,
+		DefaultModel:         "gemini-2.5-flash",
+		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   nil,
 		CostClass:            "experimental",
 	}
@@ -139,10 +140,20 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 			final.Usage = &harnesses.FinalUsage{
 				InputTokens:  harnesses.IntPtr(agg.InputTokens),
 				OutputTokens: harnesses.IntPtr(agg.OutputTokens),
-				TotalTokens:  harnesses.IntPtr(agg.InputTokens + agg.OutputTokens),
 				Source:       harnesses.UsageSourceNativeStream,
 				Fresh:        harnesses.BoolPtr(true),
 			}
+			if agg.TotalTokens > 0 {
+				final.Usage.TotalTokens = harnesses.IntPtr(agg.TotalTokens)
+			} else {
+				final.Usage.TotalTokens = harnesses.IntPtr(agg.InputTokens + agg.OutputTokens)
+			}
+			if agg.CacheTokens > 0 {
+				final.Usage.CacheTokens = harnesses.IntPtr(agg.CacheTokens)
+			}
+		}
+		if agg.CostUSD > 0 {
+			final.CostUSD = agg.CostUSD
 		}
 	}
 
@@ -166,7 +177,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {
 	base := r.BaseArgs
 	if base == nil {
-		base = []string{}
+		base = []string{"--output-format", "stream-json"}
 	}
 	args := append([]string{}, base...)
 
@@ -175,9 +186,31 @@ func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.E
 		args = append(args, "-m", req.Model)
 	}
 
-	// Gemini has no permission flags or effort flags.
+	switch req.Permissions {
+	case "", "safe":
+		args = append(args, "--approval-mode", "plan")
+	case "supervised":
+		args = append(args, "--approval-mode", "default")
+	case "unrestricted":
+		args = append(args, "--approval-mode", "yolo")
+	}
 
-	// PromptMode is always "stdin" for gemini.
+	if value := harnesses.AdapterReasoningValue(req); value != "" {
+		return nil, -1, "", fmt.Errorf("gemini reasoning control %q is not supported by the CLI harness", value), "failed"
+	}
+
+	promptMode := r.PromptMode
+	if promptMode == "" {
+		promptMode = "arg"
+	}
+	switch promptMode {
+	case "arg":
+		args = append(args, "-p", req.Prompt)
+	case "stdin":
+		args = append(args, "-p", "")
+	default:
+		return nil, -1, "", fmt.Errorf("unsupported gemini prompt mode %q", promptMode), "failed"
+	}
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -186,7 +219,9 @@ func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.E
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
-	cmd.Stdin = strings.NewReader(req.Prompt)
+	if promptMode == "stdin" {
+		cmd.Stdin = strings.NewReader(req.Prompt)
+	}
 	setProcessGroup(cmd)
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -292,11 +327,22 @@ func emitGeminiOutput(ctx context.Context, output string, out chan<- harnesses.E
 		return agg, nil
 	}
 
-	// Extract usage from JSON stats if present (per DDx ExtractUsage("gemini")).
-	agg = parseGeminiUsage(output)
+	if msg := geminiStreamError(output); msg != "" {
+		return agg, errors.New("gemini error: " + msg)
+	}
 
-	// Emit text_delta.
-	raw, err := json.Marshal(harnesses.TextDeltaData{Text: output})
+	if parsed, ok := parseGeminiStreamOutput(output); ok {
+		agg = parsed
+		if agg.FinalText == "" {
+			return agg, nil
+		}
+	} else {
+		// Legacy/fallback: extract usage from a trailing stats block and emit
+		// the raw text exactly as the CLI returned it.
+		agg = parseGeminiUsage(output)
+	}
+
+	raw, err := json.Marshal(harnesses.TextDeltaData{Text: agg.FinalText})
 	if err != nil {
 		return agg, err
 	}

@@ -40,11 +40,14 @@ func TestRunner_Execute_HappyPath(t *testing.T) {
 		t.Skip("sh not available")
 	}
 
-	// Gemini emits plain text (possibly with a JSON stats line at the end).
+	// Gemini emits stream-json lines in headless mode.
 	script := `#!/bin/sh
 cat <<'EOF'
-Hello from gemini
-{"stats":{"models":{"gemini-2.0-flash":{"tokens":{"input":12,"total":25}}}}}
+skill conflict warning from stdout
+{"type":"init","session_id":"test","model":"gemini-2.0-flash"}
+{"type":"message","role":"user","content":"test prompt"}
+{"type":"message","role":"assistant","content":"Hello from gemini","delta":true}
+{"type":"result","status":"success","stats":{"total_tokens":25,"input_tokens":12,"output_tokens":13,"cached":2,"models":{"gemini-2.0-flash":{"total_tokens":25,"input_tokens":12,"output_tokens":13,"cached":2}}}}
 EOF
 `
 	f, err := os.CreateTemp("", "fake-gemini-*")
@@ -106,10 +109,10 @@ EOF
 	if finalEv.Status != "success" {
 		t.Errorf("expected status=success, got %q (error: %s)", finalEv.Status, finalEv.Error)
 	}
-	if !strings.Contains(finalEv.FinalText, "Hello from gemini") {
+	if finalEv.FinalText != "Hello from gemini" {
 		t.Errorf("expected FinalText to contain gemini output, got %q", finalEv.FinalText)
 	}
-	// Usage from JSON stats line.
+	// Usage from JSON result stats.
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event from JSON stats block")
 	} else {
@@ -121,6 +124,9 @@ EOF
 		}
 		if finalEv.Usage.TotalTokens == nil || *finalEv.Usage.TotalTokens != 25 {
 			t.Errorf("expected TotalTokens=25, got %#v", finalEv.Usage.TotalTokens)
+		}
+		if finalEv.Usage.CacheTokens == nil || *finalEv.Usage.CacheTokens != 2 {
+			t.Errorf("expected CacheTokens=2, got %#v", finalEv.Usage.CacheTokens)
 		}
 	}
 }
@@ -143,7 +149,6 @@ func TestRunner_Execute_RequestControls(t *testing.T) {
 		Model:       "gemini-test-model",
 		WorkDir:     workDir,
 		Permissions: "unrestricted",
-		Reasoning:   "high",
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -159,24 +164,100 @@ func TestRunner_Execute_RequestControls(t *testing.T) {
 	if err := json.Unmarshal(data, &captured); err != nil {
 		t.Fatalf("unmarshal capture: %v", err)
 	}
-	if !reflect.DeepEqual(captured.Args, []string{"-m", "gemini-test-model"}) {
+	if !reflect.DeepEqual(captured.Args, []string{"-m", "gemini-test-model", "--approval-mode", "yolo", "-p", "prompt over stdin"}) {
 		t.Fatalf("args: got %v", captured.Args)
 	}
 	if captured.WorkDir != workDir {
 		t.Fatalf("workdir: got %q, want %q", captured.WorkDir, workDir)
+	}
+	if captured.Stdin != "" {
+		t.Fatalf("stdin: got %q", captured.Stdin)
+	}
+}
+
+func TestRunner_Execute_StdinPromptMode(t *testing.T) {
+	capturePath := filepath.Join(t.TempDir(), "capture.json")
+	t.Setenv("GO_WANT_GEMINI_HELPER_PROCESS", "1")
+	t.Setenv("GEMINI_HELPER_CAPTURE", capturePath)
+
+	r := &Runner{
+		Binary:     os.Args[0],
+		BaseArgs:   []string{"-test.run=TestGeminiHelperProcess", "--"},
+		PromptMode: "stdin",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt: "prompt over stdin",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for range ch {
+	}
+
+	var captured geminiHelperCapture
+	data, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("read capture: %v", err)
+	}
+	if err := json.Unmarshal(data, &captured); err != nil {
+		t.Fatalf("unmarshal capture: %v", err)
+	}
+	if !reflect.DeepEqual(captured.Args, []string{"--approval-mode", "plan", "-p", ""}) {
+		t.Fatalf("args: got %v", captured.Args)
 	}
 	if captured.Stdin != "prompt over stdin" {
 		t.Fatalf("stdin: got %q", captured.Stdin)
 	}
 }
 
-func TestRunner_Info_UnsupportedControlsAreExplicit(t *testing.T) {
+func TestRunner_Info_UnsupportedReasoningIsExplicit(t *testing.T) {
 	info := (&Runner{Binary: os.Args[0]}).Info()
-	if len(info.SupportedPermissions) != 0 {
-		t.Fatalf("SupportedPermissions: got %v, want empty", info.SupportedPermissions)
+	if !reflect.DeepEqual(info.SupportedPermissions, []string{"safe", "supervised", "unrestricted"}) {
+		t.Fatalf("SupportedPermissions: got %v", info.SupportedPermissions)
 	}
 	if len(info.SupportedReasoning) != 0 {
 		t.Fatalf("SupportedReasoning: got %v, want empty", info.SupportedReasoning)
+	}
+}
+
+func TestRunner_Execute_RejectsReasoning(t *testing.T) {
+	r := &Runner{
+		Binary:   os.Args[0],
+		BaseArgs: []string{"-test.run=TestGeminiHelperProcess", "--"},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt:    "prompt",
+		Reasoning: "high",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var finalEv *harnesses.FinalData
+	for ev := range ch {
+		if ev.Type != harnesses.EventTypeFinal {
+			continue
+		}
+		var fd harnesses.FinalData
+		if err := json.Unmarshal(ev.Data, &fd); err != nil {
+			t.Errorf("unmarshal final: %v", err)
+		}
+		finalEv = &fd
+	}
+	if finalEv == nil {
+		t.Fatal("no final event received")
+	}
+	if finalEv.Status != "failed" {
+		t.Fatalf("status: got %q, want failed", finalEv.Status)
+	}
+	if !strings.Contains(finalEv.Error, "reasoning control") {
+		t.Fatalf("error: got %q", finalEv.Error)
 	}
 }
 
@@ -216,8 +297,8 @@ func TestGeminiHelperProcess(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("GEMINI_HELPER_CAPTURE"), data, 0o600); err != nil {
 		panic(err)
 	}
-	os.Stdout.WriteString("gemini helper response\n")
-	os.Stdout.WriteString(`{"stats":{"models":{"gemini-test-model":{"tokens":{"input":1,"total":3}}}}}`)
+	os.Stdout.WriteString(`{"type":"message","role":"assistant","content":"gemini helper response","delta":true}` + "\n")
+	os.Stdout.WriteString(`{"type":"result","status":"success","stats":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}` + "\n")
 	os.Exit(0)
 }
 
@@ -231,8 +312,29 @@ func TestParseGeminiUsage_Stats(t *testing.T) {
 	if agg.OutputTokens != 15 { // 20-5
 		t.Errorf("expected OutputTokens=15, got %d", agg.OutputTokens)
 	}
+	if agg.TotalTokens != 20 {
+		t.Errorf("expected TotalTokens=20, got %d", agg.TotalTokens)
+	}
 	if agg.FinalText != output {
 		t.Errorf("expected FinalText to be full output")
+	}
+}
+
+func TestParseGeminiStreamOutput(t *testing.T) {
+	output := `skill conflict warning from stdout
+{"type":"init","timestamp":"2026-04-21T18:21:50.360Z","session_id":"test","model":"gemini-2.5-flash"}
+{"type":"message","role":"user","content":"Reply exactly: OK"}
+{"type":"message","role":"assistant","content":"OK","delta":true}
+{"type":"result","status":"success","stats":{"total_tokens":8491,"input_tokens":8468,"output_tokens":1,"cached":7,"models":{"gemini-2.5-flash":{"total_tokens":8491,"input_tokens":8468,"output_tokens":1,"cached":7}}}}`
+	agg, ok := parseGeminiStreamOutput(output)
+	if !ok {
+		t.Fatal("expected stream-json output")
+	}
+	if agg.FinalText != "OK" {
+		t.Fatalf("FinalText: got %q", agg.FinalText)
+	}
+	if agg.InputTokens != 8468 || agg.OutputTokens != 1 || agg.TotalTokens != 8491 || agg.CacheTokens != 7 {
+		t.Fatalf("usage: got input=%d output=%d total=%d cache=%d", agg.InputTokens, agg.OutputTokens, agg.TotalTokens, agg.CacheTokens)
 	}
 }
 

@@ -107,16 +107,15 @@ func ReadCodexQuotaViaTmux(timeout time.Duration) ([]harnesses.QuotaWindow, erro
 }
 
 var (
-	codexPercentLeftPattern = regexp.MustCompile(`(\d+)%\s+left`)
-	codexModelLinePattern   = regexp.MustCompile(`^([\w.\-]+)\s+\w+\s+[·•]\s+(\d+)%\s+left`)
-	codexWeeklyWarnPattern  = regexp.MustCompile(`(?i)less than\s+(\d+)%\s+of your weekly limit`)
+	codexModelLinePattern  = regexp.MustCompile(`\b(gpt-[A-Za-z0-9][A-Za-z0-9._-]*)\b.*?\b(\d{1,3})%\s+(?:left|remaining)\b`)
+	codexWeeklyWarnPattern = regexp.MustCompile(`(?i)(less than\s+)?(\d{1,3})%\s+of your weekly limit\s+(?:left|remaining)`)
 )
 
 // parseCodexStatusOutput parses the text captured from a codex /status pane.
 // The primary format is: "  gpt-5.4 high · 100% left · /path"
 // Weekly warning: "Heads up, you have less than 5% of your weekly limit left."
 func parseCodexStatusOutput(text string) []harnesses.QuotaWindow {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = stripANSI(strings.ReplaceAll(text, "\r\n", "\n"))
 	lines := strings.Split(text, "\n")
 
 	var windows []harnesses.QuotaWindow
@@ -126,6 +125,9 @@ func parseCodexStatusOutput(text string) []harnesses.QuotaWindow {
 		line = strings.TrimSpace(line)
 		if m := codexModelLinePattern.FindStringSubmatch(line); m != nil {
 			pctLeft, _ := strconv.Atoi(m[2])
+			if pctLeft < 0 || pctLeft > 100 {
+				continue
+			}
 			usedPct := 100 - pctLeft
 			windows = append(windows, harnesses.QuotaWindow{
 				Name:          "5h",
@@ -141,22 +143,28 @@ func parseCodexStatusOutput(text string) []harnesses.QuotaWindow {
 	// Extract weekly warning if present.
 	for _, line := range lines {
 		if m := codexWeeklyWarnPattern.FindStringSubmatch(line); m != nil {
-			threshold, _ := strconv.Atoi(m[1])
-			// "less than X%" remaining → used > (100 - X)%
-			usedFloor := 100 - threshold
+			pctLeft, _ := strconv.Atoi(m[2])
+			if pctLeft < 0 || pctLeft > 100 {
+				continue
+			}
+			// "less than X%" remaining implies the used percentage is a lower
+			// bound, so state is computed at the next integer.
+			usedFloor := 100 - pctLeft
+			statePercent := usedFloor
+			if strings.TrimSpace(m[1]) != "" {
+				statePercent++
+			}
 			windows = append(windows, harnesses.QuotaWindow{
 				Name:          "7d",
 				LimitID:       "codex",
 				WindowMinutes: 10080,
 				UsedPercent:   float64(usedFloor), // lower bound
-				State:         harnesses.QuotaStateFromUsedPercent(usedFloor + 1),
+				State:         harnesses.QuotaStateFromUsedPercent(statePercent),
 				ResetsAt:      "",
 			})
 			break
 		}
 	}
-
-	_ = codexPercentLeftPattern // retained for reference; unused directly
 
 	return windows
 }

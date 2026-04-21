@@ -64,3 +64,33 @@ sleep 1
 	require.True(t, hasQuotaWindow(windows, "session"))
 	require.True(t, hasQuotaWindow(windows, "weekly-sonnet"))
 }
+
+func TestReadClaudeQuotaViaPTYRejectsMissingAccountPlan(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-backed PTY probes require Unix PTY support")
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "fake-claude")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+printf 'Claude Code\r\n❯ '
+IFS= read line
+cat <<'EOF'
+Current session
+4% used
+Resets 4pm (UTC)
+Current week (all models)
+10% used
+Resets Monday (UTC)
+EOF
+sleep 1
+`), 0o700))
+	cassetteDir := filepath.Join(dir, "cassette")
+
+	windows, account, err := ReadClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	require.Error(t, err)
+	require.Empty(t, windows)
+	require.Nil(t, account)
+	require.Contains(t, err.Error(), "missing account plan")
+	_, statErr := os.Stat(filepath.Join(cassetteDir, cassette.ManifestFile))
+	require.True(t, errors.Is(statErr, os.ErrNotExist), "account-less usage output should not promote a cassette")
+}

@@ -66,15 +66,25 @@ Current evidence:
 ## Automatic Routing Eligibility
 
 Only harnesses whose current baseline evidence is complete may set
-`AutoRoutingEligible=true`.
+`AutoRoutingEligible=true`. For subscription-backed primary harnesses, complete
+evidence includes a fresh durable quota/account decision at routing time. Missing
+or stale quota cache, blocked quota windows, auth failures, or failed probes must
+make that harness ineligible and explain why. For non-subscription harnesses,
+full runner coverage still does not imply automatic routing unless cost and
+quota policy are concrete enough to compete with subsidized primary capacity.
+
+Codex and Claude are the primary smart-routing drivers. When either primary is
+blocked by quota extraction, the required response is to fix the PTY probe/cache
+and keep routing honest, not to promote an unproven secondary harness as a silent
+fallback.
 
 Current status:
 
 | Harness | Auto-routing status | Reason |
 |---|---|---|
 | agent | eligible | Native service evidence covers the baseline rows above. |
-| codex | eligible | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
-| claude | eligible | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
+| codex | eligible, conditional on fresh subsidized account/quota evidence | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `internal/harnesses/codex/account_test.go` and quota-cache tests prove account metadata is extracted from Codex auth state and API-key-only or missing account evidence is not enough for auto-routing; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
+| claude | eligible, conditional on fresh complete account/quota evidence | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; quota-cache and PTY tests now reject incomplete account, source, session, or weekly-window evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
 
 ## Capability Contracts
 

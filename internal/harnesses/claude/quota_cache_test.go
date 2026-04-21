@@ -9,9 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testClaudeAccount() *harnesses.AccountInfo {
+	return &harnesses.AccountInfo{PlanType: "Claude Max"}
+}
 
 func TestClaudeQuotaCachePathXDG(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, "")
@@ -286,6 +291,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyRemaining:   50000,
 		WeeklyLimit:       70000,
 		Source:            "pty",
+		Account:           testClaudeAccount(),
 	}
 	freshExhausted := &ClaudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
@@ -294,6 +300,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyRemaining:   50000,
 		WeeklyLimit:       70000,
 		Source:            "pty",
+		Account:           testClaudeAccount(),
 	}
 	freshWeeklyZero := &ClaudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
@@ -302,6 +309,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyRemaining:   0,
 		WeeklyLimit:       70000,
 		Source:            "pty",
+		Account:           testClaudeAccount(),
 	}
 	stale := &ClaudeQuotaSnapshot{
 		CapturedAt:        now.Add(-10 * time.Minute),
@@ -310,6 +318,31 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyRemaining:   50000,
 		WeeklyLimit:       70000,
 		Source:            "pty",
+	}
+	freshMissingAccount := &ClaudeQuotaSnapshot{
+		CapturedAt:        now.Add(-1 * time.Minute),
+		FiveHourRemaining: 5000,
+		FiveHourLimit:     10000,
+		WeeklyRemaining:   50000,
+		WeeklyLimit:       70000,
+		Source:            "pty",
+	}
+	freshMissingSource := &ClaudeQuotaSnapshot{
+		CapturedAt:        now.Add(-1 * time.Minute),
+		FiveHourRemaining: 5000,
+		FiveHourLimit:     10000,
+		WeeklyRemaining:   50000,
+		WeeklyLimit:       70000,
+		Account:           testClaudeAccount(),
+	}
+	freshInvalidLimits := &ClaudeQuotaSnapshot{
+		CapturedAt:        now.Add(-1 * time.Minute),
+		FiveHourRemaining: 101,
+		FiveHourLimit:     100,
+		WeeklyRemaining:   50,
+		WeeklyLimit:       100,
+		Source:            "pty",
+		Account:           testClaudeAccount(),
 	}
 
 	cases := []struct {
@@ -360,6 +393,30 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 			wantFresh:       true,
 			wantReasonSubst: "exhausted",
 		},
+		{
+			name:            "fresh but missing account -> fall back",
+			snapshot:        freshMissingAccount,
+			wantPrefer:      false,
+			wantPresent:     true,
+			wantFresh:       false,
+			wantReasonSubst: "missing account",
+		},
+		{
+			name:            "fresh but missing source -> fall back",
+			snapshot:        freshMissingSource,
+			wantPrefer:      false,
+			wantPresent:     true,
+			wantFresh:       false,
+			wantReasonSubst: "missing source",
+		},
+		{
+			name:            "fresh but impossible remaining -> fall back",
+			snapshot:        freshInvalidLimits,
+			wantPrefer:      false,
+			wantPresent:     true,
+			wantFresh:       false,
+			wantReasonSubst: "invalid 5h remaining",
+		},
 	}
 
 	for _, tc := range cases {
@@ -394,6 +451,7 @@ func TestReadClaudeQuotaRoutingDecisionDefaultPath(t *testing.T) {
 		WeeklyRemaining:   65000,
 		WeeklyLimit:       70000,
 		Source:            "pty",
+		Account:           testClaudeAccount(),
 	}))
 	d = ReadClaudeQuotaRoutingDecision(now, DefaultClaudeQuotaStaleAfter)
 	assert.True(t, d.PreferClaude)

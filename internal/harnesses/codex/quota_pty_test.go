@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,44 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/pty/cassette"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReadCodexQuotaViaPTYRecordsStatusOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-backed PTY probes require Unix PTY support")
+	}
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "auth.json")
+	t.Setenv(codexAuthPathEnv, authPath)
+	raw, err := json.Marshal(map[string]any{
+		"tokens": map[string]any{
+			"id_token": testJWT(map[string]any{
+				codexAuthNamespace: map[string]any{"chatgpt_plan_type": "pro"},
+			}),
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(authPath, raw, 0o600))
+	script := filepath.Join(dir, "fake-codex")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+printf '› '
+IFS= read line
+printf '/status\r\n  gpt-5.4 high · 73%% left · /tmp/work\r\n'
+printf 'Heads up, you have less than 5%% of your weekly limit left.\r\n› '
+sleep 1
+`), 0o700))
+	cassetteDir := filepath.Join(dir, "cassette")
+
+	windows, err := ReadCodexQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	require.NoError(t, err)
+	require.Len(t, windows, 2)
+	require.Equal(t, 27.0, windows[0].UsedPercent)
+	require.Equal(t, "blocked", windows[1].State)
+
+	reader, err := cassette.Open(cassetteDir)
+	require.NoError(t, err)
+	require.NotNil(t, reader.Quota())
+	require.Equal(t, "ChatGPT Pro", reader.Quota().Metadata["plan_type"])
+}
 
 func TestReadCodexQuotaViaPTYDoesNotAcceptStaleStartupStatus(t *testing.T) {
 	if runtime.GOOS == "windows" {
