@@ -63,6 +63,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		Type:                 "subprocess",
 		IsLocal:              false,
 		IsSubscription:       true,
+		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
 		DefaultModel:         "claude-sonnet-4-6",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
@@ -206,7 +207,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	if base == nil {
 		base = []string{"--print", "-p", "--verbose", "--output-format", "stream-json"}
 	}
-	args := append([]string{}, base...)
+	args := r.buildArgs(base, req)
 
 	promptMode := r.PromptMode
 	if promptMode == "" {
@@ -356,7 +357,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 // rejected stream-json flags. It surfaces the captured stdout as a single
 // text_delta event so callers still receive the model's text.
 func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (*streamAggregate, int, string, error, string) {
-	args := []string{"--print", "-p", "--output-format", "json"}
+	args := r.buildArgs([]string{"--print", "-p", "--output-format", "json"}, req)
 	promptMode := r.PromptMode
 	if promptMode == "" {
 		promptMode = "arg"
@@ -410,6 +411,23 @@ func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.Exe
 		}
 	}
 	return &streamAggregate{FinalText: text}, 0, stderrBytes, nil, "success"
+}
+
+func (r *Runner) buildArgs(base []string, req harnesses.ExecuteRequest) []string {
+	args := append([]string{}, base...)
+	switch req.Permissions {
+	case "supervised":
+		args = append(args, "--permission-mode", "default")
+	case "unrestricted":
+		args = append(args, "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions")
+	}
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
+	}
+	if value := harnesses.AdapterReasoningValue(req); value != "" {
+		args = append(args, "--effort", value)
+	}
+	return args
 }
 
 // stringBuilderWriter adapts *strings.Builder to io.Writer.

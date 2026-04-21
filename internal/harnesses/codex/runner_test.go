@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,75 @@ func TestRunner_HealthCheck_NoBinary(t *testing.T) {
 	err := r.HealthCheck(context.Background())
 	if err == nil {
 		t.Fatal("expected error for missing binary")
+	}
+}
+
+func TestRunner_Execute_AppliesRequestControls(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	dir := t.TempDir()
+	capture := filepath.Join(dir, "capture.txt")
+	workDir := filepath.Join(dir, "work")
+	if err := os.Mkdir(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+{
+  pwd
+  i=0
+  for arg in "$@"; do
+    printf 'ARG[%%s]=%%s\n' "$i" "$arg"
+    i=$((i + 1))
+  done
+} > %q
+cat <<'EOF'
+{"type":"output","item":{"type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}
+EOF
+`, capture)
+	binary := filepath.Join(dir, "fake-codex")
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Runner{Binary: binary}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ch, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt:      "hello prompt",
+		Model:       "gpt-5.4",
+		Reasoning:   "high",
+		WorkDir:     workDir,
+		Permissions: "unrestricted",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for range ch {
+	}
+
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(raw)
+	for _, want := range []string{
+		workDir,
+		"ARG[0]=exec",
+		"ARG[1]=--json",
+		"ARG[2]=--dangerously-bypass-approvals-and-sandbox",
+		"ARG[3]=-C",
+		"ARG[4]=" + workDir,
+		"ARG[5]=-m",
+		"ARG[6]=gpt-5.4",
+		"ARG[7]=-c",
+		"ARG[8]=reasoning.effort=high",
+		"ARG[9]=hello prompt",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("capture missing %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -115,6 +185,9 @@ EOF
 		}
 		if finalEv.Usage.OutputTokens == nil || *finalEv.Usage.OutputTokens != 5 {
 			t.Errorf("expected OutputTokens=5, got %#v", finalEv.Usage.OutputTokens)
+		}
+		if finalEv.Usage.TotalTokens == nil || *finalEv.Usage.TotalTokens != 15 {
+			t.Errorf("expected TotalTokens=15, got %#v", finalEv.Usage.TotalTokens)
 		}
 	}
 }

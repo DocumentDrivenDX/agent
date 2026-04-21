@@ -64,3 +64,59 @@ func TestIsCodexQuotaFresh(t *testing.T) {
 		t.Fatal("stale snapshot should not be fresh")
 	}
 }
+
+func TestDecideCodexQuotaRouting(t *testing.T) {
+	now := time.Now().UTC()
+	cases := []struct {
+		name   string
+		snap   *CodexQuotaSnapshot
+		prefer bool
+		fresh  bool
+	}{
+		{name: "missing", snap: nil},
+		{
+			name: "stale",
+			snap: &CodexQuotaSnapshot{
+				CapturedAt: now.Add(-10 * time.Minute),
+				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 10, State: "ok"}},
+			},
+		},
+		{
+			name:  "empty windows",
+			snap:  &CodexQuotaSnapshot{CapturedAt: now},
+			fresh: true,
+		},
+		{
+			name: "blocked",
+			snap: &CodexQuotaSnapshot{
+				CapturedAt: now,
+				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 95, State: "blocked"}},
+			},
+			fresh: true,
+		},
+		{
+			name: "fresh headroom",
+			snap: &CodexQuotaSnapshot{
+				CapturedAt: now,
+				Source:     "pty",
+				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
+			},
+			prefer: true,
+			fresh:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dec := DecideCodexQuotaRouting(tc.snap, now, DefaultCodexQuotaStaleAfter)
+			if dec.PreferCodex != tc.prefer {
+				t.Fatalf("PreferCodex: got %v, want %v (%s)", dec.PreferCodex, tc.prefer, dec.Reason)
+			}
+			if dec.Fresh != tc.fresh {
+				t.Fatalf("Fresh: got %v, want %v (%s)", dec.Fresh, tc.fresh, dec.Reason)
+			}
+			if dec.Reason == "" {
+				t.Fatal("Reason should be populated")
+			}
+		})
+	}
+}

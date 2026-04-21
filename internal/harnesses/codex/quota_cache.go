@@ -118,3 +118,52 @@ func IsCodexQuotaFresh(snapshot *CodexQuotaSnapshot, now time.Time, staleAfter t
 	}
 	return CodexQuotaSnapshotAge(snapshot, now) <= staleAfter
 }
+
+// CodexQuotaRoutingDecision summarises whether foreground routing may select
+// Codex without probing the CLI inline.
+type CodexQuotaRoutingDecision struct {
+	PreferCodex     bool
+	SnapshotPresent bool
+	Fresh           bool
+	Age             time.Duration
+	Snapshot        *CodexQuotaSnapshot
+	Reason          string
+}
+
+// DecideCodexQuotaRouting turns a durable quota snapshot into a foreground
+// routing decision. Missing, stale, empty, or blocked quota evidence keeps
+// Codex out of automatic routing; explicit Harness=codex remains available.
+func DecideCodexQuotaRouting(snapshot *CodexQuotaSnapshot, now time.Time, staleAfter time.Duration) CodexQuotaRoutingDecision {
+	decision := CodexQuotaRoutingDecision{Snapshot: snapshot}
+	if snapshot == nil {
+		decision.Reason = "no cached snapshot; assume limited"
+		return decision
+	}
+	decision.SnapshotPresent = true
+	decision.Age = CodexQuotaSnapshotAge(snapshot, now)
+	if !IsCodexQuotaFresh(snapshot, now, staleAfter) {
+		decision.Reason = "cached snapshot is stale; assume limited"
+		return decision
+	}
+	decision.Fresh = true
+	if len(snapshot.Windows) == 0 {
+		decision.Reason = "fresh snapshot has no quota windows; assume limited"
+		return decision
+	}
+	for _, window := range snapshot.Windows {
+		if window.State == "blocked" || window.UsedPercent >= 95 {
+			decision.Reason = "fresh snapshot reports blocked window; assume limited"
+			return decision
+		}
+	}
+	decision.PreferCodex = true
+	decision.Reason = "fresh snapshot has headroom"
+	return decision
+}
+
+// ReadCodexQuotaRoutingDecision reads the default cache and produces a routing
+// decision in one call.
+func ReadCodexQuotaRoutingDecision(now time.Time, staleAfter time.Duration) CodexQuotaRoutingDecision {
+	snap, _ := ReadCodexQuota()
+	return DecideCodexQuotaRouting(snap, now, staleAfter)
+}

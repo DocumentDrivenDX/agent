@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
 func TestRecordRouteAttempt_DemotesFailedProvider(t *testing.T) {
@@ -148,6 +151,67 @@ func TestRouteStatus_RouteAttemptCooldownSurfaces(t *testing.T) {
 	}
 }
 
+func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
+	dir := t.TempDir()
+	codexQuotaPath := filepath.Join(dir, "codex-quota.json")
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Source:     "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "5h", WindowMinutes: 300, UsedPercent: 25, State: "ok"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteCodexQuota: %v", err)
+	}
+
+	registry := harnesses.NewRegistry()
+	registry.LookPath = func(file string) (string, error) {
+		return filepath.Join(dir, file), nil
+	}
+	svc := &service{opts: ServiceOptions{}, registry: registry}
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec.Harness != "codex" || dec.Model != "gpt-5.4" {
+		t.Fatalf("ResolveRoute: got harness=%q model=%q, want codex gpt-5.4", dec.Harness, dec.Model)
+	}
+}
+
+func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
+	dir := t.TempDir()
+	codexQuotaPath := filepath.Join(dir, "codex-quota.json")
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
+	registry := harnesses.NewRegistry()
+	svc := &service{opts: ServiceOptions{}, registry: registry}
+
+	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
+		CapturedAt: time.Now().UTC().Add(-10 * time.Minute),
+		Source:     "pty",
+		Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
+	}); err != nil {
+		t.Fatalf("WriteCodexQuota stale: %v", err)
+	}
+	codex := routingHarnessEntry(t, svc.buildRoutingInputs().Harnesses, "codex")
+	if codex.SubscriptionOK || !codex.QuotaStale {
+		t.Fatalf("stale codex quota: SubscriptionOK=%v QuotaStale=%v", codex.SubscriptionOK, codex.QuotaStale)
+	}
+
+	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Source:     "pty",
+		Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 96, State: "blocked"}},
+	}); err != nil {
+		t.Fatalf("WriteCodexQuota blocked: %v", err)
+	}
+	codex = routingHarnessEntry(t, svc.buildRoutingInputs().Harnesses, "codex")
+	if codex.SubscriptionOK || codex.QuotaTrend != "exhausting" {
+		t.Fatalf("blocked codex quota: SubscriptionOK=%v QuotaTrend=%q", codex.SubscriptionOK, codex.QuotaTrend)
+	}
+}
+
 func routeAttemptTestService(cooldown time.Duration) *service {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -169,4 +233,15 @@ func routeAttemptTestService(cooldown time.Duration) *service {
 		routes: map[string][]string{"qwen": {"bragi", "openrouter"}},
 	}
 	return &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+}
+
+func routingHarnessEntry(t *testing.T, entries []routing.HarnessEntry, name string) routing.HarnessEntry {
+	t.Helper()
+	for _, entry := range entries {
+		if entry.Name == name {
+			return entry
+		}
+	}
+	t.Fatalf("routing entry %q not found", name)
+	return routing.HarnessEntry{}
 }

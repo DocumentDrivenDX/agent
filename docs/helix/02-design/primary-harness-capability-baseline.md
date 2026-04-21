@@ -44,8 +44,8 @@ can exist in a broader matrix, but this primary baseline is deliberately strict.
 | Harness | Run | FinalText | ProgressEvents | Cancel | WorkdirContext | PermissionModes | ListModels | SetModel | ListReasoning | SetReasoning | TokenUsage | QuotaStatus | ErrorStatus | RequestMetadata |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | agent | pass | pass | pass | pass | pass | `safe`, `unrestricted` | pass | pass | pass | pass | pass | n/a | pass | pass |
-| codex | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | `safe`, `supervised`, `unrestricted` | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked |
-| claude | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | `safe`, `supervised`, `unrestricted` | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked | pass/gap/blocked |
+| codex | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | pass | pass | pass | pass | pass | pass |
+| claude | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | pass | pass | pass | pass | pass | pass |
 
 ## Native Agent Evidence
 
@@ -73,8 +73,8 @@ Current status:
 | Harness | Auto-routing status | Reason |
 |---|---|---|
 | agent | eligible | Native service evidence covers the baseline rows above. |
-| codex | explicit-only | Codex has substantial runner, usage, discovery, and quota tests, but routing does not yet consume the durable Codex quota state as evidence for automatic subscription routing. Track re-enable work in `agent-03e2d82c`. |
-| claude | explicit-only | Claude has substantial stream, usage, discovery, and quota tests, but the current subprocess runner does not yet apply all advertised request controls on execution. Track re-enable work in `agent-3e4cf14f`. |
+| codex | eligible | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
+| claude | eligible | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
 
 ## Capability Contracts
 

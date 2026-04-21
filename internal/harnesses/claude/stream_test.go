@@ -424,6 +424,8 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	require.NotNil(t, final.Usage.OutputTokens)
 	assert.Equal(t, 5, *final.Usage.InputTokens)
 	assert.Equal(t, 2, *final.Usage.OutputTokens)
+	require.NotNil(t, final.Usage.TotalTokens)
+	assert.Equal(t, 7, *final.Usage.TotalTokens)
 	assert.InDelta(t, 0.0001, final.CostUSD, 1e-9)
 
 	// Earlier events should include a text_delta.
@@ -439,6 +441,87 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	entries, err := os.ReadDir(logDir)
 	require.NoError(t, err)
 	require.NotEmpty(t, entries, "session log dir should contain agent-*.jsonl")
+}
+
+func TestRunnerBuildArgs_AppliesRequestControls(t *testing.T) {
+	r := &Runner{}
+	args := r.buildArgs([]string{"--print", "-p", "--verbose", "--output-format", "stream-json"}, harnesses.ExecuteRequest{
+		Model:       "claude-sonnet-4-6",
+		Reasoning:   "xhigh",
+		Permissions: "unrestricted",
+	})
+	assert.Equal(t, []string{
+		"--print", "-p", "--verbose", "--output-format", "stream-json",
+		"--permission-mode", "bypassPermissions", "--dangerously-skip-permissions",
+		"--model", "claude-sonnet-4-6",
+		"--effort", "xhigh",
+	}, args)
+
+	args = r.buildArgs([]string{"--print"}, harnesses.ExecuteRequest{Permissions: "supervised"})
+	assert.Equal(t, []string{"--print", "--permission-mode", "default"}, args)
+}
+
+func TestRunnerExecute_AppliesRequestControlsAndWorkdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake claude binary relies on POSIX shell")
+	}
+	tmp := t.TempDir()
+	capture := filepath.Join(tmp, "capture.txt")
+	workDir := filepath.Join(tmp, "work")
+	require.NoError(t, os.Mkdir(workDir, 0o755))
+	binPath := filepath.Join(tmp, "fake-claude")
+	script := fmt.Sprintf(`#!/bin/sh
+{
+  pwd
+  i=0
+  for arg in "$@"; do
+    printf 'ARG[%%s]=%%s\n' "$i" "$arg"
+    i=$((i + 1))
+  done
+} > %q
+cat <<'EOF'
+{"type":"system","subtype":"init","session_id":"sess","model":"claude-sonnet-4-6"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":3,"output_tokens":2}}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1,"result":"ok","usage":{"input_tokens":3,"output_tokens":2},"session_id":"sess"}
+EOF
+`, capture)
+	require.NoError(t, os.WriteFile(binPath, []byte(script), 0o755))
+
+	r := &Runner{Binary: binPath}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt:      "hello prompt",
+		Model:       "claude-sonnet-4-6",
+		Reasoning:   "high",
+		Permissions: "unrestricted",
+		WorkDir:     workDir,
+	})
+	require.NoError(t, err)
+	events := drainEvents(t, ctx, out)
+	require.NotEmpty(t, events)
+
+	raw, err := os.ReadFile(capture)
+	require.NoError(t, err)
+	got := string(raw)
+	for _, want := range []string{
+		workDir,
+		"ARG[0]=--print",
+		"ARG[1]=-p",
+		"ARG[2]=--verbose",
+		"ARG[3]=--output-format",
+		"ARG[4]=stream-json",
+		"ARG[5]=--permission-mode",
+		"ARG[6]=bypassPermissions",
+		"ARG[7]=--dangerously-skip-permissions",
+		"ARG[8]=--model",
+		"ARG[9]=claude-sonnet-4-6",
+		"ARG[10]=--effort",
+		"ARG[11]=high",
+		"ARG[12]=hello prompt",
+	} {
+		require.Contains(t, got, want)
+	}
 }
 
 // writeSlowFakeClaudeBinary emits an init event then sleeps so the test can
