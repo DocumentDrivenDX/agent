@@ -246,7 +246,7 @@ func TestIsClaudeQuotaFresh(t *testing.T) {
 		{
 			name: "stale past default ttl",
 			snapshot: &ClaudeQuotaSnapshot{
-				CapturedAt: now.Add(-10 * time.Minute),
+				CapturedAt: now.Add(-20 * time.Minute),
 			},
 			wantFresh: false,
 		},
@@ -312,7 +312,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Account:           testClaudeAccount(),
 	}
 	stale := &ClaudeQuotaSnapshot{
-		CapturedAt:        now.Add(-10 * time.Minute),
+		CapturedAt:        now.Add(-20 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
 		WeeklyRemaining:   50000,

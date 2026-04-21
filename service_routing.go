@@ -18,6 +18,7 @@ import (
 // routing engine that consolidates DDx-side harness-tier ranking and
 // agent-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
+	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	in := s.buildRoutingInputs()
 	profile := req.Profile
 	if profile == "" {

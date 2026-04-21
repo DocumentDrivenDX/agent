@@ -21,7 +21,7 @@ type CodexQuotaSnapshot struct {
 	Account    *harnesses.AccountInfo  `json:"account,omitempty"`
 }
 
-const DefaultCodexQuotaStaleAfter = 5 * time.Minute
+const DefaultCodexQuotaStaleAfter = 15 * time.Minute
 
 const codexQuotaCacheEnv = "DDX_AGENT_CODEX_QUOTA_CACHE"
 

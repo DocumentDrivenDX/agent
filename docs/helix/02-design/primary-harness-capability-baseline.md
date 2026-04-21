@@ -78,6 +78,16 @@ blocked by quota extraction, the required response is to fix the PTY probe/cache
 and keep routing honest, not to promote an unproven secondary harness as a silent
 fallback.
 
+Quota refresh ownership belongs to the service, not the operator. Foreground
+routing remains cache-only and must not synchronously run live PTY probes on
+every request. Instead, service startup checks primary quota cache state and, if
+the cache is missing, stale, or incomplete, starts a refresh and waits only for a
+short bounded startup window before continuing with the best cache information
+available. Normal status/routing activity starts a debounced asynchronous refresh
+when the cache is older than the operating margin, currently fifteen minutes.
+Long-running DDx server processes should set the service quota refresh interval
+so the same debounced refresh path runs from a timer.
+
 Current status:
 
 | Harness | Auto-routing status | Reason |

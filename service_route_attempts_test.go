@@ -188,7 +188,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
 	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC().Add(-10 * time.Minute),
+		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
 		Source:     "pty",
 		Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
 	}); err != nil {

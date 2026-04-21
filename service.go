@@ -98,6 +98,20 @@ type ServiceOptions struct {
 	// ListProviders and HealthCheck. Pass a value wrapping the loaded config.
 	// When nil, those methods return an error.
 	ServiceConfig ServiceConfig
+
+	// QuotaRefreshDebounce is the minimum interval between live quota probes for
+	// a primary subscription harness. Zero uses the service default.
+	QuotaRefreshDebounce time.Duration
+	// QuotaRefreshStartupWait bounds startup waiting when the durable quota
+	// cache is missing, stale, or incomplete. Zero uses the service default.
+	QuotaRefreshStartupWait time.Duration
+	// QuotaRefreshInterval enables periodic refresh for long-running server
+	// processes. Zero disables the timer; cache refresh still happens on startup
+	// and service activity.
+	QuotaRefreshInterval time.Duration
+	// QuotaRefreshContext optionally cancels the periodic server refresh worker.
+	// When nil, the worker uses context.Background().
+	QuotaRefreshContext context.Context
 }
 
 // QuotaState is a live quota snapshot for a harness. Nil means not applicable.
@@ -477,11 +491,14 @@ func New(opts ServiceOptions) (DdxAgent, error) {
 		}
 		opts.ServiceConfig = sc
 	}
-	return &service{
+	svc := &service{
 		opts:     opts,
 		registry: harnesses.NewRegistry(),
 		hub:      newSessionHub(),
-	}, nil
+	}
+	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
+	svc.startPrimaryQuotaRefreshWorker()
+	return svc, nil
 }
 
 // harnessType returns "native" for HTTP/embedded harnesses, "subprocess" for CLI-invoked ones.
@@ -587,6 +604,15 @@ func codexQuotaState() *QuotaState {
 	}
 }
 
+func codexAccountStatus() *AccountStatus {
+	snap, ok := codexharness.ReadCodexQuota()
+	if !ok || snap == nil {
+		return nil
+	}
+	decision := codexharness.DecideCodexQuotaRouting(snap, time.Now(), 0)
+	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
+}
+
 func unavailableQuotaState(source, detail string) *QuotaState {
 	return &QuotaState{
 		Source: source,
@@ -601,7 +627,8 @@ func unavailableQuotaState(source, detail string) *QuotaState {
 }
 
 // ListHarnesses returns metadata for every registered harness.
-func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
+func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
+	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	statuses := s.registry.Discover()
 
 	// Index statuses by name for O(1) lookup.
@@ -649,6 +676,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 			info.Account = claudeAccountStatus()
 		case "codex":
 			info.Quota = codexQuotaState()
+			info.Account = codexAccountStatus()
 		}
 
 		out = append(out, info)

@@ -137,7 +137,7 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 		{
 			name: "stale",
 			snap: &CodexQuotaSnapshot{
-				CapturedAt: now.Add(-10 * time.Minute),
+				CapturedAt: now.Add(-20 * time.Minute),
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 10, State: "ok"}},
 			},
 		},

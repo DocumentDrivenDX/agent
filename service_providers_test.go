@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -356,15 +357,15 @@ func TestServiceRouteStateKey(t *testing.T) {
 
 // TestHealthCheck_ClaudeRefreshesQuotaWhenStale verifies that HealthCheck
 // triggers a quota cache refresh when the cached snapshot is older than
-// healthCheckQuotaFreshnessWindow (60s).
+// default quota refresh debounce (15m).
 func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "claude-quota.json")
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", cachePath)
 
-	// Write a snapshot that is 90s old (stale).
+	// Write a snapshot older than the 15m debounce.
 	staleSnap := claudeharness.ClaudeQuotaSnapshot{
-		CapturedAt:        time.Now().UTC().Add(-90 * time.Second),
+		CapturedAt:        time.Now().UTC().Add(-20 * time.Minute),
 		FiveHourRemaining: 80,
 		FiveHourLimit:     100,
 		WeeklyRemaining:   90,
@@ -412,7 +413,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 
 // TestHealthCheck_ClaudeSkipsRefreshWhenFresh verifies that HealthCheck does
 // NOT invoke the PTY quota refresher when the cached snapshot is younger than
-// healthCheckQuotaFreshnessWindow (60s).
+// default quota refresh debounce (15m).
 func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "claude-quota.json")
@@ -426,6 +427,7 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 		WeeklyRemaining:   90,
 		WeeklyLimit:       100,
 		Source:            "pty",
+		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
 	}
 	if err := claudeharness.WriteClaudeQuota(cachePath, freshSnap); err != nil {
 		t.Fatalf("setup: WriteClaudeQuota: %v", err)
@@ -485,7 +487,7 @@ func TestHealthCheck_CodexRefreshesQuotaWhenStale(t *testing.T) {
 	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", cachePath)
 
 	staleSnap := codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC().Add(-90 * time.Second),
+		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
 		Source:     "pty",
 		Windows:    []harnesses.QuotaWindow{{LimitID: "codex", UsedPercent: 80}},
 	}
@@ -513,5 +515,260 @@ func TestHealthCheck_CodexRefreshesQuotaWhenStale(t *testing.T) {
 	if !loaded.CapturedAt.After(staleSnap.CapturedAt) {
 		t.Errorf("expected cache CapturedAt to be newer than stale snapshot: got %v, stale was %v",
 			loaded.CapturedAt, staleSnap.CapturedAt)
+	}
+}
+
+func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	resetPrimaryQuotaRefreshForTest(t)
+
+	var claudeCalls atomic.Int32
+	var codexCalls atomic.Int32
+	done := make(chan string, 2)
+
+	origClaude := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		claudeCalls.Add(1)
+		done <- "claude"
+		return []harnesses.QuotaWindow{
+			{LimitID: "session", UsedPercent: 20},
+			{LimitID: "weekly-all", UsedPercent: 10},
+		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
+	}
+	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+
+	origCodex := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+		codexCalls.Add(1)
+		done <- "codex"
+		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+	}
+	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+
+	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	if _, err := svc.ListHarnesses(context.Background()); err != nil {
+		t.Fatalf("ListHarnesses: %v", err)
+	}
+	waitForQuotaRefreshes(t, done, "claude", "codex")
+
+	if _, err := svc.ListHarnesses(context.Background()); err != nil {
+		t.Fatalf("ListHarnesses second call: %v", err)
+	}
+	time.Sleep(25 * time.Millisecond)
+
+	if got := claudeCalls.Load(); got != 1 {
+		t.Fatalf("claude refresh calls: got %d, want 1", got)
+	}
+	if got := codexCalls.Load(); got != 1 {
+		t.Fatalf("codex refresh calls: got %d, want 1", got)
+	}
+}
+
+func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	resetPrimaryQuotaRefreshForTest(t)
+
+	origClaude := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		return []harnesses.QuotaWindow{
+			{LimitID: "session", UsedPercent: 20},
+			{LimitID: "weekly-all", UsedPercent: 10},
+		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
+	}
+	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+
+	origCodex := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+	}
+	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+
+	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: time.Second}); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, ok := claudeharness.ReadClaudeQuota(); !ok {
+		t.Fatal("expected startup wait to allow Claude quota cache write")
+	}
+	if _, ok := codexharness.ReadCodexQuota(); !ok {
+		t.Fatal("expected startup wait to allow Codex quota cache write")
+	}
+}
+
+func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	resetPrimaryQuotaRefreshForTest(t)
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+
+	origClaude := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		<-release
+		return []harnesses.QuotaWindow{
+			{LimitID: "session", UsedPercent: 20},
+			{LimitID: "weekly-all", UsedPercent: 10},
+		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
+	}
+	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+
+	origCodex := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+		<-release
+		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+	}
+	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+
+	start := time.Now()
+	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: 20 * time.Millisecond}); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("New blocked too long: %v", elapsed)
+	}
+}
+
+func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	resetPrimaryQuotaRefreshForTest(t)
+
+	var claudeCalls atomic.Int32
+	var codexCalls atomic.Int32
+	origClaude := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		claudeCalls.Add(1)
+		return []harnesses.QuotaWindow{
+			{LimitID: "session", UsedPercent: 20},
+			{LimitID: "weekly-all", UsedPercent: 10},
+		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
+	}
+	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+
+	origCodex := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+		codexCalls.Add(1)
+		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+	}
+	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if _, err := New(ServiceOptions{
+		QuotaRefreshContext:     ctx,
+		QuotaRefreshDebounce:    time.Millisecond,
+		QuotaRefreshStartupWait: time.Second,
+		QuotaRefreshInterval:    5 * time.Millisecond,
+	}); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	deadline := time.After(time.Second)
+	for claudeCalls.Load() < 2 || codexCalls.Load() < 2 {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for timer refreshes: claude=%d codex=%d", claudeCalls.Load(), codexCalls.Load())
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	resetPrimaryQuotaRefreshForTest(t)
+
+	claudeStarted := make(chan struct{}, 1)
+	codexStarted := make(chan struct{}, 1)
+	release := make(chan struct{})
+
+	origClaude := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		claudeStarted <- struct{}{}
+		<-release
+		return []harnesses.QuotaWindow{
+			{LimitID: "session", UsedPercent: 20},
+			{LimitID: "weekly-all", UsedPercent: 10},
+		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
+	}
+	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+
+	origCodex := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+		codexStarted <- struct{}{}
+		<-release
+		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+	}
+	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	t.Cleanup(func() { close(release) })
+
+	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
+	if err == nil {
+		t.Fatal("ResolveRoute should not wait for background quota refresh to make missing-cache subscription harnesses eligible")
+	}
+
+	waitForQuotaRefreshStarts(t, claudeStarted, codexStarted)
+}
+
+func resetPrimaryQuotaRefreshForTest(t *testing.T) {
+	t.Helper()
+	primaryQuotaRefresh.mu.Lock()
+	oldLast := primaryQuotaRefresh.lastAttempt
+	oldInFlight := primaryQuotaRefresh.inFlight
+	primaryQuotaRefresh.lastAttempt = make(map[string]time.Time)
+	primaryQuotaRefresh.inFlight = make(map[string]bool)
+	primaryQuotaRefresh.mu.Unlock()
+	t.Cleanup(func() {
+		primaryQuotaRefresh.mu.Lock()
+		primaryQuotaRefresh.lastAttempt = oldLast
+		primaryQuotaRefresh.inFlight = oldInFlight
+		primaryQuotaRefresh.mu.Unlock()
+	})
+}
+
+func waitForQuotaRefreshes(t *testing.T, done <-chan string, want ...string) {
+	t.Helper()
+	seen := map[string]bool{}
+	deadline := time.After(time.Second)
+	for len(seen) < len(want) {
+		select {
+		case name := <-done:
+			seen[name] = true
+		case <-deadline:
+			t.Fatalf("timed out waiting for quota refreshes; saw %v want %v", seen, want)
+		}
+	}
+	for _, name := range want {
+		if !seen[name] {
+			t.Fatalf("missing quota refresh %q; saw %v", name, seen)
+		}
+	}
+}
+
+func waitForQuotaRefreshStarts(t *testing.T, claudeStarted, codexStarted <-chan struct{}) {
+	t.Helper()
+	for name, ch := range map[string]<-chan struct{}{
+		"claude": claudeStarted,
+		"codex":  codexStarted,
+	} {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %s quota refresh to start", name)
+		}
 	}
 }

@@ -32,7 +32,7 @@ type ClaudeQuotaSnapshot struct {
 // DefaultClaudeQuotaStaleAfter is the default maximum age before a cached
 // snapshot is considered stale and foreground routing should fall back to
 // the safe default.
-const DefaultClaudeQuotaStaleAfter = 5 * time.Minute
+const DefaultClaudeQuotaStaleAfter = 15 * time.Minute
 
 // claudeQuotaCacheEnv lets tests override the cache file path.
 const claudeQuotaCacheEnv = "DDX_AGENT_CLAUDE_QUOTA_CACHE"

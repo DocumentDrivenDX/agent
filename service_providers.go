@@ -25,11 +25,11 @@ import (
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
 )
 
-// healthCheckQuotaFreshnessWindow is the minimum age a quota cache entry must
-// reach before HealthCheck triggers a refresh. Callers that invoke HealthCheck
-// rapidly (e.g. ddx doctor --routing polling) therefore hit direct PTY quota
-// probes at most once per window rather than on every call.
-const healthCheckQuotaFreshnessWindow = 60 * time.Second
+const (
+	defaultQuotaRefreshDebounce     = 15 * time.Minute
+	defaultQuotaRefreshStartupWait  = 2 * time.Second
+	defaultQuotaRefreshProbeTimeout = 30 * time.Second
+)
 
 // healthCheckClaudeQuotaRefresher is the function used to probe Claude's direct
 // PTY quota. It is a package-level variable so tests can substitute a fake
@@ -40,6 +40,193 @@ var healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.Q
 
 var healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 	return codexharness.ReadCodexQuotaViaPTY(timeout)
+}
+
+var primaryQuotaRefresh = &quotaRefreshCoordinator{
+	lastAttempt: make(map[string]time.Time),
+	inFlight:    make(map[string]bool),
+}
+
+type quotaRefreshCoordinator struct {
+	mu          sync.Mutex
+	lastAttempt map[string]time.Time
+	inFlight    map[string]bool
+}
+
+type quotaRefreshMode int
+
+const (
+	quotaRefreshAsync quotaRefreshMode = iota
+	quotaRefreshStartup
+)
+
+type quotaRefreshPolicy struct {
+	debounce     time.Duration
+	startupWait  time.Duration
+	probeTimeout time.Duration
+}
+
+type quotaCacheStatus struct {
+	needsRefresh bool
+	usable       bool
+}
+
+func (s *service) ensurePrimaryQuotaRefresh(ctx context.Context, mode quotaRefreshMode) {
+	policy := s.quotaRefreshPolicy()
+	var waits []<-chan struct{}
+	for _, name := range []string{"claude", "codex"} {
+		status := primaryQuotaCacheStatus(name, policy.debounce)
+		if !status.needsRefresh {
+			continue
+		}
+		done := requestPrimaryQuotaRefresh(ctx, name, policy)
+		if mode == quotaRefreshStartup && !status.usable && done != nil {
+			waits = append(waits, done)
+		}
+	}
+	if mode == quotaRefreshStartup && len(waits) > 0 && policy.startupWait > 0 {
+		waitForPrimaryQuotaRefreshes(waits, policy.startupWait)
+	}
+}
+
+func (s *service) quotaRefreshPolicy() quotaRefreshPolicy {
+	policy := quotaRefreshPolicy{
+		debounce:     defaultQuotaRefreshDebounce,
+		startupWait:  defaultQuotaRefreshStartupWait,
+		probeTimeout: defaultQuotaRefreshProbeTimeout,
+	}
+	if s != nil {
+		if s.opts.QuotaRefreshDebounce > 0 {
+			policy.debounce = s.opts.QuotaRefreshDebounce
+		}
+		if s.opts.QuotaRefreshStartupWait > 0 {
+			policy.startupWait = s.opts.QuotaRefreshStartupWait
+		}
+	}
+	return policy
+}
+
+func (s *service) startPrimaryQuotaRefreshWorker() {
+	if s == nil || s.opts.QuotaRefreshInterval <= 0 {
+		return
+	}
+	ctx := s.opts.QuotaRefreshContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	interval := s.opts.QuotaRefreshInterval
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
+			}
+		}
+	}()
+}
+
+func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy) <-chan struct{} {
+	done := make(chan struct{})
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		close(done)
+		return nil
+	}
+
+	now := time.Now()
+	primaryQuotaRefresh.mu.Lock()
+	if primaryQuotaRefresh.inFlight[harnessName] {
+		primaryQuotaRefresh.mu.Unlock()
+		close(done)
+		return nil
+	}
+	if last := primaryQuotaRefresh.lastAttempt[harnessName]; !last.IsZero() && now.Sub(last) < policy.debounce {
+		primaryQuotaRefresh.mu.Unlock()
+		close(done)
+		return nil
+	}
+	primaryQuotaRefresh.lastAttempt[harnessName] = now
+	primaryQuotaRefresh.inFlight[harnessName] = true
+	primaryQuotaRefresh.mu.Unlock()
+
+	go func() {
+		defer close(done)
+		defer func() {
+			primaryQuotaRefresh.mu.Lock()
+			primaryQuotaRefresh.inFlight[harnessName] = false
+			primaryQuotaRefresh.mu.Unlock()
+		}()
+
+		switch harnessName {
+		case "claude":
+			refreshClaudeQuotaCache(ctx, policy.debounce, policy.probeTimeout)
+		case "codex":
+			refreshCodexQuotaCache(ctx, policy.debounce, policy.probeTimeout)
+		}
+	}()
+	return done
+}
+
+func waitForPrimaryQuotaRefreshes(waits []<-chan struct{}, timeout time.Duration) {
+	deadline := time.After(timeout)
+	for _, done := range waits {
+		select {
+		case <-done:
+		case <-deadline:
+			return
+		}
+	}
+}
+
+func primaryQuotaCacheStatus(harnessName string, debounce time.Duration) quotaCacheStatus {
+	now := time.Now()
+	switch harnessName {
+	case "claude":
+		cachePath, err := claudeharness.ClaudeQuotaCachePath()
+		if err != nil {
+			return quotaCacheStatus{}
+		}
+		snap, _ := claudeharness.ReadClaudeQuotaFrom(cachePath)
+		if snap == nil {
+			return quotaCacheStatus{needsRefresh: true}
+		}
+		decision := claudeharness.DecideClaudeQuotaRouting(snap, now, debounce)
+		return quotaCacheStatus{
+			needsRefresh: !decision.Fresh,
+			usable:       decision.Fresh,
+		}
+	case "codex":
+		cachePath, err := codexharness.CodexQuotaCachePath()
+		if err != nil {
+			return quotaCacheStatus{}
+		}
+		snap, _ := codexharness.ReadCodexQuotaFrom(cachePath)
+		if snap == nil {
+			return quotaCacheStatus{needsRefresh: true}
+		}
+		decision := codexharness.DecideCodexQuotaRouting(snap, now, debounce)
+		return quotaCacheStatus{
+			needsRefresh: !decision.Fresh || !codexQuotaCacheComplete(snap),
+			usable:       decision.Fresh && decision.PreferCodex,
+		}
+	default:
+		return quotaCacheStatus{}
+	}
+}
+
+func codexQuotaCacheComplete(snap *codexharness.CodexQuotaSnapshot) bool {
+	return snap != nil &&
+		!snap.CapturedAt.IsZero() &&
+		strings.TrimSpace(snap.Source) != "" &&
+		len(snap.Windows) > 0 &&
+		snap.Account != nil &&
+		strings.TrimSpace(snap.Account.PlanType) != ""
 }
 
 // ListProviders returns providers known to the native-agent harness with live
@@ -306,27 +493,28 @@ func serviceRouteStateKey(routeName string) string {
 	return replacer.Replace(routeName)
 }
 
-// healthCheckRefreshClaudeQuota refreshes the Claude direct PTY quota cache when the
-// cached snapshot is older than healthCheckQuotaFreshnessWindow. It is a
+// healthCheckRefreshClaudeQuota refreshes the Claude direct PTY quota cache when
+// the cached snapshot is older than the default refresh debounce. It is a
 // best-effort operation: errors are silently discarded so that a claude absence
 // does not fail HealthCheck.
-//
-// The ctx parameter is accepted for interface consistency; the direct PTY probe
-// itself uses a fixed 5s timeout derived from the freshness window.
-func healthCheckRefreshClaudeQuota(_ context.Context) {
+func healthCheckRefreshClaudeQuota(ctx context.Context) {
+	refreshClaudeQuotaCache(ctx, defaultQuotaRefreshDebounce, defaultQuotaRefreshProbeTimeout)
+}
+
+func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration) {
 	cachePath, err := claudeharness.ClaudeQuotaCachePath()
 	if err != nil {
 		return
 	}
 
 	snap, _ := claudeharness.ReadClaudeQuotaFrom(cachePath)
-	if snap != nil && claudeharness.ClaudeQuotaSnapshotAge(snap, time.Now()) <= healthCheckQuotaFreshnessWindow {
+	if snap != nil && claudeharness.DecideClaudeQuotaRouting(snap, time.Now(), debounce).Fresh {
 		// Cache is fresh enough; skip the expensive PTY probe.
 		return
 	}
 
-	// Cache is absent or stale - run a direct PTY probe with a 5s cap.
-	windows, acct, probeErr := healthCheckClaudeQuotaRefresher(5 * time.Second)
+	// Cache is absent or stale - run a direct PTY probe with a bounded timeout.
+	windows, acct, probeErr := healthCheckClaudeQuotaRefresher(timeout)
 	if probeErr != nil || len(windows) == 0 {
 		return
 	}
@@ -355,18 +543,22 @@ func healthCheckRefreshClaudeQuota(_ context.Context) {
 	_ = claudeharness.WriteClaudeQuota(cachePath, newSnap)
 }
 
-func healthCheckRefreshCodexQuota(_ context.Context) {
+func healthCheckRefreshCodexQuota(ctx context.Context) {
+	refreshCodexQuotaCache(ctx, defaultQuotaRefreshDebounce, defaultQuotaRefreshProbeTimeout)
+}
+
+func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration) {
 	cachePath, err := codexharness.CodexQuotaCachePath()
 	if err != nil {
 		return
 	}
 
 	snap, _ := codexharness.ReadCodexQuotaFrom(cachePath)
-	if snap != nil && codexharness.CodexQuotaSnapshotAge(snap, time.Now()) <= healthCheckQuotaFreshnessWindow {
+	if snap != nil && codexharness.IsCodexQuotaFresh(snap, time.Now(), debounce) && codexQuotaCacheComplete(snap) {
 		return
 	}
 
-	windows, probeErr := healthCheckCodexQuotaRefresher(5 * time.Second)
+	windows, probeErr := healthCheckCodexQuotaRefresher(timeout)
 	if probeErr != nil || len(windows) == 0 {
 		return
 	}

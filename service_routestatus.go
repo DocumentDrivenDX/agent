@@ -8,7 +8,8 @@ import (
 // RouteStatus returns global routing state across all configured routes.
 // It is the operator dashboard view: cooldowns, recent decisions, and
 // per-candidate health. Distinct from per-request ResolveRoute.
-func (s *service) RouteStatus(_ context.Context) (*RouteStatusReport, error) {
+func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
+	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	sc := s.opts.ServiceConfig
 	report := &RouteStatusReport{
 		GeneratedAt: time.Now(),
