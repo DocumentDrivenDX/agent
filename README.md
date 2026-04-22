@@ -179,6 +179,7 @@ ddx-agent replay <session-id>  # human-readable replay
 ## Documentation
 
 - [Getting Started](https://documentdrivendx.github.io/agent/docs/getting-started/)
+- [Routing Reference](docs/routing/index.md)
 - [Microsite](https://documentdrivendx.github.io/agent/)
 
 ## Contributing
