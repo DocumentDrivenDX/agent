@@ -245,18 +245,21 @@ type PerfSignal struct {
 
 // ModelInfo describes a model with full metadata per CONTRACT-003.
 type ModelInfo struct {
-	ID            string
-	Provider      string
-	Harness       string
-	ContextLength int
-	Capabilities  []string
-	Cost          CostInfo
-	PerfSignal    PerfSignal
-	Available     bool
-	IsConfigured  bool   // matches an explicit model_routes entry
-	IsDefault     bool   // matches the configured default model
-	CatalogRef    string // canonical catalog reference if recognized
-	RankPosition  int    // ordinal in latest discovery rank; -1 if unranked
+	ID              string
+	Provider        string
+	ProviderType    string
+	Harness         string
+	EndpointName    string
+	EndpointBaseURL string
+	ContextLength   int
+	Capabilities    []string
+	Cost            CostInfo
+	PerfSignal      PerfSignal
+	Available       bool
+	IsConfigured    bool   // matches an explicit model_routes entry
+	IsDefault       bool   // matches the configured default model
+	CatalogRef      string // canonical catalog reference if recognized
+	RankPosition    int    // ordinal in latest discovery rank; -1 if unranked
 }
 
 // ModelFilter filters ListModels results.

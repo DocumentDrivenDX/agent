@@ -67,7 +67,8 @@ type DdxAgent interface {
     ListProviders(ctx context.Context) ([]ProviderInfo, error)
 
     // ListModels returns models matching the filter, with full metadata
-    // (cost, perf signals, capabilities, context length, ranking).
+    // (cost, perf signals, capabilities, context length, ranking, provider
+    // type, and endpoint identity when applicable).
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 
     // ListProfiles returns catalog profile names and alias projections with
@@ -411,7 +412,10 @@ type ProviderInfo struct {
 type ModelInfo struct {
     ID            string
     Provider      string
+    ProviderType  string  // concrete provider type, e.g. "openrouter", "lmstudio", or "omlx"
     Harness       string  // for subprocess-only models, the owning harness
+    EndpointName  string  // configured endpoint name, "default", or host:port fallback
+    EndpointBaseURL string // endpoint base URL used for discovery; empty when not applicable
     ContextLength int     // resolved (provider API > catalog > default)
     Capabilities  []string
     Cost          CostInfo
@@ -623,6 +627,19 @@ reported through `ProviderInfo.Auth`; missing API keys or 401/403-style probe
 failures are `Unauthenticated=true` and do not require consumers to know the
 provider's native auth file format.
 
+`ListModels` is the public model-listing surface for configured native
+providers. For `openrouter`, `lmstudio`, and `omlx`, it must query each
+configured endpoint's OpenAI-compatible models endpoint (`<base_url>/models`,
+where `base_url` normally ends in `/v1`) and return one `ModelInfo` per
+discovered `(provider, endpoint, model)` tuple. Results carry the configured
+provider name in `Provider`, the concrete backend type in `ProviderType`, and
+the endpoint identity in `EndpointName` / `EndpointBaseURL`; consumers must not
+infer these from URLs or internal config. If an endpoint is unreachable or
+returns a non-OK response, that endpoint contributes no models and the method
+continues listing other endpoints/providers. Missing credentials for cloud
+providers surface through the same empty-result behavior here and through
+`ListProviders`/`HealthCheck` status for diagnostics.
+
 Claude Code and Codex subscription quotas are read from durable service-owned
 caches by `ListHarnesses`; `HealthCheck` may refresh stale caches by invoking
 the authenticated direct PTY probe. Existing tmux-backed quota probes are legacy
@@ -726,9 +743,9 @@ Current builtin matrix:
 | pi | required | unsupported | optional | optional | optional | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
 | virtual | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |
 | script | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |
-| openrouter | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
-| lmstudio | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
-| omlx | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
+| openrouter | required | required | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
+| lmstudio | required | required | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
+| omlx | required | required | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
 
 Notes:
 

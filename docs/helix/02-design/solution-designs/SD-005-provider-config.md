@@ -346,6 +346,16 @@ budgets, but those names are not preferred public controls. Unsupported
 auto/default controls may be dropped; explicit unsupported or over-limit
 values fail clearly.
 
+**D16: Provider model listing is public and endpoint-aware.** `DdxAgent.ListModels`
+is the only public surface consumers use to list configured provider-backed
+models. For OpenRouter, LM Studio, and oMLX, the service queries each configured
+endpoint's `<base_url>/models` endpoint and returns one result per discovered
+model per endpoint. The configured provider name, concrete provider type, and
+endpoint identity are explicit `ModelInfo` fields so consumers do not read
+provider config or infer type from URLs. Endpoint failures are local to that
+endpoint during listing; status diagnostics remain in `ListProviders` and
+`HealthCheck`.
+
 ## CLI UX
 
 ### Prompt Preset Selection
@@ -445,3 +455,5 @@ Expected package split:
   the `LookupModelLimits` call-site in the CLI layer
 - D15 (reasoning contract) is implemented through `reasoning`,
   `reasoning_default`, and CLI `--reasoning`
+- D16 (endpoint-aware provider model listing) is implemented through
+  `DdxAgent.ListModels` and the exported `ModelInfo` provider/endpoint fields

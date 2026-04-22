@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -145,86 +146,111 @@ func listModelsForProvider(
 	configuredRouteNames map[string]bool,
 ) []ModelInfo {
 	// Discover model IDs from the provider.
-	ids, ranked := discoverAndRankModels(ctx, entry, cat)
-	if len(ids) == 0 {
+	discoveries := discoverAndRankModels(ctx, entry, cat)
+	if len(discoveries) == 0 {
 		return nil
 	}
 
-	// Build a position map from the ranked list.
-	rankPos := make(map[string]int, len(ranked))
-	for pos, sm := range ranked {
-		rankPos[sm.ID] = pos
-	}
-
-	// Build CatalogRef map from ranked list.
-	catalogRefMap := make(map[string]string, len(ranked))
-	for _, sm := range ranked {
-		if sm.CatalogRef != "" {
-			catalogRefMap[sm.ID] = sm.CatalogRef
-		}
-	}
-
 	configuredDefaultModel := entry.Model
+	providerType := normalizeServiceProviderType(entry.Type)
 
-	out := make([]ModelInfo, 0, len(ids))
-	for _, id := range ids {
-		info := ModelInfo{
-			ID:        id,
-			Provider:  providerName,
-			Harness:   "agent",
-			Available: true,
+	outLen := 0
+	for _, discovery := range discoveries {
+		outLen += len(discovery.IDs)
+	}
+	out := make([]ModelInfo, 0, outLen)
+	for _, discovery := range discoveries {
+		// Build a position map from the ranked list.
+		rankPos := make(map[string]int, len(discovery.Ranked))
+		for pos, sm := range discovery.Ranked {
+			rankPos[sm.ID] = pos
 		}
 
-		// Resolve context length: provider API > catalog > 0.
-		info.ContextLength = resolveContextLength(ctx, entry, id, cat)
-
-		// Capabilities from provider type.
-		info.Capabilities = providerCapabilities(entry)
-
-		// CatalogRef from ranked discovery.
-		info.CatalogRef = catalogRefMap[id]
-
-		// Cost and PerfSignal from catalog.
-		if cat != nil && info.CatalogRef != "" {
-			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
-		} else if cat != nil {
-			// Try direct model lookup by ID even without a catalog ref.
-			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+		// Build CatalogRef map from ranked list.
+		catalogRefMap := make(map[string]string, len(discovery.Ranked))
+		for _, sm := range discovery.Ranked {
+			if sm.CatalogRef != "" {
+				catalogRefMap[sm.ID] = sm.CatalogRef
+			}
 		}
 
-		// IsDefault: provider is default AND this model is the configured default model.
-		info.IsDefault = isDefaultProvider && configuredDefaultModel != "" && id == configuredDefaultModel
+		for _, id := range discovery.IDs {
+			info := ModelInfo{
+				ID:              id,
+				Provider:        providerName,
+				ProviderType:    providerType,
+				Harness:         "agent",
+				EndpointName:    discovery.EndpointName,
+				EndpointBaseURL: discovery.EndpointBaseURL,
+				Available:       true,
+			}
 
-		// IsConfigured: model ID matches an explicit model_routes entry.
-		info.IsConfigured = configuredRouteNames[id]
+			// Resolve context length: provider API > catalog > 0.
+			info.ContextLength = resolveContextLength(ctx, entry, id, cat)
 
-		// RankPosition from discovery ranking.
-		if pos, ok := rankPos[id]; ok {
-			info.RankPosition = pos
-		} else {
-			info.RankPosition = -1
+			// Capabilities from provider type.
+			info.Capabilities = providerCapabilities(entry)
+
+			// CatalogRef from ranked discovery.
+			info.CatalogRef = catalogRefMap[id]
+
+			// Cost and PerfSignal from catalog.
+			if cat != nil && info.CatalogRef != "" {
+				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+			} else if cat != nil {
+				// Try direct model lookup by ID even without a catalog ref.
+				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+			}
+
+			// IsDefault: provider is default AND this model is the configured default model.
+			info.IsDefault = isDefaultProvider && configuredDefaultModel != "" && id == configuredDefaultModel
+
+			// IsConfigured: model ID matches an explicit model_routes entry.
+			info.IsConfigured = configuredRouteNames[id]
+
+			// RankPosition from discovery ranking.
+			if pos, ok := rankPos[id]; ok {
+				info.RankPosition = pos
+			} else {
+				info.RankPosition = -1
+			}
+
+			out = append(out, info)
 		}
-
-		out = append(out, info)
 	}
 	return out
 }
 
-// discoverAndRankModels fetches the model list from a provider and ranks them
-// against the catalog. Returns (ids, ranked) where ids preserves discovery order
-// and ranked is the scored list.
-func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat *modelcatalog.Catalog) ([]string, []scoredModel) {
+type discoveredModelSet struct {
+	EndpointName    string
+	EndpointBaseURL string
+	IDs             []string
+	Ranked          []scoredModel
+}
+
+// discoverAndRankModels fetches the model list from each provider endpoint and
+// ranks results against the catalog. IDs preserve discovery order per endpoint.
+func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat *modelcatalog.Catalog) []discoveredModelSet {
 	switch normalizeServiceProviderType(entry.Type) {
 	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
-		if entry.BaseURL == "" {
-			return nil, nil
+		endpoints := modelDiscoveryEndpoints(entry)
+		if len(endpoints) == 0 {
+			return nil
 		}
-		ids, err := discoverModelsInline(ctx, entry.BaseURL, entry.APIKey)
-		if err != nil {
-			return nil, nil
+		out := make([]discoveredModelSet, 0, len(endpoints))
+		for _, endpoint := range endpoints {
+			ids, err := discoverModelsInline(ctx, endpoint.BaseURL, entry.APIKey)
+			if err != nil || len(ids) == 0 {
+				continue
+			}
+			out = append(out, discoveredModelSet{
+				EndpointName:    endpoint.Name,
+				EndpointBaseURL: endpoint.BaseURL,
+				IDs:             ids,
+				Ranked:          rankModelsInline(ids, cat),
+			})
 		}
-		ranked := rankModelsInline(ids, cat)
-		return ids, ranked
+		return out
 
 	case "anthropic":
 		// Anthropic does not expose /v1/models for discovery.
@@ -236,13 +262,57 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 					sm.CatalogRef = ref
 				}
 			}
-			return []string{entry.Model}, []scoredModel{sm}
+			return []discoveredModelSet{{
+				EndpointName:    "default",
+				EndpointBaseURL: entry.BaseURL,
+				IDs:             []string{entry.Model},
+				Ranked:          []scoredModel{sm},
+			}}
 		}
-		return nil, nil
+		return nil
 
 	default:
-		return nil, nil
+		return nil
 	}
+}
+
+type modelDiscoveryEndpoint struct {
+	Name    string
+	BaseURL string
+}
+
+func modelDiscoveryEndpoints(entry ServiceProviderEntry) []modelDiscoveryEndpoint {
+	if len(entry.Endpoints) > 0 {
+		out := make([]modelDiscoveryEndpoint, 0, len(entry.Endpoints))
+		for _, ep := range entry.Endpoints {
+			if strings.TrimSpace(ep.BaseURL) == "" {
+				continue
+			}
+			out = append(out, modelDiscoveryEndpoint{
+				Name:    endpointDisplayName(ep.Name, ep.BaseURL),
+				BaseURL: ep.BaseURL,
+			})
+		}
+		return out
+	}
+	if strings.TrimSpace(entry.BaseURL) == "" {
+		return nil
+	}
+	return []modelDiscoveryEndpoint{{
+		Name:    endpointDisplayName("default", entry.BaseURL),
+		BaseURL: entry.BaseURL,
+	}}
+}
+
+func endpointDisplayName(name, baseURL string) string {
+	if trimmed := strings.TrimSpace(name); trimmed != "" {
+		return trimmed
+	}
+	u, err := url.Parse(baseURL)
+	if err == nil && u.Host != "" {
+		return u.Host
+	}
+	return "default"
 }
 
 // discoverModelsInline queries /v1/models and returns model IDs.

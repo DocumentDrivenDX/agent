@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
@@ -14,7 +15,7 @@ import (
 // fakeModelsServer returns an httptest.Server that serves the given model IDs from /v1/models.
 func fakeModelsServer(models []string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {
+		if strings.HasSuffix(r.URL.Path, "/models") {
 			w.Header().Set("Content-Type", "application/json")
 			data := make([]map[string]any, len(models))
 			for i, m := range models {
@@ -27,11 +28,141 @@ func fakeModelsServer(models []string) *httptest.Server {
 	}))
 }
 
+func fakeFailingModelsServer(status int) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/models") {
+			http.Error(w, "model list unavailable", status)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+}
+
 func TestListModels_noServiceConfig(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	_, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err == nil {
 		t.Fatal("expected error when ServiceConfig is nil")
+	}
+}
+
+func TestListModels_providerTypesOpenRouterLMStudioOMLX(t *testing.T) {
+	openrouter := fakeModelsServer([]string{"openrouter/model-a"})
+	defer openrouter.Close()
+	lmstudio := fakeModelsServer([]string{"lmstudio-model-a"})
+	defer lmstudio.Close()
+	omlx := fakeModelsServer([]string{"omlx-model-a"})
+	defer omlx.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"openrouter": {Type: "openrouter", BaseURL: openrouter.URL + "/api/v1"},
+			"studio":     {Type: "lmstudio", BaseURL: lmstudio.URL + "/v1"},
+			"vidar-omlx": {Type: "omlx", BaseURL: omlx.URL + "/v1"},
+		},
+		names:       []string{"openrouter", "studio", "vidar-omlx"},
+		defaultName: "openrouter",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(infos) != 3 {
+		t.Fatalf("want 3 models, got %d: %v", len(infos), modelIDs(infos))
+	}
+
+	wantTypes := map[string]string{
+		"openrouter": "openrouter",
+		"studio":     "lmstudio",
+		"vidar-omlx": "omlx",
+	}
+	for _, info := range infos {
+		if info.ProviderType != wantTypes[info.Provider] {
+			t.Errorf("provider %q type=%q, want %q", info.Provider, info.ProviderType, wantTypes[info.Provider])
+		}
+		if info.EndpointName == "" {
+			t.Errorf("provider %q model %q missing EndpointName", info.Provider, info.ID)
+		}
+		if info.EndpointBaseURL == "" {
+			t.Errorf("provider %q model %q missing EndpointBaseURL", info.Provider, info.ID)
+		}
+	}
+}
+
+func TestListModels_endpointPoolReturnsEndpointMetadata(t *testing.T) {
+	vidar := fakeModelsServer([]string{"vidar-model"})
+	defer vidar.Close()
+	eitri := fakeModelsServer([]string{"eitri-model"})
+	defer eitri.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"studio": {
+				Type:    "lmstudio",
+				BaseURL: vidar.URL + "/v1",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "vidar", BaseURL: vidar.URL + "/v1"},
+					{Name: "eitri", BaseURL: eitri.URL + "/v1"},
+				},
+			},
+		},
+		names:       []string{"studio"},
+		defaultName: "studio",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{Provider: "studio"})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("want 2 endpoint models, got %d: %v", len(infos), modelInfoDebug(infos))
+	}
+
+	got := map[string]ModelInfo{}
+	for _, info := range infos {
+		got[info.ID] = info
+	}
+	if got["vidar-model"].EndpointName != "vidar" || got["vidar-model"].EndpointBaseURL != vidar.URL+"/v1" {
+		t.Errorf("vidar metadata = %#v", got["vidar-model"])
+	}
+	if got["eitri-model"].EndpointName != "eitri" || got["eitri-model"].EndpointBaseURL != eitri.URL+"/v1" {
+		t.Errorf("eitri metadata = %#v", got["eitri-model"])
+	}
+}
+
+func TestListModels_endpointPoolSkipsFailingEndpoint(t *testing.T) {
+	healthy := fakeModelsServer([]string{"healthy-model"})
+	defer healthy.Close()
+	failing := fakeFailingModelsServer(http.StatusInternalServerError)
+	defer failing.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"studio": {
+				Type: "lmstudio",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "broken", BaseURL: failing.URL + "/v1"},
+					{Name: "healthy", BaseURL: healthy.URL + "/v1"},
+				},
+			},
+		},
+		names:       []string{"studio"},
+		defaultName: "studio",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{Provider: "studio"})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 healthy endpoint model, got %d: %v", len(infos), modelInfoDebug(infos))
+	}
+	if infos[0].ID != "healthy-model" || infos[0].EndpointName != "healthy" {
+		t.Fatalf("unexpected endpoint result: %#v", infos[0])
 	}
 }
 

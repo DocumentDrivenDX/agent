@@ -194,9 +194,23 @@ type AttemptMetadata struct {
 25. Local providers with multiple endpoints may select a different endpoint
     per discovery call based on health state.
 
+#### Public Model Listing
+
+26. `DdxAgent.ListModels` is the public interface for listing configured
+    provider models. It must list OpenRouter, LM Studio, and oMLX models by
+    querying each configured endpoint's OpenAI-compatible models endpoint
+    (`<base_url>/models`, typically `/v1/models`).
+27. `ModelInfo` results for provider-backed models include the configured
+    provider name, concrete provider type (`openrouter`, `lmstudio`, or
+    `omlx`), endpoint name, endpoint base URL, model ID, availability, ranking,
+    context/cost/catalog metadata when known, and route/default markers.
+28. Endpoint-pool behavior is additive and deterministic: a reachable endpoint
+    contributes its discovered models; an unreachable endpoint contributes no
+    models and does not prevent other endpoints or providers from being listed.
+
 #### Protocol Capability Introspection
 
-26. Providers expose protocol-capability accessors that report what the
+29. Providers expose protocol-capability accessors that report what the
     server+type combination can actually honor, so callers can gate dispatch
     on supported features rather than dispatch-and-fail:
     - `SupportsTools() bool` — `/v1/chat/completions` accepts a `tools` field
@@ -205,30 +219,30 @@ type AttemptMetadata struct {
       stream with incremental `choices[0].delta` chunks
     - `SupportsStructuredOutput() bool` — honors `response_format: json_object`
       or equivalent JSON-mode / tool-use-required semantics
-27. Capability flags are type-keyed (`lmstudio` / `omlx` / `openrouter` /
+30. Capability flags are type-keyed (`lmstudio` / `omlx` / `openrouter` /
     `ollama` / `openai`). Unknown types return `false` conservatively so
     routing rejects rather than dispatches-and-fails.
-28. Protocol capability is distinct from routing capability (the benchmark-
+31. Protocol capability is distinct from routing capability (the benchmark-
     quality score used by smart-routing scoring). These axes do not interact.
 
 #### Debug and Observability
 
-29. A process-wide opt-in debug mode (`AGENT_DEBUG_WIRE=1`) dumps every HTTP
+32. A process-wide opt-in debug mode (`AGENT_DEBUG_WIRE=1`) dumps every HTTP
     request and response at the openai-go transport boundary to stderr (or a
     file via `AGENT_DEBUG_WIRE_FILE=<path>`). Default off, zero cost when
     disabled. Authorization Bearer tokens are redacted before any event is
     written. Complements session events (`EventLLMRequest`/`EventLLMResponse`)
     which capture the logical view; wire dump captures the HTTP view.
-30. The shared `internal/sdk/openaicompat` layer owns debug wire capture. No
+33. The shared `internal/sdk/openaicompat` layer owns debug wire capture. No
     provider identity strings appear in captured wire logs.
 
 #### Anthropic Provider
 
-31. Connects to Anthropic's Messages API.
-32. Sends tools in Anthropic's tool-use format.
-33. Handles Anthropic-specific response structure (content blocks).
-34. Reports token usage from response.
-35. Uses `github.com/anthropics/anthropic-sdk-go` and is not an
+34. Connects to Anthropic's Messages API.
+35. Sends tools in Anthropic's tool-use format.
+36. Handles Anthropic-specific response structure (content blocks).
+37. Reports token usage from response.
+38. Uses `github.com/anthropics/anthropic-sdk-go` and is not an
     OpenAI-compatible wrapper.
 
 ### Non-Functional Requirements
@@ -279,6 +293,7 @@ type AttemptMetadata struct {
 | AC-FEAT-003-08 | When `model` is empty, auto-discovery selects the highest-ranked available model according to the three-tier ranking (catalog → pattern → uncategorized) and the selection is deterministic across repeated calls with the same model list. | `go test ./provider/... ./...` |
 | AC-FEAT-003-09 | Provider config rejects `type: openai-compat` and `flavor` at config load; concrete provider types are accepted; `base_url` is expanded to a single endpoint for cloud providers. | `go test ./provider/... ./...` |
 | AC-FEAT-003-10 | No code emits `openai-compat` as a provider name or telemetry label; `ProviderType` (e.g. `lmstudio`, `openrouter`) is used instead for cost attribution and routing keys. | `go test ./provider/... ./...` |
+| AC-FEAT-003-11 | `DdxAgent.ListModels` lists models from OpenRouter, LM Studio, and oMLX through the public service API, includes provider type and endpoint identity in each `ModelInfo`, and continues listing healthy endpoints when another endpoint in the same pool fails. | `go test ./... -run TestListModels` |
 
 ## Constraints and Assumptions
 
