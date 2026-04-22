@@ -5,31 +5,32 @@ known `(harness, provider, endpoint, model)` tuples.
 
 ## Baseline Definition
 
-1. Apply hard profile constraints before normal eligibility. `local-only`
-   profiles keep only local candidates; `subscription-only` profiles keep only
-   subscription candidates. Contradictory explicit pins return
-   `ErrProfilePinConflict`.
-2. Available candidates outrank unavailable candidates. A subprocess harness is
+The baseline contract applies after explicit harness, model, and provider pins
+have narrowed the candidate set and after the requested profile or model ref has
+resolved to a concrete model for each harness surface.
+
+1. Available candidates outrank unavailable candidates. A subprocess harness is
    available when its binary is present. Native provider endpoints are available
    only when the configured endpoint is usable; live-discovery providers must
    return models from their `/v1/models`-compatible endpoint.
-3. Quota OK candidates outrank quota-exhausted candidates. Quota-tracked
+2. Quota OK candidates outrank quota-exhausted candidates. Quota-tracked
    subscription harnesses require fresh usable quota or auth evidence.
    Pay-per-token and local endpoints are not quota-constrained by this gate.
-4. Capability gates must pass: requested context window, tool support,
-   reasoning level, permissions, model allow-list, exact-pin support, profile
-   surface mapping, and live model discovery.
-5. Profile score ranks eligible candidates. The score incorporates profile
-   policy, provider preference, quota freshness/trend, observed success,
-   cooldowns, provider affinity, observed speed, and observed latency.
-6. Lowest known cost wins among candidates with equal profile score. Cost is the
-   estimated blended USD cost per 1,000 tokens. Unknown cost is neutral: it uses
-   the average of known eligible costs for the tie-break. If all costs are
-   unknown, the cost tie-break is skipped.
-7. Locality breaks remaining ties. A local cost class is preferred when cost is
+3. Capability and compatibility gates must pass: requested context window, tool
+   support, reasoning level, permissions, model allow-list, exact-pin support,
+   profile surface mapping, and live model discovery.
+4. Lowest known cost wins among candidates that meet the availability, quota,
+   capability, and compatibility gates. Cost is the estimated blended USD cost
+   per 1,000 tokens. Unknown cost is neutral: it uses the average of known
+   eligible costs for the tie-break. If all costs are unknown, the cost
+   tie-break is skipped.
+5. Locality breaks remaining ties. A local cost class is preferred when cost is
    equal or all costs are unknown.
-8. Names make the final order deterministic. Harness name sorts first, then
+6. Names make the final order deterministic. Harness name sorts first, then
    provider name.
+
+Profile scoring is not a baseline step ahead of cost. It enters only through the
+profile-specific ordering overrides below.
 
 The returned decision includes the full ranked candidate trace, including
 ineligible candidates and rejection reasons.
@@ -37,20 +38,38 @@ ineligible candidates and rejection reasons.
 ## Profile Overrides
 
 - `local`, `offline`, and `air-gapped`: add a `local-only` hard constraint
-  before availability checks. Non-local candidates are ineligible, and explicit
-  pins that can only be served by non-local harnesses return
-  `ErrProfilePinConflict`.
-- `smart`, `code-smart`, and `code-high`: add a subscription-only hard
-  constraint and rank capability before raw cost by targeting `code-high`.
-  Subscription candidates with OK quota receive profile preference. Local
-  harness pins conflict with the profile.
-- `cheap` and `code-economy`: target `code-economy`, give local candidates the
-  largest local bonus, and apply the steepest cost-class penalty. Lower cost is
-  favored before capability when scores are otherwise close.
-- `default`, `standard`, `fast`, `code-fast`, and `code-medium`: target
-  `code-medium`, prefer local endpoints, and apply a balanced cost-class
-  penalty. These profiles are cost-aware but can use subscription harnesses when
-  they remain eligible and rank best.
+  before the baseline availability step. Non-local candidates are ineligible,
+  and explicit pins that can only be served by non-local harnesses return
+  `ErrProfilePinConflict`. Remaining local candidates use the baseline cost,
+  locality, and deterministic-name order.
+- `smart`, `code-smart`, and `code-high`: add a `subscription-only` hard
+  constraint before the baseline availability step and reorder capability/profile
+  score ahead of raw cost among subscription candidates. Subscription candidates
+  with OK quota receive profile preference; cost remains the next tie-break
+  after capability/profile score. Local harness pins conflict with the profile.
+- `cheap` and `code-economy`: keep local-first fallback semantics but override
+  ordering with the strongest cost-class penalty and local bonus. This makes
+  local and lower-cost economy candidates rank ahead of higher-cost candidates
+  unless availability, quota, capability, cooldown, or reliability signals make
+  them non-viable or lower-scored. Exact known cost still breaks ties within the
+  profile score.
+- `default`, `standard`, `fast`, `code-fast`, and `code-medium`: keep
+  local-first fallback semantics with balanced profile score. The score may
+  account for local preference, quota health, cooldowns, reliability, provider
+  affinity, observed speed, and latency before exact known cost breaks remaining
+  ties.
+
+## Engine Gates And Score Signals
+
+The routing engine exposes these additional candidate signals in the trace and
+uses them inside the profile overrides above:
+
+- Capability gates: requested context window, tool support, reasoning level,
+  permissions, model allow-list, exact-pin support, profile surface mapping,
+  and live model discovery.
+- Profile score signals: profile policy, provider preference, quota
+  freshness/trend, observed success, cooldowns, provider affinity, observed
+  speed, and observed latency.
 
 ## Cost And Quota Notes
 
@@ -62,5 +81,5 @@ demoted unless the subscription routing decision marks the harness unusable.
 
 Local endpoint cost is unknown unless the caller supplies
 `LocalCostUSDPer1kTokens`. Unknown local cost remains neutral in the explicit
-cost tie-break, but local profiles and local-first preferences can still add
-score before that tie-break.
+cost tie-break, while the profile overrides above can still add local-first
+score signals before that tie-break.
