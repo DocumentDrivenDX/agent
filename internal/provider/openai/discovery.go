@@ -120,48 +120,62 @@ func getAndDecode(ctx context.Context, timeout time.Duration, endpoint, apiKey s
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// NormalizeModelID resolves a caller-supplied model name against the server's
-// canonical model catalog (the IDs returned by GET /v1/models). If the name
-// matches a catalog entry exactly (case-insensitive), that entry is returned.
-// If the name matches exactly one catalog entry by suffix (the part after the
-// last '/'), that entry's full ID is returned — this handles the common case
-// where a user supplies a bare name like "qwen3-coder-next" but the server
-// lists it as "qwen/qwen3-coder-next". Multiple suffix matches produce an
-// ambiguity error listing the candidates. Zero matches return the original
-// name unchanged.
-func NormalizeModelID(requested string, catalog []string) (string, error) {
-	reqLower := strings.ToLower(strings.TrimSpace(requested))
-	if reqLower == "" {
-		return requested, nil
+// stripSlashedPrefix drops everything through the first '/' in s. For "qwen/x"
+// returns "x"; for "x" returns "x". Used to put both requested and catalog
+// names in the same shape before comparison, so callers can supply either
+// bare names or vendor-prefixed names.
+func stripSlashedPrefix(s string) string {
+	if i := strings.Index(s, "/"); i >= 0 {
+		return s[i+1:]
 	}
+	return s
+}
 
-	// Exact match (case-insensitive).
-	for _, id := range catalog {
-		if strings.EqualFold(id, requested) {
-			return id, nil
-		}
+// MatchModelIDs returns every catalog entry whose normalized form contains
+// the normalized request as a substring. Normalization lowercases and strips
+// the first slashed-prefix on both sides, so "qwen/qwen3.6" and "Qwen3.6" and
+// "qwen3.6" all match "Qwen3.6-35B-A3B-4bit" and "Qwen3.6-35B-A3B-nvfp4".
+//
+// The returned slice preserves original catalog case and order. An empty slice
+// means no match; callers are responsible for deciding whether to pass the
+// original request through to the provider unchanged or to escalate.
+//
+// This is the primary matching primitive since v0.9.2 — it replaces the
+// scalar logic previously in NormalizeModelID. NormalizeModelID is retained
+// as a backward-compatible wrapper.
+func MatchModelIDs(requested string, catalog []string) []string {
+	req := stripSlashedPrefix(strings.ToLower(strings.TrimSpace(requested)))
+	if req == "" {
+		return nil
 	}
-
-	// Suffix match: compare requested against the basename (after last '/')
-	// of each catalog entry.
 	var matches []string
 	for _, id := range catalog {
-		idLower := strings.ToLower(id)
-		slash := strings.LastIndex(idLower, "/")
-		if slash < 0 {
-			continue // no prefix to strip — already checked via exact match
-		}
-		basename := idLower[slash+1:]
-		if basename == reqLower {
+		normalized := stripSlashedPrefix(strings.ToLower(id))
+		if strings.Contains(normalized, req) {
 			matches = append(matches, id)
 		}
 	}
+	return matches
+}
 
+// NormalizeModelID resolves a caller-supplied model name against the server's
+// canonical model catalog (the IDs returned by GET /v1/models).
+//
+// Prefer MatchModelIDs for new code; this wrapper is retained for backward
+// compatibility with the v0.9.1 call signature. Behaviour:
+//   - 0 matches → returns the original requested string, no error
+//   - 1 match   → returns the catalog entry, no error
+//   - 2+ matches → returns "" and an ambiguity error listing the candidates
+func NormalizeModelID(requested string, catalog []string) (string, error) {
+	if strings.TrimSpace(requested) == "" {
+		return requested, nil
+	}
+	matches := MatchModelIDs(requested, catalog)
 	switch len(matches) {
-	case 1:
-		return matches[0], nil
 	case 0:
 		return requested, nil
+	case 1:
+		return matches[0], nil
 	default:
 		return "", fmt.Errorf("ambiguous model %q: matches %v", requested, matches)
 	}

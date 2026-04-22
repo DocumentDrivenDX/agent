@@ -225,6 +225,130 @@ func TestNormalizeModelID(t *testing.T) {
 	})
 }
 
+// vidarOMLXCatalog is the catalog captured from a real 2026-04-21 vidar-omlx
+// server that triggered the "Model 'qwen3.5-27b' not found" 404 — the driving
+// scenario for MatchModelIDs.
+var vidarOMLXCatalog = []string{
+	"Qwen3.5-122B-A10B-RAM-100GB-MLX",
+	"MiniMax-M2.5-MLX-4bit",
+	"Qwen3-Coder-Next-MLX-4bit",
+	"gemma-4-31B-it-MLX-4bit",
+	"Qwen3.5-27B-4bit",
+	"Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+	"Qwen3.6-35B-A3B-4bit",
+	"Qwen3.6-35B-A3B-nvfp4",
+	"gpt-oss-20b-MXFP4-Q8",
+}
+
+func TestMatchModelIDs(t *testing.T) {
+	cases := []struct {
+		name      string
+		requested string
+		catalog   []string
+		want      []string
+	}{
+		{
+			name:      "qwen3.6 matches both quantization variants",
+			requested: "qwen3.6",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"Qwen3.6-35B-A3B-4bit", "Qwen3.6-35B-A3B-nvfp4"},
+		},
+		{
+			name:      "qwen/qwen3.6 strips the vendor prefix and matches same variants",
+			requested: "qwen/qwen3.6",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"Qwen3.6-35B-A3B-4bit", "Qwen3.6-35B-A3B-nvfp4"},
+		},
+		{
+			name:      "case-insensitive uppercase request matches lowercase-normalized catalog",
+			requested: "QWEN3.6",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"Qwen3.6-35B-A3B-4bit", "Qwen3.6-35B-A3B-nvfp4"},
+		},
+		{
+			name:      "qwen3.5-27b matches the plain 4bit AND the distilled variant (this is the real 404 case)",
+			requested: "qwen3.5-27b",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"Qwen3.5-27B-4bit", "Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit"},
+		},
+		{
+			name:      "qwen3-coder-next is a single match",
+			requested: "qwen3-coder-next",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"Qwen3-Coder-Next-MLX-4bit"},
+		},
+		{
+			name:      "gpt-oss-20b is a single match",
+			requested: "gpt-oss-20b",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"gpt-oss-20b-MXFP4-Q8"},
+		},
+		{
+			name:      "minimax case-insensitive substring match",
+			requested: "minimax",
+			catalog:   vidarOMLXCatalog,
+			want:      []string{"MiniMax-M2.5-MLX-4bit"},
+		},
+		{
+			name:      "qwen matches every Qwen-family entry",
+			requested: "qwen",
+			catalog:   vidarOMLXCatalog,
+			want: []string{
+				"Qwen3.5-122B-A10B-RAM-100GB-MLX",
+				"Qwen3-Coder-Next-MLX-4bit",
+				"Qwen3.5-27B-4bit",
+				"Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+				"Qwen3.6-35B-A3B-4bit",
+				"Qwen3.6-35B-A3B-nvfp4",
+			},
+		},
+		{
+			name:      "nothing matches nothing",
+			requested: "nonexistent-foo",
+			catalog:   vidarOMLXCatalog,
+			want:      nil,
+		},
+		{
+			name:      "empty request returns empty",
+			requested: "",
+			catalog:   vidarOMLXCatalog,
+			want:      nil,
+		},
+		{
+			name:      "whitespace-only request returns empty",
+			requested: "   ",
+			catalog:   vidarOMLXCatalog,
+			want:      nil,
+		},
+		{
+			name:      "empty catalog returns empty",
+			requested: "qwen3.6",
+			catalog:   nil,
+			want:      nil,
+		},
+		{
+			name:      "catalog ordering is preserved in the result",
+			requested: "qwen3.5",
+			catalog: []string{
+				"Qwen3.5-27B-4bit",
+				"Qwen3.5-122B-A10B-RAM-100GB-MLX",
+				"Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+			},
+			want: []string{
+				"Qwen3.5-27B-4bit",
+				"Qwen3.5-122B-A10B-RAM-100GB-MLX",
+				"Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := MatchModelIDs(tc.requested, tc.catalog)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestProvider_KnownModelsCatalogRank(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
