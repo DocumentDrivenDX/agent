@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,6 +140,75 @@ func indexEventType(events []agent.ServiceEvent, want string) int {
 		}
 	}
 	return -1
+}
+
+func TestExecute_ReturnsExplicitHarnessModelErrorBeforeDispatch(t *testing.T) {
+	svc, err := agent.New(agent.ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:  "hi",
+		Harness: "gemini",
+		Model:   "minimax/minimax-m2.7",
+	})
+	if err == nil {
+		t.Fatal("expected Execute to return typed error")
+	}
+	if ch != nil {
+		t.Fatalf("expected no event channel for typed pre-resolution error, got %#v", ch)
+	}
+	if !errors.Is(err, agent.ErrHarnessModelIncompatible{}) {
+		t.Fatalf("errors.Is should match ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	var typed *agent.ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	if typed.Harness != "gemini" || typed.Model != "minimax/minimax-m2.7" {
+		t.Fatalf("typed error=%#v, want gemini/minimax", typed)
+	}
+}
+
+func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
+	var calls atomic.Int64
+	opts := agent.ServiceOptions{}
+	opts.FakeProvider = &agent.FakeProvider{
+		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+			calls.Add(1)
+			return agent.FakeResponse{Text: "should not dispatch"}, nil
+		},
+	}
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:  "hi",
+		Profile: "smart",
+		Harness: "agent",
+	})
+	if err == nil {
+		t.Fatal("expected Execute to return typed error")
+	}
+	if ch != nil {
+		t.Fatalf("expected no event channel for typed pre-resolution error, got %#v", ch)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("provider calls=%d, want 0", calls.Load())
+	}
+	if !errors.Is(err, agent.ErrProfilePinConflict{}) {
+		t.Fatalf("errors.Is should match ErrProfilePinConflict: %T %v", err, err)
+	}
+	var typed *agent.ErrProfilePinConflict
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
+	}
+	if typed.Profile != "smart" || typed.ConflictingPin != "Harness=agent" || typed.ProfileConstraint != "subscription-only" {
+		t.Fatalf("typed error=%#v, want smart/Harness=agent/subscription-only", typed)
+	}
 }
 
 // TestExecute_NativePathWithFakeProvider verifies that a native-path

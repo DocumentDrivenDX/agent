@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,15 +19,21 @@ func TestExecuteRejectsUnsupportedSubprocessModelBeforeRun(t *testing.T) {
 		Harness: "codex",
 		Model:   "not-a-real-model",
 	})
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
+	if err == nil {
+		t.Fatal("expected Execute to return typed model incompatibility")
 	}
-	final := drainValidationFinal(t, ch)
-	if final.Status != "failed" {
-		t.Fatalf("Status: got %q, want failed", final.Status)
+	if ch != nil {
+		t.Fatalf("expected no event channel for typed pre-resolution error, got %#v", ch)
 	}
-	if !strings.Contains(final.Error, "unsupported model") || !strings.Contains(final.Error, "codex") {
-		t.Fatalf("Error: got %q", final.Error)
+	if !errors.Is(err, ErrHarnessModelIncompatible{}) {
+		t.Fatalf("errors.Is should match ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	var typed *ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	if typed.Harness != "codex" || typed.Model != "not-a-real-model" {
+		t.Fatalf("typed error=%#v, want codex/not-a-real-model", typed)
 	}
 }
 

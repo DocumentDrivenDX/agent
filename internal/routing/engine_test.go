@@ -2,6 +2,8 @@ package routing
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -952,6 +954,112 @@ func TestResolveRoute_GeminiRejectsNonGeminiModel(t *testing.T) {
 				t.Fatalf("gemini rejection reason=%q, want allow-list reason", c.Reason)
 			}
 		}
+	}
+}
+
+func TestResolveExplicitHarnessModelIncompatible(t *testing.T) {
+	gemini := HarnessEntry{
+		Name:                "gemini",
+		Surface:             "gemini",
+		CostClass:           "medium",
+		IsSubscription:      true,
+		AutoRoutingEligible: true,
+		ExactPinSupport:     true,
+		Available:           true,
+		QuotaOK:             true,
+		SubscriptionOK:      true,
+		DefaultModel:        "gemini-2.5-flash",
+		SupportedModels:     []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"},
+		SupportsTools:       true,
+	}
+
+	_, err := Resolve(Request{Harness: "gemini", Model: "minimax/minimax-m2.7"}, Inputs{Harnesses: []HarnessEntry{gemini}})
+	if err == nil {
+		t.Fatal("expected explicit harness/model incompatibility")
+	}
+	if !errors.Is(err, ErrHarnessModelIncompatible{}) {
+		t.Fatalf("errors.Is should match ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	var typed *ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	if typed.Harness != "gemini" {
+		t.Fatalf("Harness=%q, want gemini", typed.Harness)
+	}
+	if typed.Model != "minimax/minimax-m2.7" {
+		t.Fatalf("Model=%q, want minimax/minimax-m2.7", typed.Model)
+	}
+	want := []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
+	if !slices.Equal(typed.SupportedModels, want) {
+		t.Fatalf("SupportedModels=%v, want %v", typed.SupportedModels, want)
+	}
+
+	wrapped := fmt.Errorf("ddx preflight: %w", err)
+	if !errors.Is(wrapped, ErrHarnessModelIncompatible{}) {
+		t.Fatal("wrapped error should still match ErrHarnessModelIncompatible")
+	}
+}
+
+func TestResolveExplicitProfilePinConflict(t *testing.T) {
+	in := newTestRoutingEngine()
+
+	_, err := Resolve(Request{
+		Profile:            "local",
+		Harness:            "claude",
+		ProviderPreference: ProviderPreferenceLocalOnly,
+	}, in)
+	if err == nil {
+		t.Fatal("expected local profile to conflict with claude harness")
+	}
+	if !errors.Is(err, ErrProfilePinConflict{}) {
+		t.Fatalf("errors.Is should match ErrProfilePinConflict: %T %v", err, err)
+	}
+	var typed *ErrProfilePinConflict
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
+	}
+	if typed.Profile != "local" || typed.ConflictingPin != "Harness=claude" || typed.ProfileConstraint != "local-only" {
+		t.Fatalf("profile conflict=%#v, want local/Harness=claude/local-only", typed)
+	}
+
+	_, err = Resolve(Request{Profile: "smart", Harness: "agent"}, in)
+	if err == nil {
+		t.Fatal("expected smart profile to conflict with local agent harness")
+	}
+	var inverse *ErrProfilePinConflict
+	if !errors.As(err, &inverse) {
+		t.Fatalf("errors.As inverse: %T %v", err, err)
+	}
+	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=agent" || inverse.ProfileConstraint != "subscription-only" {
+		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=agent/subscription-only", inverse)
+	}
+
+	wrapped := fmt.Errorf("ddx preflight: %w", err)
+	if !errors.Is(wrapped, ErrProfilePinConflict{}) {
+		t.Fatal("wrapped error should still match ErrProfilePinConflict")
+	}
+}
+
+func TestNoViableCandidateIsNotExplicitPinError(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{Name: "down", AutoRoutingEligible: true, Available: false},
+		},
+	}
+	_, err := Resolve(Request{Profile: "cheap"}, in)
+	if err == nil {
+		t.Fatal("expected no viable candidate")
+	}
+	var noViable *NoViableCandidateError
+	if !errors.As(err, &noViable) {
+		t.Fatalf("error type=%T, want NoViableCandidateError", err)
+	}
+	if errors.Is(err, ErrHarnessModelIncompatible{}) {
+		t.Fatal("ambient no viable error must not match ErrHarnessModelIncompatible")
+	}
+	if errors.Is(err, ErrProfilePinConflict{}) {
+		t.Fatal("ambient no viable error must not match ErrProfilePinConflict")
 	}
 }
 

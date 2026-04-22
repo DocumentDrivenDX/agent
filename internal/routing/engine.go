@@ -265,6 +265,10 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		out[i] = ranked[i].out
 	}
 
+	if err := explicitPinError(req, in); err != nil {
+		return &Decision{Candidates: out}, err
+	}
+
 	for i := range out {
 		if out[i].Eligible {
 			return &Decision{
@@ -281,6 +285,89 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		return &Decision{Candidates: out}, fmt.Errorf("no live endpoint offers a match for %s", requested)
 	}
 	return &Decision{Candidates: out}, &NoViableCandidateError{Rejected: len(out)}
+}
+
+func explicitPinError(req Request, in Inputs) error {
+	canonicalHarness := canonicalHarnessPin(req.Harness)
+	if req.Profile != "" && (canonicalHarness != "" || req.Model != "") {
+		if constraint, ok := explicitProfileConstraint(req.Profile, req.ProviderPreference); ok {
+			if canonicalHarness != "" {
+				if h, ok := findHarness(in.Harnesses, canonicalHarness); ok && harnessViolatesProfileConstraint(h, constraint) {
+					return &ErrProfilePinConflict{
+						Profile:           req.Profile,
+						ConflictingPin:    "Harness=" + canonicalHarness,
+						ProfileConstraint: constraint,
+					}
+				}
+			}
+		}
+	}
+
+	if canonicalHarness == "" || req.Model == "" {
+		return nil
+	}
+	h, ok := findHarness(in.Harnesses, canonicalHarness)
+	if !ok || h.SupportedModels == nil || harnessSupportsModel(h.SupportedModels, req.Model) {
+		return nil
+	}
+	return &ErrHarnessModelIncompatible{
+		Harness:         canonicalHarness,
+		Model:           req.Model,
+		SupportedModels: append([]string(nil), h.SupportedModels...),
+	}
+}
+
+func canonicalHarnessPin(harness string) string {
+	if harness == "local" {
+		return "agent"
+	}
+	return harness
+}
+
+func findHarness(harnesses []HarnessEntry, name string) (HarnessEntry, bool) {
+	for _, h := range harnesses {
+		if h.Name == name {
+			return h, true
+		}
+	}
+	return HarnessEntry{}, false
+}
+
+func harnessSupportsModel(supported []string, model string) bool {
+	for _, candidate := range supported {
+		if candidate == model {
+			return true
+		}
+	}
+	return false
+}
+
+func explicitProfileConstraint(profile, providerPreference string) (string, bool) {
+	switch providerPreference {
+	case ProviderPreferenceLocalOnly:
+		return ProviderPreferenceLocalOnly, true
+	case ProviderPreferenceSubscriptionOnly:
+		return ProviderPreferenceSubscriptionOnly, true
+	}
+	switch profile {
+	case "local", "offline", "air-gapped":
+		return ProviderPreferenceLocalOnly, true
+	case "smart", "code-smart", "code-high":
+		return ProviderPreferenceSubscriptionOnly, true
+	default:
+		return "", false
+	}
+}
+
+func harnessViolatesProfileConstraint(h HarnessEntry, constraint string) bool {
+	switch constraint {
+	case ProviderPreferenceLocalOnly:
+		return !h.IsLocal
+	case ProviderPreferenceSubscriptionOnly:
+		return !h.IsSubscription
+	default:
+		return false
+	}
 }
 
 func requestedModelIntent(req Request) string {

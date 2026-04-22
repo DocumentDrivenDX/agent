@@ -19,6 +19,7 @@ import (
 	piharness "github.com/DocumentDrivenDX/agent/internal/harnesses/pi"
 	virtualprovider "github.com/DocumentDrivenDX/agent/internal/provider/virtual"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	"github.com/DocumentDrivenDX/agent/internal/routing"
 	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 	"github.com/DocumentDrivenDX/agent/internal/tool"
 )
@@ -89,6 +90,10 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// Resolve the route.
 	decision, err := s.resolveExecuteRoute(req)
 	if err != nil {
+		if isExplicitPinError(err) {
+			s.hub.closeSession(sessionID, ServiceEvent{})
+			return nil, err
+		}
 		// Still return a channel that yields a single failed final event so
 		// downstream consumers don't have to special-case the error path.
 		// Also close the hub session so TailSessionLog subscribers unblock.
@@ -143,6 +148,9 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 		return nil, fmt.Errorf("unknown harness %q", req.Harness)
 	}
 	cfg, _ := s.registry.Get(canonical)
+	if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
+		return nil, err
+	}
 	if err := validateExplicitHarnessModel(canonical, cfg, req.Model); err != nil {
 		return nil, err
 	}
@@ -157,6 +165,52 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	}, nil
 }
 
+func validateExplicitHarnessProfile(name string, cfg harnesses.HarnessConfig, profile string) error {
+	constraint, ok := explicitProfileConstraint(profile)
+	if !ok {
+		return nil
+	}
+	switch constraint {
+	case routing.ProviderPreferenceLocalOnly:
+		if !cfg.IsLocal {
+			return &ErrProfilePinConflict{
+				Profile:           profile,
+				ConflictingPin:    "Harness=" + name,
+				ProfileConstraint: constraint,
+			}
+		}
+	case routing.ProviderPreferenceSubscriptionOnly:
+		if !cfg.IsSubscription {
+			return &ErrProfilePinConflict{
+				Profile:           profile,
+				ConflictingPin:    "Harness=" + name,
+				ProfileConstraint: constraint,
+			}
+		}
+	}
+	return nil
+}
+
+func explicitProfileConstraint(profile string) (string, bool) {
+	switch profile {
+	case "local", "offline", "air-gapped":
+		return routing.ProviderPreferenceLocalOnly, true
+	case "smart", "code-smart", "code-high":
+		return routing.ProviderPreferenceSubscriptionOnly, true
+	default:
+		return "", false
+	}
+}
+
+func isExplicitPinError(err error) bool {
+	var modelErr *ErrHarnessModelIncompatible
+	if errors.As(err, &modelErr) {
+		return true
+	}
+	var profileErr *ErrProfilePinConflict
+	return errors.As(err, &profileErr)
+}
+
 func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, model string) error {
 	if model == "" || cfg.TestOnly || cfg.IsHTTPProvider || name == "agent" {
 		return nil
@@ -164,7 +218,11 @@ func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, mode
 	if modelSupportedForHarness(name, cfg, model) {
 		return nil
 	}
-	return fmt.Errorf("unsupported model %q for harness %q; supported models: %s", model, name, strings.Join(cfg.Models, ", "))
+	return &ErrHarnessModelIncompatible{
+		Harness:         name,
+		Model:           model,
+		SupportedModels: append([]string(nil), cfg.Models...),
+	}
 }
 
 func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model string) bool {

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -40,7 +41,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
-		return nil, err
+		return nil, publicRoutingError(err)
 	}
 	result := &RouteDecision{
 		Harness:  dec.Harness,
@@ -52,6 +53,26 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	// Cache the decision so RouteStatus can surface LastDecision.
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
+}
+
+func publicRoutingError(err error) error {
+	var modelErr *routing.ErrHarnessModelIncompatible
+	if errors.As(err, &modelErr) {
+		return &ErrHarnessModelIncompatible{
+			Harness:         modelErr.Harness,
+			Model:           modelErr.Model,
+			SupportedModels: append([]string(nil), modelErr.SupportedModels...),
+		}
+	}
+	var profileErr *routing.ErrProfilePinConflict
+	if errors.As(err, &profileErr) {
+		return &ErrProfilePinConflict{
+			Profile:           profileErr.Profile,
+			ConflictingPin:    profileErr.ConflictingPin,
+			ProfileConstraint: profileErr.ProfileConstraint,
+		}
+	}
+	return err
 }
 
 func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
@@ -361,6 +382,9 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {
+		if isExplicitPinError(err) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("ResolveRoute: %w", err)
 	}
 	return dec, nil
@@ -368,7 +392,7 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 
 func providerPreferenceForProfile(profile string) string {
 	switch profile {
-	case "offline", "air-gapped":
+	case "local", "offline", "air-gapped":
 		return routing.ProviderPreferenceLocalOnly
 	case "smart", "code-high":
 		return routing.ProviderPreferenceSubscriptionFirst
