@@ -784,8 +784,10 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	t.Setenv("GOOGLE_GENAI_USE_GCA", "")
 	t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
 	t.Setenv("CLOUD_SHELL", "")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	claudeQuotaPath := filepath.Join(dir, "missing-claude-quota.json")
+	codexQuotaPath := filepath.Join(dir, "missing-codex-quota.json")
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", claudeQuotaPath)
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
 	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
@@ -793,6 +795,7 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	claudeStarted := make(chan struct{}, 1)
 	codexStarted := make(chan struct{}, 1)
 	release := make(chan struct{})
+	released := false
 
 	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeStarted <- struct{}{}
@@ -808,7 +811,11 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 		<-release
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
 	})
-	t.Cleanup(func() { close(release) })
+	t.Cleanup(func() {
+		if !released {
+			close(release)
+		}
+	})
 
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
@@ -817,6 +824,9 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	}
 
 	waitForQuotaRefreshStarts(t, claudeStarted, codexStarted)
+	close(release)
+	released = true
+	waitForQuotaRefreshFiles(t, claudeQuotaPath, codexQuotaPath)
 }
 
 func resetPrimaryQuotaRefreshForTest(t *testing.T) {
