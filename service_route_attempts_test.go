@@ -159,6 +159,7 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
+		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
 		Windows: []harnesses.QuotaWindow{
 			{Name: "5h", WindowMinutes: 300, UsedPercent: 25, State: "ok"},
 		},
