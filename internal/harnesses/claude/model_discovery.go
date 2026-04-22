@@ -156,13 +156,14 @@ func parseClaudeReasoningLevels(text string) []string {
 
 func discoveryRecord(snapshot harnesses.ModelDiscoverySnapshot) cassette.DiscoveryRecord {
 	return cassette.DiscoveryRecord{
-		Source:          snapshot.Source,
-		Status:          string(ptyquota.StatusOK),
-		Models:          append([]string(nil), snapshot.Models...),
-		ReasoningLevels: append([]string(nil), snapshot.ReasoningLevels...),
-		CapturedAt:      snapshot.CapturedAt.UTC().Format(time.RFC3339),
-		FreshnessWindow: snapshot.FreshnessWindow,
-		Metadata:        map[string]any{"detail": snapshot.Detail},
+		Source:            snapshot.Source,
+		Status:            string(ptyquota.StatusOK),
+		Models:            append([]string(nil), snapshot.Models...),
+		ReasoningLevels:   append([]string(nil), snapshot.ReasoningLevels...),
+		CapturedAt:        snapshot.CapturedAt.UTC().Format(time.RFC3339),
+		FreshnessWindow:   snapshot.FreshnessWindow,
+		StalenessBehavior: "stale model discovery evidence requires authenticated PTY refresh before capability promotion",
+		Metadata:          map[string]any{"detail": snapshot.Detail},
 	}
 }
 

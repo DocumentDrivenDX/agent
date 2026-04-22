@@ -148,9 +148,20 @@ func quotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 		})
 	}
 	metadata := map[string]any{}
+	var accountClass string
 	if account, ok := ReadCodexAccount(); ok {
 		metadata["plan_type"] = account.PlanType
 		metadata["org_name"] = account.OrgName
+		accountClass = account.PlanType
 	}
-	return cassette.QuotaRecord{Source: "pty", Status: string(ptyquota.StatusOK), Windows: records, Metadata: metadata}
+	return cassette.QuotaRecord{
+		Source:            "pty",
+		Status:            string(ptyquota.StatusOK),
+		CapturedAt:        time.Now().UTC().Format(time.RFC3339),
+		FreshnessWindow:   DefaultCodexQuotaStaleAfter.String(),
+		StalenessBehavior: "stale quota evidence keeps Codex out of automatic routing and is treated as limited",
+		AccountClass:      accountClass,
+		Windows:           records,
+		Metadata:          metadata,
+	}
 }

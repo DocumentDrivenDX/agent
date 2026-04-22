@@ -82,7 +82,11 @@ Each cassette directory contains:
 - `service-events.jsonl` — timed opaque service-event JSON consumed by
   deterministic replay tests above the cassette library.
 - `final.json` — normalized final event payload.
-- `quota.json` — quota/status evidence when applicable.
+- `quota.json` — quota/status evidence when applicable, including `source`,
+  `captured_at`, auth/account class when applicable, freshness TTL, and the
+  staleness behavior routing applies when the evidence expires.
+- `discovery.json` — model and reasoning/effort evidence when applicable,
+  including `source`, `captured_at`, freshness TTL, and staleness behavior.
 - `scrub-report.json` — redaction and safety report.
 
 Required live harness binaries for primary PTY record mode:

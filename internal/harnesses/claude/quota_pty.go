@@ -203,7 +203,17 @@ func quotaRecord(windows []harnesses.QuotaWindow, metadata map[string]any) casse
 			"state":          window.State,
 		})
 	}
-	return cassette.QuotaRecord{Source: "pty", Status: string(ptyquota.StatusOK), Windows: records, Metadata: metadata}
+	accountClass, _ := metadata["plan_type"].(string)
+	return cassette.QuotaRecord{
+		Source:            "pty",
+		Status:            string(ptyquota.StatusOK),
+		CapturedAt:        time.Now().UTC().Format(time.RFC3339),
+		FreshnessWindow:   DefaultClaudeQuotaStaleAfter.String(),
+		StalenessBehavior: "stale quota evidence keeps Claude out of automatic routing and is treated as limited",
+		AccountClass:      accountClass,
+		Windows:           records,
+		Metadata:          metadata,
+	}
 }
 
 func accountPlan(account *harnesses.AccountInfo) string {

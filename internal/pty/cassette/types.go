@@ -148,22 +148,27 @@ type FinalRecord struct {
 }
 
 type QuotaRecord struct {
-	Source   string           `json:"source"`
-	Status   string           `json:"status"`
-	Windows  []map[string]any `json:"windows,omitempty"`
-	Metadata map[string]any   `json:"metadata,omitempty"`
+	Source            string           `json:"source"`
+	Status            string           `json:"status"`
+	CapturedAt        string           `json:"captured_at,omitempty"`
+	FreshnessWindow   string           `json:"freshness_window,omitempty"`
+	StalenessBehavior string           `json:"staleness_behavior,omitempty"`
+	AccountClass      string           `json:"account_class,omitempty"`
+	Windows           []map[string]any `json:"windows,omitempty"`
+	Metadata          map[string]any   `json:"metadata,omitempty"`
 }
 
 // DiscoveryRecord stores harness capability evidence captured from a live
 // PTY or a documented CLI surface and replayed by tests without credentials.
 type DiscoveryRecord struct {
-	Source          string         `json:"source"`
-	Status          string         `json:"status"`
-	Models          []string       `json:"models,omitempty"`
-	ReasoningLevels []string       `json:"reasoning_levels,omitempty"`
-	CapturedAt      string         `json:"captured_at,omitempty"`
-	FreshnessWindow string         `json:"freshness_window,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
+	Source            string         `json:"source"`
+	Status            string         `json:"status"`
+	Models            []string       `json:"models,omitempty"`
+	ReasoningLevels   []string       `json:"reasoning_levels,omitempty"`
+	CapturedAt        string         `json:"captured_at,omitempty"`
+	FreshnessWindow   string         `json:"freshness_window,omitempty"`
+	StalenessBehavior string         `json:"staleness_behavior,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
 }
 
 type ScrubReport struct {

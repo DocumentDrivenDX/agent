@@ -71,9 +71,13 @@ func ErrorStatus(err error) Status {
 type Config struct {
 	HarnessName string
 	Binary      string
-	Args        []string
-	Workdir     string
-	Env         []string
+	// BinaryVersion is stamped into accepted cassette manifests. When empty,
+	// Run makes a best-effort short --version probe and records "unknown" if
+	// the harness does not answer quickly.
+	BinaryVersion string
+	Args          []string
+	Workdir       string
+	Env           []string
 
 	Command            string
 	ReadyMarkers       []string
@@ -106,6 +110,12 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if cfg.BinaryVersion == "" {
+		cfg.BinaryVersion = "unknown"
+		if shouldProbeBinaryVersion(cfg.HarnessName, binaryPath) {
+			cfg.BinaryVersion = detectBinaryVersion(ctx, binaryPath)
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
@@ -510,7 +520,7 @@ func stopSession(s *session.Session, timeout time.Duration) session.ExitStatus {
 func manifestFor(cfg Config) cassette.Manifest {
 	return cassette.Manifest{
 		ID:      cfg.HarnessName + "-quota",
-		Harness: cassette.Harness{Name: cfg.HarnessName},
+		Harness: cassette.Harness{Name: cfg.HarnessName, BinaryVersion: cfg.BinaryVersion},
 		Command: cassette.Command{
 			Argv:          append([]string{manifestBinaryName(cfg.Binary)}, cfg.Args...),
 			WorkdirPolicy: workdirPolicy(cfg.Workdir),
@@ -533,6 +543,34 @@ func manifestFor(cfg Config) cassette.Manifest {
 			RecorderVersion: "quota-pty-v1",
 		},
 	}
+}
+
+func detectBinaryVersion(ctx context.Context, binaryPath string) string {
+	if binaryPath == "" {
+		return "unknown"
+	}
+	versionCtx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+	defer cancel()
+	cmd := exec.CommandContext(versionCtx, binaryPath, "--version") // #nosec G204 -- binaryPath was resolved by exec.LookPath and no shell is used.
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "unknown"
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > 200 {
+			line = line[:200]
+		}
+		return line
+	}
+	return "unknown"
+}
+
+func shouldProbeBinaryVersion(harnessName, binaryPath string) bool {
+	return harnessName != "" && filepath.Base(binaryPath) == harnessName
 }
 
 func manifestBinaryName(binary string) string {

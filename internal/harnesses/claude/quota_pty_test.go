@@ -18,7 +18,7 @@ func TestReadClaudeQuotaViaPTYWaitsForRequiredUsageSections(t *testing.T) {
 		t.Skip("shell-backed PTY probes require Unix PTY support")
 	}
 	dir := t.TempDir()
-	script := filepath.Join(dir, "fake-claude")
+	script := filepath.Join(dir, "claude")
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 printf 'Claude Max\r\n❯ '
 IFS= read line
@@ -63,6 +63,42 @@ sleep 1
 	require.NotNil(t, account)
 	require.True(t, hasQuotaWindow(windows, "session"))
 	require.True(t, hasQuotaWindow(windows, "weekly-sonnet"))
+}
+
+func TestReadClaudeQuotaViaPTYRecordsEvidenceFreshness(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-backed PTY probes require Unix PTY support")
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf 'claude-test 1.2.3\n'
+  exit 0
+fi
+printf 'Claude Max\r\n❯ '
+IFS= read line
+cat <<'EOF'
+Current session
+4% used
+Resets 4pm (UTC)
+Current week (all models)
+10% used
+Resets Monday (UTC)
+EOF
+sleep 1
+`), 0o700))
+	cassetteDir := filepath.Join(dir, "cassette")
+
+	_, _, err := ReadClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	require.NoError(t, err)
+	reader, err := cassette.Open(cassetteDir)
+	require.NoError(t, err)
+	require.Equal(t, "claude-test 1.2.3", reader.Manifest().Harness.BinaryVersion)
+	require.Equal(t, "Claude Max", reader.Quota().AccountClass)
+	require.NotEmpty(t, reader.Quota().CapturedAt)
+	require.Equal(t, DefaultClaudeQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
+	require.Contains(t, reader.Quota().StalenessBehavior, "automatic routing")
 }
 
 func TestReadClaudeQuotaViaPTYRejectsMissingAccountPlan(t *testing.T) {

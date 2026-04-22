@@ -50,6 +50,11 @@ sleep 1
 	require.NoError(t, err)
 	require.NotNil(t, reader.Quota())
 	require.Equal(t, "ChatGPT Pro", reader.Quota().Metadata["plan_type"])
+	require.Equal(t, "ChatGPT Pro", reader.Quota().AccountClass)
+	require.NotEmpty(t, reader.Quota().CapturedAt)
+	require.Equal(t, DefaultCodexQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
+	require.Contains(t, reader.Quota().StalenessBehavior, "automatic routing")
+	require.NotEmpty(t, reader.Manifest().Harness.BinaryVersion)
 }
 
 func TestReadCodexQuotaViaPTYDoesNotAcceptStaleStartupStatus(t *testing.T) {

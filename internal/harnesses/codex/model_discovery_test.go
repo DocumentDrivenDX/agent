@@ -43,6 +43,9 @@ sleep 1
 	reader, err := cassette.Open(cassetteDir)
 	require.NoError(t, err)
 	require.NotNil(t, reader.Discovery())
+	require.NotEmpty(t, reader.Discovery().CapturedAt)
+	require.Equal(t, CodexModelDiscoveryFreshnessWindow.String(), reader.Discovery().FreshnessWindow)
+	require.Contains(t, reader.Discovery().StalenessBehavior, "authenticated PTY refresh")
 }
 
 func TestReadCodexModelDiscoveryViaPTYRejectsEmptyMenu(t *testing.T) {
