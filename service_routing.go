@@ -313,12 +313,27 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		}
 
 		if name == "gemini" {
-			auth := geminiharness.ReadAuthEvidence(time.Now())
-			entry.QuotaOK = auth.Authenticated && auth.Fresh
-			entry.QuotaStale = auth.Authenticated && !auth.Fresh
-			entry.SubscriptionOK = auth.Authenticated && auth.Fresh
-			if auth.Authenticated && auth.Fresh {
-				entry.QuotaTrend = routing.QuotaTrendUnknown
+			// Auth freshness is NOT quota. Only parsed quota evidence
+			// (from PTY /model manage capture) may mark Gemini as
+			// quota-OK for routing. Missing or stale quota evidence
+			// keeps Gemini out of automatic routing regardless of
+			// authentication state.
+			dec := geminiharness.ReadGeminiQuotaRoutingDecision(time.Now(), 0)
+			entry.QuotaOK = dec.PreferGemini
+			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
+			entry.SubscriptionOK = dec.PreferGemini
+			if dec.Snapshot != nil {
+				maxUsed := dec.Snapshot.MaxUsedPercent()
+				entry.QuotaPercentUsed = int(maxUsed)
+				if len(dec.ExhaustedTiers) > 0 && len(dec.AvailableTiers) == 0 {
+					entry.QuotaTrend = routing.QuotaTrendExhausting
+				} else if maxUsed >= 90 {
+					entry.QuotaTrend = routing.QuotaTrendExhausting
+				} else if maxUsed >= 70 {
+					entry.QuotaTrend = routing.QuotaTrendBurning
+				} else if dec.Fresh {
+					entry.QuotaTrend = routing.QuotaTrendHealthy
+				}
 			}
 		}
 

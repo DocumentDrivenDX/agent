@@ -9,6 +9,7 @@ import (
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
@@ -214,6 +215,74 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}
 }
 
+func TestBuildRoutingInputs_GeminiQuotaGatesAutoRouting(t *testing.T) {
+	dir := t.TempDir()
+	quotaPath := filepath.Join(dir, "gemini-quota.json")
+	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", quotaPath)
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+
+	registry := harnesses.NewRegistry()
+	svc := &service{opts: ServiceOptions{}, registry: registry}
+
+	// Missing cache: no SubscriptionOK even with fresh auth.
+	t.Setenv("GOOGLE_API_KEY", "test")
+	gemini := routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
+	if gemini.SubscriptionOK || gemini.QuotaOK {
+		t.Fatalf("missing gemini quota cache must keep gemini out of auto-routing: %+v", gemini)
+	}
+
+	// Stale snapshot: ineligible even though windows show headroom.
+	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+		CapturedAt: time.Now().UTC().Add(-1 * time.Hour),
+		Source:     "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 4, State: "ok"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteGeminiQuota stale: %v", err)
+	}
+	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
+	if gemini.SubscriptionOK || !gemini.QuotaStale {
+		t.Fatalf("stale gemini quota: SubscriptionOK=%v QuotaStale=%v", gemini.SubscriptionOK, gemini.QuotaStale)
+	}
+
+	// Fresh but all tiers exhausted: routing must still mark ineligible.
+	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Source:     "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 100, State: "exhausted"},
+			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 100, State: "exhausted"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteGeminiQuota exhausted: %v", err)
+	}
+	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
+	if gemini.SubscriptionOK {
+		t.Fatalf("all tiers exhausted must block gemini auto-routing: %+v", gemini)
+	}
+	if gemini.QuotaTrend != routing.QuotaTrendExhausting {
+		t.Fatalf("all-exhausted snapshot should report exhausting trend, got %q", gemini.QuotaTrend)
+	}
+
+	// Fresh with at least one non-exhausted tier: routing marks eligible.
+	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Source:     "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 4, State: "ok"},
+			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 100, State: "exhausted"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteGeminiQuota ok: %v", err)
+	}
+	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
+	if !gemini.SubscriptionOK || !gemini.QuotaOK {
+		t.Fatalf("fresh gemini quota with headroom should mark gemini SubscriptionOK/QuotaOK: %+v", gemini)
+	}
+}
+
 func TestBuildRoutingInputs_SecondaryHarnesses(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
@@ -252,6 +321,20 @@ func TestBuildRoutingInputs_SecondaryHarnesses(t *testing.T) {
 
 func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "redacted")
+	dir := t.TempDir()
+	quotaPath := filepath.Join(dir, "gemini-quota.json")
+	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", quotaPath)
+	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Source:     "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 4, State: "ok"},
+			{Name: "Flash Lite", LimitID: "gemini-flash-lite", UsedPercent: 0, State: "ok"},
+			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 10, State: "ok"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteGeminiQuota: %v", err)
+	}
 	registry := harnesses.NewRegistry()
 	registry.LookPath = func(file string) (string, error) {
 		if file == "gemini" {

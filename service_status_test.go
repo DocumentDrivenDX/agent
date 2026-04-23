@@ -160,6 +160,7 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
 	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", filepath.Join(dir, "missing-gemini-quota.json"))
 
 	start := time.Now().UTC().Add(-time.Hour)
 	writeServiceUsageSession(t, logDir, "gemini-known", start, sessionlog.SessionStartData{
@@ -197,8 +198,14 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	if geminiInfo == nil {
 		t.Fatal("missing gemini harness")
 	}
-	if geminiInfo.Quota != nil {
-		t.Fatalf("gemini quota must stay unset until a real quota probe/parser exists: %#v", geminiInfo.Quota)
+	if geminiInfo.Quota == nil {
+		t.Fatal("gemini quota should be populated (missing cache reports unavailable)")
+	}
+	if geminiInfo.Quota.Status != "unavailable" {
+		t.Fatalf("gemini quota without a cache should be unavailable: %#v", geminiInfo.Quota)
+	}
+	if geminiInfo.Quota.LastError == nil || geminiInfo.Quota.LastError.Type != "unavailable" {
+		t.Fatalf("gemini quota unavailable should include a last error: %#v", geminiInfo.Quota)
 	}
 	if geminiInfo.Account == nil || !geminiInfo.Account.Authenticated || geminiInfo.Account.PlanType != "Gemini API key" {
 		t.Fatalf("gemini account: %#v", geminiInfo.Account)

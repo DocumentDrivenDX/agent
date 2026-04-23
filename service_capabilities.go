@@ -203,7 +203,7 @@ func quotaStatusCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 		return capNotApplicable("local or test-only harness has no subscription quota")
 	}
 	if cfg.Name == "gemini" {
-		return capUnsupported("Gemini CLI exposes auth/account evidence and per-run token usage, but no stable quota window or remaining-capacity signal")
+		return capOptional("Gemini CLI /model manage tier usage is probed via PTY and persisted to a durable quota cache")
 	}
 	if cfg.IsSubscription && cfg.TUIQuotaCommand != "" {
 		return capOptional("subscription quota can be probed or read from a cache")

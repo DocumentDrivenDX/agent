@@ -100,7 +100,7 @@ Current status:
 | agent | eligible | Native service evidence covers the baseline rows above. |
 | codex | eligible, conditional on fresh subsidized account/quota evidence | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `internal/harnesses/codex/account_test.go` and quota-cache tests prove account metadata is extracted from Codex auth state and API-key-only or missing account evidence is not enough for auto-routing; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
 | claude | eligible, conditional on fresh complete account/quota evidence | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; quota-cache and PTY tests now reject incomplete account, source, session, or weekly-window evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
-| gemini | secondary; not auto-routed | Gemini runner tests cover request controls, final text, progress, usage, cancellation/error behavior, and model discovery fixtures. Google documents Gemini CLI daily request quotas and upstream Gemini CLI docs describe `/stats model` quota information, but the service has no accepted Gemini quota probe/parser/cache yet. Auth/account evidence and DDx session usage windows may be displayed, but quota status stays unsupported until parsed quota remaining/limit/reset evidence exists. |
+| gemini | secondary; not auto-routed by default, but quota-gated when promoted | Gemini runner tests cover request controls, final text, progress, usage, cancellation/error behavior, and model discovery fixtures. A PTY quota probe in `internal/harnesses/gemini/quota_pty.go` drives Gemini CLI `/model manage`, and the parser in `internal/harnesses/gemini/quota_parse.go` extracts per-tier (Flash, Flash Lite, Pro) used-percent and reset-time evidence. Results persist to a durable cache in `internal/harnesses/gemini/quota_cache.go` (`$XDG_STATE_HOME/<config-dir>/gemini-quota.json`, default 15-minute freshness). Auth/account evidence is still surfaced for diagnostic purposes but is no longer accepted as quota status. Automatic routing consumes `ReadGeminiQuotaRoutingDecision` — missing, stale, or all-exhausted snapshots keep Gemini out of auto-routing; exhausted tiers (e.g. Pro at 100% used) surface as `exhausting` quota trend. Promotion to `AutoRoutingEligible=true` remains out of scope for this bead and requires a subsequent explicit promotion decision. |
 
 ## Capability Contracts
 
@@ -337,12 +337,16 @@ The supported implementation drives Claude `/usage` and Codex `/status` through
 direct PTYs, normalizes missing binary/auth/timeout failures, and validates
 sanitized quota cassettes through the replay layer.
 
-Gemini quota status is unsupported until the service probes and parses actual
-Gemini quota remaining/limit/reset evidence. Google documents Gemini CLI
-request limits and upstream Gemini CLI docs describe `/stats model` quota
-information, but auth/account freshness is not quota. Per-run rate-limit or
-quota failures remain execution errors until a Gemini quota cache can be
-refreshed and consumed by routing.
+Gemini quota status is captured through a PTY probe that drives the Gemini
+CLI `/model manage` dialog (treat both `/stats model` and `/model manage` as
+version-sensitive PTY surfaces — installed Gemini CLI 0.38.2 renders quota in
+the model-management dialog). The parser extracts per-tier used-percent and
+reset-time evidence for Flash, Flash Lite, and Pro. Parsed windows persist to
+a durable per-user cache; missing or stale evidence keeps Gemini out of
+automatic routing and exhausted tiers (e.g. Pro at 100% used) surface as an
+`exhausting` quota trend. Auth/account freshness is still surfaced but is not
+promoted to quota status. Per-run 429/rate-limit failures remain execution
+errors.
 
 ### ErrorStatus
 

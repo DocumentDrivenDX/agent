@@ -694,6 +694,29 @@ func codexAccountStatus() *AccountStatus {
 	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
 }
 
+// geminiQuotaState reads the durable Gemini quota cache and converts it to
+// QuotaState. Auth/account freshness alone is NOT promoted to quota status —
+// a missing or stale quota cache returns an "unavailable" state.
+func geminiQuotaState() *QuotaState {
+	snap, ok := geminiharness.ReadGeminiQuota()
+	if !ok || snap == nil {
+		source, err := geminiharness.GeminiQuotaCachePath()
+		if err != nil {
+			source = "gemini quota cache"
+		}
+		return unavailableQuotaState(source, "gemini quota cache unavailable")
+	}
+	fresh := geminiharness.IsGeminiQuotaFresh(snap, time.Now(), 0)
+	windows := append([]harnesses.QuotaWindow(nil), snap.Windows...)
+	return &QuotaState{
+		Windows:    windows,
+		CapturedAt: snap.CapturedAt,
+		Fresh:      fresh,
+		Source:     snap.Source,
+		Status:     quotaStatus(fresh, windows),
+	}
+}
+
 func geminiAccountStatus() *AccountStatus {
 	snap := geminiharness.ReadAuthEvidence(time.Now())
 	if !snap.Authenticated {
@@ -868,6 +891,7 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			info.Account = codexAccountStatus()
 			info.UsageWindows = s.codexUsageWindows()
 		case "gemini":
+			info.Quota = geminiQuotaState()
 			info.Account = geminiAccountStatus()
 			info.UsageWindows = s.geminiUsageWindows()
 		}

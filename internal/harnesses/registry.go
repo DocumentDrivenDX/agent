@@ -83,6 +83,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 		IsSubscription:      true,
 		AutoRoutingEligible: false,
 		ExactPinSupport:     true,
+		TUIQuotaCommand:     "/model manage",
 	},
 	"opencode": {
 		Name:     "opencode",
