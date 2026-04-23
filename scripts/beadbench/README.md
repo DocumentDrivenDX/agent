@@ -162,6 +162,12 @@ The LM Studio native probes are
 native endpoint, not as proof that the current agent tool loop can switch to
 that endpoint without a separate tools-compatible design.
 
+Probe runs are classification-only, not evidence-grade benchmark results. A
+single probe tells us whether a request shape appears to be honored on one
+provider/model surface; it does not promote an arm into the separability
+leaderboard by itself. Evidence-grade arms still follow the three-run rule
+described below.
+
 Current local evidence: on 2026-04-23, Vidar OMLX
 `Qwen3.6-27B-MLX-8bit` and `Qwen3.6-35B-A3B-4bit` accepted both the legacy
 `thinking` map and Qwen controls, but only Qwen
@@ -252,12 +258,15 @@ request. This is a model/template limitation, not a Qwen-family wire-format
 bug — the Qwen controls are the correct per-family shape and are used for
 LM Studio Qwen models regardless, so that `ReasoningOff` emits the intended
 `enable_thinking=false, thinking_budget=0` disable signal for any LM Studio
-Qwen build that does respect it. Until LM Studio or the GGUF template
-changes, beadbench must treat Bragi `qwen/qwen3.6-35b-a3b` as a no-budget
-arm: reasoning-control probes are expected to be `accepted=true` but
-behaviorally no-op, and the beadbench tracker's `effort` label does not
-change observable runtime reasoning. Use OMLX `Qwen3.6-27B-MLX-8bit` /
-`Qwen3.6-35B-A3B-4bit` when enforced reasoning budgets are needed.
+Qwen build that does respect it. Classify LM Studio reasoning behavior per
+loaded model/template, not per engine: Bragi `qwen/qwen3.6-35b-a3b` is
+currently a no-budget arm, but a different LM Studio-served Qwen model may
+still honor the same request shape and must be re-probed before routing relies
+on its `effort` label. For the current Bragi model, reasoning-control probes
+are expected to be `accepted=true` but behaviorally no-op, and the beadbench
+tracker's `effort` label does not change observable runtime reasoning. Use
+OMLX `Qwen3.6-27B-MLX-8bit` / `Qwen3.6-35B-A3B-4bit` when enforced reasoning
+budgets are needed.
 
 ## Tasks invalid for model-comparison scoring
 
@@ -302,6 +311,8 @@ Currently marked invalid:
 
 - Evidence-grade claims require at least three repetitions per task/arm.
 - Single-run results are diagnostic only.
+- Reasoning-control probes are capability classification, not a substitute for
+  the three-run evidence-grade rule.
 - Provider and harness infrastructure failures are reported separately from
   verifier failures.
 - Reasoning control is part of the capability matrix: each local-model arm must
