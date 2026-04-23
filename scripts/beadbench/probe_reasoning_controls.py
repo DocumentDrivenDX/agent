@@ -68,6 +68,38 @@ PROBES: list[dict[str, Any]] = [
         "providers": ["openrouter"],
         "body": {"reasoning": {"effort": "none"}},
     },
+    # gpt-oss-family controls. OMLX (and LM Studio) may serve gpt-oss-20b /
+    # gpt-oss-120b, which follow OpenAI's Harmony response format and expect a
+    # top-level `reasoning_effort` ("low"|"medium"|"high") rather than Qwen's
+    # `enable_thinking`/`thinking_budget`. There is no documented "off" or
+    # token-budget control for gpt-oss; "low" is the closest reasoning-minimizing
+    # value. These probes verify whether the OMLX template actually honors the
+    # field on a non-Qwen model, and record baseline `reasoning_content`
+    # emission when no control is sent.
+    {
+        "id": "gptoss_effort_low",
+        "providers": ["lmstudio", "omlx"],
+        "model_family": "gpt-oss",
+        "body": {"reasoning_effort": "low"},
+    },
+    {
+        "id": "gptoss_effort_medium",
+        "providers": ["lmstudio", "omlx"],
+        "model_family": "gpt-oss",
+        "body": {"reasoning_effort": "medium"},
+    },
+    {
+        "id": "gptoss_effort_high",
+        "providers": ["lmstudio", "omlx"],
+        "model_family": "gpt-oss",
+        "body": {"reasoning_effort": "high"},
+    },
+    {
+        "id": "gptoss_reasoning_map_low",
+        "providers": ["lmstudio", "omlx"],
+        "model_family": "gpt-oss",
+        "body": {"reasoning": {"effort": "low"}},
+    },
 ]
 
 
@@ -237,12 +269,17 @@ def collect_server_metadata(provider_type: str, base_url: str, model: str) -> di
 
 def probes_for_provider(provider_type: str, model: str) -> list[dict[str, Any]]:
     selected = []
+    model_lower = model.lower()
     for probe in PROBES:
         providers = probe.get("providers")
-        if providers is None or provider_type in providers:
-            if probe.get("model_family") == "qwen" and "qwen" not in model.lower():
-                continue
-            selected.append(probe)
+        if providers is not None and provider_type not in providers:
+            continue
+        family = probe.get("model_family")
+        if family == "qwen" and "qwen" not in model_lower:
+            continue
+        if family == "gpt-oss" and "gpt-oss" not in model_lower and "gptoss" not in model_lower:
+            continue
+        selected.append(probe)
     return selected
 
 
@@ -330,6 +367,21 @@ def classify(probes: list[dict[str, Any]]) -> dict[str, Any]:
     thinking_map = by_id.get("thinking_map_32") or {}
     openrouter_effort = by_id.get("openrouter_effort_medium") or {}
     none = by_id.get("none") or {}
+    gptoss_low = by_id.get("gptoss_effort_low") or {}
+    gptoss_high = by_id.get("gptoss_effort_high") or {}
+
+    # For gpt-oss, behavioral evidence that `reasoning_effort` is honored is a
+    # measurable change in reasoning_chars or completion_tokens between low and
+    # high. Mere acceptance of the field is not enough: Harmony-style
+    # deployments silently ignore unknown top-level fields.
+    gptoss_effort_changes_reasoning = bool(
+        gptoss_low.get("accepted")
+        and gptoss_high.get("accepted")
+        and (
+            abs((gptoss_low.get("reasoning_chars") or 0) - (gptoss_high.get("reasoning_chars") or 0)) > 16
+            or abs((gptoss_low.get("completion_tokens") or 0) - (gptoss_high.get("completion_tokens") or 0)) > 4
+        )
+    )
 
     recommended = "unknown"
     if qwen_budget.get("accepted") and (qwen_budget.get("reasoning_chars") or 0) > 0:
@@ -338,8 +390,14 @@ def classify(probes: list[dict[str, Any]]) -> dict[str, Any]:
         recommended = "thinking_map"
     elif openrouter_effort.get("accepted"):
         recommended = "openrouter"
+    elif gptoss_effort_changes_reasoning:
+        recommended = "gpt_oss_effort"
     elif qwen_off.get("accepted") and none.get("looks_like_visible_thinking") and not qwen_off.get("looks_like_visible_thinking"):
         recommended = "qwen_off_only"
+    elif any(probe.get("id", "").startswith("gptoss_") for probe in probes) and (none.get("reasoning_chars") or 0) > 0:
+        # gpt-oss family probed but no effort-level knob changed observable
+        # behavior: the deployment emits reasoning_content unconditionally.
+        recommended = "gpt_oss_unsupported"
 
     return {
         "recommended_wire_format": recommended,
@@ -349,6 +407,9 @@ def classify(probes: list[dict[str, Any]]) -> dict[str, Any]:
         "qwen_off_suppresses_visible_thinking": bool(
             qwen_off.get("accepted") and none.get("looks_like_visible_thinking") and not qwen_off.get("looks_like_visible_thinking")
         ),
+        "gptoss_effort_accepted": bool(gptoss_low.get("accepted") or gptoss_high.get("accepted")),
+        "gptoss_effort_changes_reasoning": gptoss_effort_changes_reasoning,
+        "baseline_emits_reasoning_content": bool((none.get("reasoning_chars") or 0) > 0),
     }
 
 

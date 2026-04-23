@@ -70,7 +70,8 @@
       "provider": "vidar-omlx",
       "model": "gpt-oss-20b-MXFP4-Q8",
       "tier": "research",
-      "rationale": "Native agent on a non-Qwen OMLX model. No effort is set because Qwen thinking controls must not be sent to GPT-OSS-class models."
+      "reasoning_control": "unsupported/unknown",
+      "rationale": "Native agent on a non-Qwen OMLX model. No effort is set because Qwen thinking controls must not be sent to GPT-OSS-class models; the OMLX provider is pinned to the Qwen wire format with StrictThinkingModelMatch=true, so explicit reasoning requests against this model are rejected at serialization time (see TestQwenReasoningSerializationRejectsNonQwenModels). The 2026-04-23 reasoning probe returned content_chars=0, reasoning_chars=88 at max_tokens=48 with no control sent and recommended_wire_format=unknown: the model emits reasoning_content unconditionally and no effort-level knob has yet been verified to change its output on this OMLX build. Interpret run failures with empty content and populated reasoning_content as a budget/template limitation, not a harness bug; do not compare this arm against budgeted local-model or frontier arms until a recorded probe reports gpt_oss_effort."
     },
     {
       "id": "agent-bragi-lmstudio-qwen36-35b-low",

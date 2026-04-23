@@ -136,9 +136,51 @@ Current local evidence: on 2026-04-23, Vidar OMLX
 returned a short direct answer while the no-control and `thinking`-map probes
 filled the response with visible thinking text.
 
+### Vidar OMLX `gpt-oss-20b-MXFP4-Q8` reasoning control: unsupported/unknown
+
 The same probe run found that Vidar OMLX `gpt-oss-20b-MXFP4-Q8` emits
 `reasoning_content` by default but has no known budget/off control in this
-matrix.
+matrix. A 2026-04-23 live probe of the no-control arm
+(`benchmark-results/beadbench/reasoning-probe-20260423T034159Z.json`) returned
+HTTP 200 with `content_chars=0, reasoning_chars=88` at `max_tokens=48` and
+`recommended_wire_format=unknown`: the assistant message carried only
+`reasoning_content`, all completion tokens were consumed by reasoning, and no
+visible answer remained under the budget.
+
+Wire-format rationale:
+
+- GPT-OSS is a Harmony-format model family (OpenAI `gpt-oss-20b`/`gpt-oss-120b`).
+  Harmony expects a top-level `reasoning_effort` ∈ {`low`,`medium`,`high`} and
+  does not accept Qwen's `enable_thinking` / `thinking_budget`, nor
+  Anthropic-style `thinking: {type, budget_tokens}`.
+- The OMLX provider is pinned to `ThinkingWireFormatQwen` with
+  `StrictThinkingModelMatch=true`, so the native agent rejects any explicit
+  reasoning request against `gpt-oss-20b-MXFP4-Q8` at serialization time rather
+  than silently sending Qwen fields the template would ignore. This is enforced
+  by `TestQwenReasoningSerializationRejectsNonQwenModels` in
+  `internal/provider/openai/openai_test.go`; the arm-level manifest rationale
+  therefore omits `effort` and does not attempt `ReasoningOff`.
+- No GPT-OSS-specific wire format is wired into the provider because the probe
+  has not yet confirmed that any effort-level knob measurably changes reasoning
+  output on this OMLX build. Until a live probe reports
+  `recommended_wire_format=gpt_oss_effort`, the arm is treated as
+  `reasoning-control=unsupported/unknown`.
+
+How to interpret benchmark failures on `agent-vidar-omlx-gptoss20b`:
+
+- Treat an empty `content` with non-empty `reasoning_content` as the expected
+  baseline, not a harness bug. The model answered in reasoning; the answer did
+  not fit under the caller's `max_tokens` budget.
+- Prefer evidence-grade arms with a verified reasoning control
+  (`agent-vidar-omlx-qwen36-27b`, `agent-vidar-omlx-qwen36-35b`) when comparing
+  local models against frontier baselines. The GPT-OSS arm is a research arm
+  for non-Qwen OMLX behavior, not a substitute for a budgeted local-model arm.
+- Extending the `probe_reasoning_controls.py` PROBES list with
+  `gptoss_effort_{low,medium,high}` and `gptoss_reasoning_map_low` lets a
+  future live run classify the model as `gpt_oss_effort` (honored),
+  `gpt_oss_unsupported` (accepted but no behavioral change), or `unknown`
+  (request rejected). Promote the arm to `reasoning-control=supported` only
+  after a recorded probe reports `gptoss_effort_changes_reasoning=true`.
 
 ### Bragi LM Studio `qwen/qwen3.6-35b-a3b` reasoning control: operational blocker
 
