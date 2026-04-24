@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -122,6 +123,9 @@ func TestListProviders_Connected(t *testing.T) {
 	if info.Type != "lmstudio" {
 		t.Errorf("Type: got %q, want %q", info.Type, "lmstudio")
 	}
+	if slices.Contains(info.Capabilities, "reasoning_control") {
+		t.Fatalf("lmstudio capabilities must not claim reasoning_control: %#v", info.Capabilities)
+	}
 	if len(info.EndpointStatus) != 1 {
 		t.Fatalf("EndpointStatus length: got %d, want 1", len(info.EndpointStatus))
 	}
@@ -130,6 +134,38 @@ func TestListProviders_Connected(t *testing.T) {
 	}
 	if info.LastError != nil {
 		t.Fatalf("LastError: got %#v, want nil", info.LastError)
+	}
+}
+
+func TestListProviders_OMLXAdvertisesReasoningControl(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "Qwen3.6-27B-MLX-8bit"}}})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"vidar-omlx": {Type: "omlx", BaseURL: ts.URL + "/v1", Model: "Qwen3.6-27B-MLX-8bit"},
+		},
+		names:       []string{"vidar-omlx"},
+		defaultName: "vidar-omlx",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 provider, got %d", len(infos))
+	}
+	if !slices.Contains(infos[0].Capabilities, "reasoning_control") {
+		t.Fatalf("omlx capabilities must include reasoning_control: %#v", infos[0].Capabilities)
 	}
 }
 

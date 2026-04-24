@@ -55,9 +55,9 @@ func newFakeOpenAIServer(t *testing.T) *fakeOpenAIServer {
 			fake.mu.Lock()
 			fake.modelsSeen = append(fake.modelsSeen, req.Model)
 			// Accept either the Anthropic-style `thinking` map or the Qwen
-			// `thinking_budget` scalar: LM Studio's provider uses the Qwen
-			// wire format for Qwen models, so a catalog-driven budget flows
-			// through as `thinking_budget` instead of `thinking.budget_tokens`.
+			// `thinking_budget` scalar: OMLX uses the Qwen wire format for Qwen
+			// models, so a catalog-driven budget flows through as
+			// `thinking_budget` instead of `thinking.budget_tokens`.
 			switch {
 			case req.ThinkingBudget != nil:
 				fake.thinkingBudgets = append(fake.thinkingBudgets, *req.ThinkingBudget)
@@ -263,7 +263,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -299,7 +299,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -335,7 +335,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -368,7 +368,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -422,7 +422,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -476,7 +476,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: lmstudio
+    type: omlx
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local

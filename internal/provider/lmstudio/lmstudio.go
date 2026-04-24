@@ -18,27 +18,20 @@ import (
 const DefaultBaseURL = "http://localhost:1234/v1"
 
 // ProtocolCapabilities reflects what an LM Studio server exposes on the
-// OpenAI-compatible surface. LM Studio most commonly serves Qwen-family
-// thinking models, so reasoning controls use the Qwen wire shape
-// (`enable_thinking`/`thinking_budget`). Non-Qwen models are gated in the
-// openai layer so those fields are stripped before serialization.
+// OpenAI-compatible surface. Although LM Studio can host models with native
+// reasoning controls on `/api/v1/chat`, the OpenAI-compatible surface is not a
+// verified reasoning-control surface for routing or benchmark use.
 //
 // Evidence (2026-04-23) against Bragi LM Studio serving
 // `qwen/qwen3.6-35b-a3b` (arch=qwen35moe, Q4_K_M) shows LM Studio accepts
-// every tested wire shape (`thinking` map, Qwen controls,
-// `chat_template_kwargs.enable_thinking=false`, `reasoning_effort`, and the
-// `/no_think` prompt token) but does not forward them into the model's
-// chat template: `reasoning_content` is emitted and `reasoning_tokens` is
-// reported for all shapes. Qwen remains the correct per-family wire choice
-// so requests match the model family; the inability to actually bound
-// reasoning on this GGUF is a server/template blocker documented in
-// scripts/beadbench/README.md and is not fixable in-provider.
+// multiple reasoning-related request shapes on `/v1/chat/completions` but does
+// not reliably honor them in the model template. Treat this provider as
+// tool-capable and streaming-capable, but not as supporting request-level
+// reasoning control on the OpenAI-compatible wire.
 var ProtocolCapabilities = openai.ProtocolCapabilities{
 	Tools:            true,
 	Stream:           true,
 	StructuredOutput: true,
-	Thinking:         true,
-	ThinkingFormat:   openai.ThinkingWireFormatQwen,
 }
 
 type Config struct {

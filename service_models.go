@@ -521,6 +521,8 @@ func providerCapabilities(entry ServiceProviderEntry) []string {
 	switch normalizeServiceProviderType(entry.Type) {
 	case "anthropic":
 		return []string{"tool_use", "vision", "streaming"}
+	case "omlx":
+		return []string{"tool_use", "streaming", "json_mode", "reasoning_control"}
 	default:
 		return []string{"tool_use", "streaming", "json_mode"}
 	}

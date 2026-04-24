@@ -102,7 +102,7 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 		supportsToolCalls bool
 	}{
 		{name: "omlx", providerType: "omlx", urlEnv: "OMLX_URL", modelEnv: "OMLX_MODEL", supportsToolCalls: false},
-		{name: "lmstudio", providerType: "lmstudio", urlEnv: "LMSTUDIO_URL", modelEnv: "LMSTUDIO_MODEL", supportsThinking: true, supportsToolCalls: false},
+		{name: "lmstudio", providerType: "lmstudio", urlEnv: "LMSTUDIO_URL", modelEnv: "LMSTUDIO_MODEL", supportsToolCalls: false},
 		{name: "openrouter", providerType: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", defaultBaseURL: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini", supportsToolCalls: true},
 		{name: "openai", providerType: "openai", apiKeyEnv: "OPENAI_API_KEY", modelEnv: "OPENAI_MODEL", defaultBaseURL: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", supportsToolCalls: true},
 		{name: "ollama", providerType: "ollama", urlEnv: "OLLAMA_URL", modelEnv: "OLLAMA_MODEL", defaultBaseURL: "http://localhost:11434/v1", supportsToolCalls: false},

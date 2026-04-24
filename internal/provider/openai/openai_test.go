@@ -624,41 +624,39 @@ func TestQwenReasoningSerialization(t *testing.T) {
 			wantNoHTTPRequest: true,
 		},
 	}
-	for _, providerType := range []string{"omlx", "lmstudio"} {
-		for _, tt := range tests {
-			t.Run(providerType+"/"+tt.name+"/chat", func(t *testing.T) {
-				body, err := captureOpenAIChatBody(t, providerType, tt.configReasoning, tt.opts)
-				if tt.wantErr {
-					require.Error(t, err)
-					if tt.wantNoHTTPRequest {
-						assert.Nil(t, body)
-					}
-					return
+	for _, tt := range tests {
+		t.Run("omlx/"+tt.name+"/chat", func(t *testing.T) {
+			body, err := captureOpenAIChatBody(t, "omlx", tt.configReasoning, tt.opts)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantNoHTTPRequest {
+					assert.Nil(t, body)
 				}
-				require.NoError(t, err)
-				if tt.wantAbsent {
-					assertNoQwenReasoningWire(t, body)
-					return
+				return
+			}
+			require.NoError(t, err)
+			if tt.wantAbsent {
+				assertNoQwenReasoningWire(t, body)
+				return
+			}
+			assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
+		})
+		t.Run("omlx/"+tt.name+"/stream", func(t *testing.T) {
+			body, err := captureOpenAIStreamBody(t, "omlx", tt.configReasoning, tt.opts)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantNoHTTPRequest {
+					assert.Nil(t, body)
 				}
-				assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
-			})
-			t.Run(providerType+"/"+tt.name+"/stream", func(t *testing.T) {
-				body, err := captureOpenAIStreamBody(t, providerType, tt.configReasoning, tt.opts)
-				if tt.wantErr {
-					require.Error(t, err)
-					if tt.wantNoHTTPRequest {
-						assert.Nil(t, body)
-					}
-					return
-				}
-				require.NoError(t, err)
-				if tt.wantAbsent {
-					assertNoQwenReasoningWire(t, body)
-					return
-				}
-				assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
-			})
-		}
+				return
+			}
+			require.NoError(t, err)
+			if tt.wantAbsent {
+				assertNoQwenReasoningWire(t, body)
+				return
+			}
+			assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
+		})
 	}
 }
 
@@ -813,9 +811,6 @@ func testModelForProvider(providerType string) string {
 func capabilitiesForTestProvider(providerType string) *openai.ProtocolCapabilities {
 	caps := openai.OpenAIProtocolCapabilities
 	switch providerType {
-	case "lmstudio":
-		caps.Thinking = true
-		caps.ThinkingFormat = openai.ThinkingWireFormatQwen
 	case "omlx":
 		caps.Thinking = true
 		caps.ThinkingFormat = openai.ThinkingWireFormatQwen

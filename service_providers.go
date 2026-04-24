@@ -383,7 +383,7 @@ func probeServiceProviderDetailed(ctx context.Context, entry ServiceProviderEntr
 		}
 		// Anthropic does not expose an unauthenticated /v1/models list endpoint.
 		// Treat key presence as the connectivity signal.
-		return providerProbeResult{status: "connected", caps: []string{"tool_use", "vision", "streaming"}}
+		return providerProbeResult{status: "connected", caps: providerCapabilities(entry)}
 
 	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai", "":
 		if entry.BaseURL == "" {
@@ -398,7 +398,7 @@ func probeServiceProviderDetailed(ctx context.Context, entry ServiceProviderEntr
 			detail := serviceTrimError(msg)
 			return providerProbeResult{status: "error: " + detail, detail: detail}
 		}
-		return providerProbeResult{status: "connected", modelCount: n, caps: []string{"tool_use", "streaming", "json_mode"}}
+		return providerProbeResult{status: "connected", modelCount: n, caps: providerCapabilities(entry)}
 
 	default:
 		detail := "unknown provider type " + entry.Type
