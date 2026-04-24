@@ -687,26 +687,36 @@ func TestQwenReasoningSerializationRejectsNonQwenModels(t *testing.T) {
 	}
 }
 
-// TestQwenReasoningSerializationLenientOnNonStrictProviders covers mixed-family
-// providers (LM Studio): a Qwen-wire provider that may host non-Qwen models
-// must silently strip Qwen-specific fields for those models rather than
-// rejecting the request. This preserves pre-existing CLI behavior where a
-// catalog reasoning default can flow through to any LM Studio-hosted model.
-func TestQwenReasoningSerializationLenientOnNonStrictProviders(t *testing.T) {
+// TestQwenReasoningSerializationLMStudioMixedFamilyPolicy covers LM Studio's
+// current contract: explicit "off" is allowed and strips Qwen-specific wire
+// fields for non-Qwen models, but higher reasoning controls are rejected
+// because LM Studio is not a verified request-level reasoning-control surface.
+func TestQwenReasoningSerializationLMStudioMixedFamilyPolicy(t *testing.T) {
+	t.Run("off/chat", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithModel(t, "lmstudio", "google/gemma-3-27b", "", agent.Options{Reasoning: agent.ReasoningOff})
+		require.NoError(t, err)
+		assertNoQwenReasoningWire(t, body)
+	})
+	t.Run("off/stream", func(t *testing.T) {
+		body, err := captureOpenAIStreamBodyWithModel(t, "lmstudio", "google/gemma-3-27b", "", agent.Options{Reasoning: agent.ReasoningOff})
+		require.NoError(t, err)
+		assertNoQwenReasoningWire(t, body)
+	})
 	for _, opts := range []agent.Options{
 		{Reasoning: agent.ReasoningMedium},
-		{Reasoning: agent.ReasoningOff},
 		{Reasoning: agent.ReasoningTokens(4321)},
 	} {
 		t.Run(string(opts.Reasoning)+"/chat", func(t *testing.T) {
 			body, err := captureOpenAIChatBodyWithModel(t, "lmstudio", "google/gemma-3-27b", "", opts)
-			require.NoError(t, err)
-			assertNoQwenReasoningWire(t, body)
+			require.Error(t, err)
+			assert.Nil(t, body)
+			assert.Contains(t, err.Error(), "provider type \"lmstudio\"")
 		})
 		t.Run(string(opts.Reasoning)+"/stream", func(t *testing.T) {
 			body, err := captureOpenAIStreamBodyWithModel(t, "lmstudio", "google/gemma-3-27b", "", opts)
-			require.NoError(t, err)
-			assertNoQwenReasoningWire(t, body)
+			require.Error(t, err)
+			assert.Nil(t, body)
+			assert.Contains(t, err.Error(), "provider type \"lmstudio\"")
 		})
 	}
 }
