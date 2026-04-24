@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -160,6 +161,68 @@ func TestListProviders_Unreachable(t *testing.T) {
 	}
 }
 
+func TestProviderStatus_EndpointDownSurfaced(t *testing.T) {
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" && r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "healthy-model"}},
+		})
+	}))
+	defer healthy.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"omlx": {
+				Type: "omlx",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "dead", BaseURL: "http://127.0.0.1:19999/v1"},
+					{Name: "healthy", BaseURL: healthy.URL + "/v1"},
+				},
+			},
+		},
+		names:       []string{"omlx"},
+		defaultName: "omlx",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 provider, got %d", len(infos))
+	}
+	info := infos[0]
+	if info.Status != "connected" {
+		t.Fatalf("Status: got %q, want connected", info.Status)
+	}
+	if info.ModelCount != 1 {
+		t.Fatalf("ModelCount: got %d, want 1", info.ModelCount)
+	}
+	if len(info.EndpointStatus) != 2 {
+		t.Fatalf("EndpointStatus length: got %d, want 2", len(info.EndpointStatus))
+	}
+	byName := map[string]EndpointStatus{}
+	for _, status := range info.EndpointStatus {
+		byName[status.Name] = status
+	}
+	dead := byName["dead"]
+	if dead.Status != "unreachable" {
+		t.Fatalf("dead endpoint status: got %#v", dead)
+	}
+	if dead.LastError == nil || !strings.Contains(strings.ToLower(dead.LastError.Detail), "connection refused") {
+		t.Fatalf("dead endpoint last error: got %#v, want connection refused detail", dead.LastError)
+	}
+	healthyStatus := byName["healthy"]
+	if healthyStatus.Status != "connected" || healthyStatus.ModelCount != 1 || healthyStatus.LastSuccessAt.IsZero() {
+		t.Fatalf("healthy endpoint status: %#v", healthyStatus)
+	}
+}
+
 func TestListProviders_Anthropic(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -277,7 +340,7 @@ func TestHealthCheck_Provider_Connected(t *testing.T) {
 	}
 }
 
-func TestHealthCheck_Provider_Unreachable(t *testing.T) {
+func TestHealthCheckProviders_UnreachableIncludesReason(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"dead": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
@@ -288,6 +351,9 @@ func TestHealthCheck_Provider_Unreachable(t *testing.T) {
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "dead"})
 	if err == nil {
 		t.Fatal("expected error for unreachable provider")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "connection refused") {
+		t.Fatalf("expected concrete reachability detail, got %v", err)
 	}
 }
 

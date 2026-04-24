@@ -77,6 +77,16 @@ type quotaCacheStatus struct {
 	usable       bool
 }
 
+type providerProbeResult struct {
+	status           string
+	modelCount       int
+	caps             []string
+	detail           string
+	endpointName     string
+	baseURL          string
+	endpointStatuses []EndpointStatus
+}
+
 func (s *service) ensurePrimaryQuotaRefresh(ctx context.Context, mode quotaRefreshMode) {
 	policy := s.quotaRefreshPolicy()
 	var waits []<-chan struct{}
@@ -283,12 +293,19 @@ func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			capturedAt := time.Now().UTC()
-			info.Status, info.ModelCount, info.Capabilities = probeServiceProvider(probeCtx, entry)
+			probe := probeProviderStatus(probeCtx, entry, capturedAt)
+			info.Status = probe.status
+			info.ModelCount = probe.modelCount
+			info.Capabilities = probe.caps
 			info.CooldownState = serviceProviderCooldown(sc, name, cooldown)
 			info.Auth = providerAuthStatus(entry, info.Status, capturedAt)
-			info.EndpointStatus = providerEndpointStatus(entry, info.Status, info.ModelCount, capturedAt)
+			info.EndpointStatus = probe.endpointStatuses
 			info.Quota = providerQuotaState(entry, capturedAt)
-			info.LastError = statusError(info.Status, info.EndpointStatus[0].Source, capturedAt)
+			lastErrorSource := "service provider config"
+			if len(info.EndpointStatus) > 0 {
+				lastErrorSource = info.EndpointStatus[0].Source
+			}
+			info.LastError = statusErrorDetail(info.Status, probe.detail, lastErrorSource, capturedAt)
 
 			results[idx] = indexedInfo{idx: idx, info: info}
 		}(i, name)
@@ -317,11 +334,15 @@ func (s *service) HealthCheck(ctx context.Context, target HealthTarget) error {
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		status, _, _ := probeServiceProvider(probeCtx, entry)
-		if status == "connected" {
+		probe := probeProviderStatus(probeCtx, entry, time.Now().UTC())
+		if probe.status == "connected" {
 			return nil
 		}
-		return fmt.Errorf("service: provider %q: %s", target.Name, status)
+		msg := probe.status
+		if probe.detail != "" {
+			msg = probe.detail
+		}
+		return fmt.Errorf("service: provider %q: %s", target.Name, msg)
 
 	case "harness":
 		statuses := s.registry.Discover()
@@ -350,31 +371,97 @@ func (s *service) HealthCheck(ctx context.Context, target HealthTarget) error {
 
 // probeServiceProvider pings a provider and returns (status, modelCount, capabilities).
 func probeServiceProvider(ctx context.Context, entry ServiceProviderEntry) (status string, modelCount int, caps []string) {
+	probe := probeServiceProviderDetailed(ctx, entry)
+	return probe.status, probe.modelCount, probe.caps
+}
+
+func probeServiceProviderDetailed(ctx context.Context, entry ServiceProviderEntry) providerProbeResult {
 	switch entry.Type {
 	case "anthropic":
 		if entry.APIKey == "" {
-			return "error: api_key not configured", 0, nil
+			return providerProbeResult{status: "error: api_key not configured", detail: "api_key not configured"}
 		}
 		// Anthropic does not expose an unauthenticated /v1/models list endpoint.
 		// Treat key presence as the connectivity signal.
-		return "connected", 0, []string{"tool_use", "vision", "streaming"}
+		return providerProbeResult{status: "connected", caps: []string{"tool_use", "vision", "streaming"}}
 
 	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai", "":
 		if entry.BaseURL == "" {
-			return "error: base_url not configured", 0, nil
+			return providerProbeResult{status: "error: base_url not configured", detail: "base_url not configured"}
 		}
 		n, err := discoverOpenAIModels(ctx, entry.BaseURL, entry.APIKey)
 		if err != nil {
 			msg := err.Error()
 			if serviceIsUnreachable(msg) {
-				return "unreachable", 0, nil
+				return providerProbeResult{status: "unreachable", detail: serviceTrimError(msg)}
 			}
-			return "error: " + serviceTrimError(msg), 0, nil
+			detail := serviceTrimError(msg)
+			return providerProbeResult{status: "error: " + detail, detail: detail}
 		}
-		return "connected", n, []string{"tool_use", "streaming", "json_mode"}
+		return providerProbeResult{status: "connected", modelCount: n, caps: []string{"tool_use", "streaming", "json_mode"}}
 
 	default:
-		return "error: unknown provider type " + entry.Type, 0, nil
+		detail := "unknown provider type " + entry.Type
+		return providerProbeResult{status: "error: " + detail, detail: detail}
+	}
+}
+
+func probeProviderStatus(ctx context.Context, entry ServiceProviderEntry, capturedAt time.Time) providerProbeResult {
+	endpoints := modelDiscoveryEndpoints(entry)
+	if len(endpoints) == 0 {
+		probe := probeServiceProviderDetailed(ctx, entry)
+		probe.endpointStatuses = providerEndpointStatusesFromProbe(entry, probe, capturedAt)
+		return probe
+	}
+
+	statuses := make([]EndpointStatus, 0, len(endpoints))
+	var aggregate providerProbeResult
+	aggregate.status = "error: endpoint probe did not run"
+	for _, endpoint := range endpoints {
+		endpointEntry := entry
+		endpointEntry.BaseURL = endpoint.BaseURL
+		endpointProbe := probeServiceProviderDetailed(ctx, endpointEntry)
+		endpointProbe.endpointName = endpoint.Name
+		endpointProbe.baseURL = endpoint.BaseURL
+		statuses = append(statuses, endpointStatusFromProbe(endpoint.Name, endpoint.BaseURL, endpointProbe, capturedAt))
+		if endpointProbe.status == "connected" {
+			if aggregate.status != "connected" {
+				aggregate.status = "connected"
+				aggregate.caps = append([]string(nil), endpointProbe.caps...)
+				aggregate.detail = ""
+			}
+			aggregate.modelCount += endpointProbe.modelCount
+			continue
+		}
+		if aggregate.status == "connected" {
+			continue
+		}
+		if shouldPreferProviderProbe(endpointProbe, aggregate) {
+			aggregate.status = endpointProbe.status
+			aggregate.detail = endpointProbe.detail
+			aggregate.caps = append([]string(nil), endpointProbe.caps...)
+			aggregate.baseURL = endpointProbe.baseURL
+			aggregate.endpointName = endpointProbe.endpointName
+		}
+	}
+	aggregate.endpointStatuses = statuses
+	return aggregate
+}
+
+func shouldPreferProviderProbe(candidate, current providerProbeResult) bool {
+	return providerProbePriority(candidate.status) < providerProbePriority(current.status)
+}
+
+func providerProbePriority(status string) int {
+	switch endpointStatus(status) {
+	case "connected":
+		return 0
+	case "unauthenticated":
+		return 1
+	case "unreachable":
+		return 2
+	default:
+		return 3
 	}
 }
 
@@ -492,6 +579,40 @@ func serviceTrimError(msg string) string {
 		return msg[:maxLen] + "..."
 	}
 	return msg
+}
+
+func providerEndpointStatusesFromProbe(entry ServiceProviderEntry, probe providerProbeResult, capturedAt time.Time) []EndpointStatus {
+	endpoints := modelDiscoveryEndpoints(entry)
+	if len(endpoints) == 0 {
+		return []EndpointStatus{endpointStatusFromProbe("default", entry.BaseURL, probe, capturedAt)}
+	}
+	out := make([]EndpointStatus, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		out = append(out, endpointStatusFromProbe(endpoint.Name, endpoint.BaseURL, probe, capturedAt))
+	}
+	return out
+}
+
+func endpointStatusFromProbe(name, baseURL string, probe providerProbeResult, capturedAt time.Time) EndpointStatus {
+	source := strings.TrimRight(baseURL, "/") + "/models"
+	if baseURL == "" {
+		source = "service provider config"
+	}
+	out := EndpointStatus{
+		Name:       endpointDisplayName(name, baseURL),
+		BaseURL:    baseURL,
+		ProbeURL:   source,
+		Status:     endpointStatus(probe.status),
+		Source:     source,
+		CapturedAt: capturedAt,
+		Fresh:      true,
+		ModelCount: probe.modelCount,
+		LastError:  statusErrorDetail(probe.status, probe.detail, source, capturedAt),
+	}
+	if out.Status == "connected" {
+		out.LastSuccessAt = capturedAt
+	}
+	return out
 }
 
 func serviceRouteStateKey(routeName string) string {

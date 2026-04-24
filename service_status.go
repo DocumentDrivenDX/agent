@@ -8,12 +8,19 @@ import (
 )
 
 func statusError(status, source string, capturedAt time.Time) *StatusError {
+	return statusErrorDetail(status, "", source, capturedAt)
+}
+
+func statusErrorDetail(status, detail, source string, capturedAt time.Time) *StatusError {
 	if status == "" || status == "connected" || status == "ok" {
 		return nil
 	}
+	if detail == "" {
+		detail = status
+	}
 	return &StatusError{
 		Type:      statusErrorType(status),
-		Detail:    status,
+		Detail:    detail,
 		Source:    source,
 		Timestamp: capturedAt,
 	}
