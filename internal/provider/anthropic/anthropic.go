@@ -79,6 +79,12 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 		params.System = system
 	}
 
+	// CachePolicy wiring point. opts.CachePolicy carries the public opt-out
+	// ("" / "default" / "off"); the cache_control writer in a follow-up bead
+	// reads this field to decide whether to stamp cache markers on the
+	// system block and final user turn. No behavior here yet.
+	_ = opts.CachePolicy
+
 	maxTokens := 4096
 	if opts.MaxTokens > 0 {
 		maxTokens = opts.MaxTokens
@@ -228,6 +234,8 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	if len(system) > 0 {
 		params.System = system
 	}
+	// CachePolicy wiring point — see Chat. No behavior here yet.
+	_ = opts.CachePolicy
 	maxTokens := 4096
 	if opts.MaxTokens > 0 {
 		maxTokens = opts.MaxTokens

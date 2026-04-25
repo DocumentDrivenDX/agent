@@ -834,6 +834,7 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 		ModelRef:    req.ModelRef,
 		Reasoning:   req.Reasoning,
 		Permissions: req.Permissions,
+		CachePolicy: req.CachePolicy,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {

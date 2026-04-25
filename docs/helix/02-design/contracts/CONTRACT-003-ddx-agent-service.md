@@ -234,6 +234,13 @@ type ExecuteRequest struct {
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
 
+    // CachePolicy is the public prompt-caching opt-out. Valid values:
+    //   ""        — same as "default"; per-provider default caching.
+    //   "default" — explicit default; per-provider default caching.
+    //   "off"     — disable caching for this request.
+    // Any other value is rejected at the service boundary before dispatch.
+    CachePolicy string
+
     // Three independent timeout knobs:
     //   Timeout         — wall-clock cap; the request fails after this duration
     //                     regardless of activity. 0 = no cap.
@@ -269,6 +276,31 @@ type StallPolicy struct {
     MaxNoopCompactions        int // 0 = disabled
 }
 
+### Prompt-caching opt-out (`CachePolicy`)
+
+`ServiceExecuteRequest.CachePolicy` (and the mirrored `RouteRequest.CachePolicy`)
+is the single public surface callers use to opt out of provider-side prompt
+caching. The accepted values are `""` (interpreted as `"default"`),
+`"default"`, and `"off"`; any other value is rejected at the service boundary
+before any session state is opened or any provider is dispatched. The default
+empty value means "use the per-provider default caching behavior" — the
+concrete cache markers are stamped (or not) by the provider in a follow-up
+bead, not by callers. Set `CachePolicy = "off"` for:
+
+- **Deterministic evals.** Cache hits change observed billing, latency, and
+  occasionally the tokenizer-visible prefix; eval harnesses that need
+  byte-for-byte reproducible attempts disable caching to remove that variable.
+- **Privacy-sensitive prompts.** Some callers must guarantee that prompt
+  prefixes are not retained on the provider's caching infrastructure beyond
+  the lifetime of a single request.
+- **One-shot benchmark runs.** Single-request benchmark scenarios pay the
+  cache-write cost without ever realizing a hit, so disabling caching is the
+  cheaper and more honest measurement.
+
+The field is plumbed end-to-end (request → routing → provider opts) so that
+the Anthropic `cache_control` writer (bead C) and the cache-aware cost
+attribution path (bead D) can land without further contract churn.
+
 Native `agent` permission modes are enforced by tool exposure at the service
 boundary:
 
@@ -289,6 +321,7 @@ type RouteRequest struct {
     Permissions           string
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
+    CachePolicy           string // "" / "default" / "off"; mirrors ServiceExecuteRequest.CachePolicy
 }
 
 type RouteDecision struct {

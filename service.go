@@ -362,6 +362,30 @@ type RouteRequest struct {
 	// RequiresTools, when true, filters out candidates that do not support
 	// tool calling.
 	RequiresTools bool
+
+	// CachePolicy mirrors ServiceExecuteRequest.CachePolicy. Routing decisions
+	// today do not act on it; it is carried through so callers using
+	// ResolveRoute as a public surface can plumb the same opt-out the
+	// Execute path honors.
+	CachePolicy string
+}
+
+// Valid CachePolicy values.
+const (
+	CachePolicyDefault = "default"
+	CachePolicyOff     = "off"
+)
+
+// ValidateCachePolicy returns nil when v is one of the accepted CachePolicy
+// values ("", "default", "off") and a typed error otherwise. The empty
+// string is treated as "default".
+func ValidateCachePolicy(v string) error {
+	switch v {
+	case "", CachePolicyDefault, CachePolicyOff:
+		return nil
+	default:
+		return fmt.Errorf("invalid CachePolicy %q: want \"\", %q, or %q", v, CachePolicyDefault, CachePolicyOff)
+	}
 }
 
 // RouteDecision is the result of ResolveRoute.
@@ -519,6 +543,15 @@ type ServiceExecuteRequest struct {
 	// RequiresTools, when true, drives auto-selection's tool-support gate
 	// (filter out candidates that cannot invoke tools).
 	RequiresTools bool
+
+	// CachePolicy is the public opt-out for prompt caching. Empty (the zero
+	// value) and "default" both request the per-provider default caching
+	// behavior; "off" disables caching for this request. Any other value is
+	// rejected at the service boundary (see ValidateCachePolicy). Providers
+	// that do not implement caching ignore the field; this field is read by
+	// the Anthropic cache_control writer (bead C) and the cache-aware cost
+	// attribution path (bead D).
+	CachePolicy string
 
 	// Three independent timeout knobs:
 	//   Timeout         — wall-clock cap on the entire request.

@@ -103,6 +103,13 @@ type Options struct {
 	// Reasoning controls model-side reasoning with one scalar value. Empty means
 	// unset; use ReasoningOff or ReasoningTokens(0) for explicit off.
 	Reasoning Reasoning `json:"reasoning,omitempty"`
+
+	// CachePolicy is the public prompt-caching opt-out plumbed from
+	// ServiceExecuteRequest. Valid values: "" / "default" / "off". Providers
+	// that implement caching (currently Anthropic, via cache_control writes
+	// in a follow-up bead) consult this field; providers without caching
+	// ignore it.
+	CachePolicy string `json:"cache_policy,omitempty"`
 }
 
 // Response is the result of a single internal provider Chat call.
@@ -324,6 +331,10 @@ type Request struct {
 
 	// NoStream disables streaming even if the provider supports it.
 	NoStream bool
+
+	// CachePolicy is the prompt-caching opt-out, threaded into per-call
+	// Options. Valid values: "" / "default" / "off". See agent.CachePolicy*.
+	CachePolicy string
 
 	// Telemetry carries the runtime telemetry implementation. If nil, the
 	// agent loop falls back to a no-op runtime.

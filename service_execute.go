@@ -81,6 +81,13 @@ var readOnlyTools = map[string]bool{
 // still be supplied for the native path until provider construction lands
 // in a follow-up.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {
+	// Boundary validation: reject unknown CachePolicy values before any
+	// session state is opened or events are emitted. Beads C/D consume this
+	// field; an unknown value is a caller programming error.
+	if err := ValidateCachePolicy(req.CachePolicy); err != nil {
+		return nil, err
+	}
+
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
 	sessionID := generateSessionID()
@@ -750,6 +757,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		ReasoningByteLimit:    req.ReasoningByteLimit,
 		ReasoningStallTimeout: req.ReasoningStallTimeout,
 		Compactor:             compactor,
+		CachePolicy:           req.CachePolicy,
 	}
 	result, runErr := agentcore.Run(cancelCtx, loopReq)
 	if shouldRetryNativeNoStream(req.NoStream, result, runErr) {

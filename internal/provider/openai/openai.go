@@ -226,6 +226,7 @@ func (p *Provider) compatRequestOptions(model string, opts agent.Options) (opena
 		Seed:         opts.Seed,
 		Stop:         opts.Stop,
 		ExtraOptions: extra,
+		CachePolicy:  opts.CachePolicy,
 	}, nil
 }
 

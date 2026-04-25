@@ -62,6 +62,10 @@ type RequestOptions struct {
 	Seed         int64
 	Stop         []string
 	ExtraOptions []option.RequestOption
+	// CachePolicy mirrors agent.Options.CachePolicy. The OpenAI-compatible
+	// protocol layer does not act on it today; it is plumbed so a future
+	// caching-aware OpenAI-style provider has a typed field to consume.
+	CachePolicy string
 }
 
 // ChatResult is a protocol-level non-streaming response without provider
