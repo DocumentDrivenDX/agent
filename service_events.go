@@ -88,16 +88,16 @@ type ServiceRoutingDecisionData struct {
 // event's candidates list. Mirrors RouteCandidate but with JSON tags
 // suited for event consumers.
 type ServiceRoutingDecisionCandidate struct {
-	Harness            string                            `json:"harness"`
-	Provider           string                            `json:"provider,omitempty"`
-	Endpoint           string                            `json:"endpoint,omitempty"`
-	Model              string                            `json:"model,omitempty"`
-	Score              float64                           `json:"score"`
-	CostUSDPer1kTokens float64                           `json:"cost_usd_per_1k_tokens,omitempty"`
-	CostSource         string                            `json:"cost_source,omitempty"`
-	Eligible           bool                              `json:"eligible"`
-	Reason             string                            `json:"reason,omitempty"`
-	FilterReason       string                            `json:"filter_reason,omitempty"`
+	Harness            string                           `json:"harness"`
+	Provider           string                           `json:"provider,omitempty"`
+	Endpoint           string                           `json:"endpoint,omitempty"`
+	Model              string                           `json:"model,omitempty"`
+	Score              float64                          `json:"score"`
+	CostUSDPer1kTokens float64                          `json:"cost_usd_per_1k_tokens,omitempty"`
+	CostSource         string                           `json:"cost_source,omitempty"`
+	Eligible           bool                             `json:"eligible"`
+	Reason             string                           `json:"reason,omitempty"`
+	FilterReason       string                           `json:"filter_reason,omitempty"`
 	Components         ServiceRoutingDecisionComponents `json:"components"`
 }
 

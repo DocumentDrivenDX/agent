@@ -14,12 +14,12 @@ import (
 // through to a non-nil *int(0) on the FinalUsage; absence must remain nil.
 func TestHarnessFinalEventPreservesUsageProvenance(t *testing.T) {
 	cases := []struct {
-		name         string
-		input        string
-		wantUsage    bool
-		wantInput    *int
-		wantOutput   *int
-		harness      string
+		name       string
+		input      string
+		wantUsage  bool
+		wantInput  *int
+		wantOutput *int
+		harness    string
 	}{
 		{
 			name:       "explicit_zero_usage_preserved",
