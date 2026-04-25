@@ -75,40 +75,46 @@ func (c Capabilities) HasModel(model string) bool {
 }
 
 // CheckGating applies all capability gates against a request and returns
-// the first failure reason, or "" if all gates pass.
+// the first failure reason (free-form string for diagnostics) plus the
+// typed FilterReason category for the failure. Returns ("", FilterReasonEligible)
+// when all gates pass.
+//
+// The typed return is the authoritative classification — callers must not
+// re-classify by parsing the string. The string is for human-readable
+// diagnostics only.
 //
 // Fixes ddx-4817edfd subtree: pre-dispatch capability check covering
 // context window, tool support, effort, permissions.
-func CheckGating(cap Capabilities, req Request) string {
+func CheckGating(cap Capabilities, req Request) (string, FilterReason) {
 	// Context window gating: if the request declares prompt size or an effort
 	// that implies a minimum context, reject candidates that can't fit.
 	minCtx := req.MinContextWindow()
 	if minCtx > 0 && cap.ContextWindow > 0 && cap.ContextWindow < minCtx {
-		return fmt.Sprintf("context window %d < required %d", cap.ContextWindow, minCtx)
+		return fmt.Sprintf("context window %d < required %d", cap.ContextWindow, minCtx), FilterReasonContextTooSmall
 	}
 
 	// Tool-calling support gating.
 	if req.RequiresTools && !cap.SupportsTools {
-		return "tool calling not supported"
+		return "tool calling not supported", FilterReasonNoToolSupport
 	}
 
 	if !cap.HasReasoning(req.Reasoning) {
-		return fmt.Sprintf("reasoning %q not supported", req.Reasoning)
+		return fmt.Sprintf("reasoning %q not supported", req.Reasoning), FilterReasonReasoningUnsupported
 	}
 
 	// Permissions support gating.
 	if !cap.HasPermissions(req.Permissions) {
-		return fmt.Sprintf("permissions %q not supported", req.Permissions)
+		return fmt.Sprintf("permissions %q not supported", req.Permissions), FilterReasonScoredBelowTop
 	}
 
 	if req.Model != "" && !cap.HasModel(req.Model) {
-		return "model not in harness allow-list"
+		return "model not in harness allow-list", FilterReasonScoredBelowTop
 	}
 
 	// Exact-pin gating: an explicit Model field requires ExactPinSupport.
 	if req.Model != "" && req.ModelRef == "" && !cap.ExactPinSupport {
-		return "exact model pin not supported"
+		return "exact model pin not supported", FilterReasonScoredBelowTop
 	}
 
-	return ""
+	return "", FilterReasonEligible
 }

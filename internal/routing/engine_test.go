@@ -264,7 +264,7 @@ func TestSmellCapabilityGating(t *testing.T) {
 	t.Run("reasoning off imposes no requirement", func(t *testing.T) {
 		cap := Capabilities{}
 		for _, value := range []string{"off", "0", "none", "false"} {
-			if got := CheckGating(cap, Request{Reasoning: value}); got != "" {
+			if got, _ := CheckGating(cap, Request{Reasoning: value}); got != "" {
 				t.Fatalf("Reasoning=%q should not gate candidate, got %q", value, got)
 			}
 		}
@@ -272,20 +272,20 @@ func TestSmellCapabilityGating(t *testing.T) {
 
 	t.Run("extended reasoning requires advertised support", func(t *testing.T) {
 		cap := Capabilities{SupportedReasoning: []string{"low", "medium", "high", "xhigh", "max"}}
-		if got := CheckGating(cap, Request{Reasoning: "x-high"}); got != "" {
+		if got, _ := CheckGating(cap, Request{Reasoning: "x-high"}); got != "" {
 			t.Fatalf("x-high should normalize to advertised xhigh, got %q", got)
 		}
-		if got := CheckGating(Capabilities{SupportedReasoning: []string{"low"}}, Request{Reasoning: "max"}); got == "" {
+		if got, _ := CheckGating(Capabilities{SupportedReasoning: []string{"low"}}, Request{Reasoning: "max"}); got == "" {
 			t.Fatal("max should reject candidates that do not advertise it")
 		}
 	})
 
 	t.Run("numeric reasoning gates against max", func(t *testing.T) {
 		cap := Capabilities{MaxReasoningTokens: 4096}
-		if got := CheckGating(cap, Request{Reasoning: "2048"}); got != "" {
+		if got, _ := CheckGating(cap, Request{Reasoning: "2048"}); got != "" {
 			t.Fatalf("numeric value under max should pass, got %q", got)
 		}
-		if got := CheckGating(cap, Request{Reasoning: "8192"}); got == "" {
+		if got, _ := CheckGating(cap, Request{Reasoning: "8192"}); got == "" {
 			t.Fatal("numeric value over max should fail")
 		}
 	})

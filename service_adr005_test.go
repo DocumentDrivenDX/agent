@@ -112,26 +112,34 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 
 // TestRouteCandidateFilterReasonClassification verifies the public
 // FilterReason enum surfaces canonical values for ineligible candidates.
+// The mapping is a typed passthrough: the internal engine sets
+// routing.FilterReason at the rejection site, and routeCandidateFromInternal
+// forwards it to the public string surface without parsing the free-form
+// Reason text (agent-2c55b8a4).
 func TestRouteCandidateFilterReasonClassification(t *testing.T) {
 	cases := []struct {
-		reason string
-		want   string
+		name     string
+		typed    routing.FilterReason
+		want     string
+		freeform string // arbitrary text — must not influence classification
 	}{
-		{"context window 4096 < required 8000", FilterReasonContextTooSmall},
-		{"tool calling not supported", FilterReasonNoToolSupport},
-		{"reasoning \"high\" not supported", FilterReasonReasoningUnsupported},
-		{"subscription quota exhausted", FilterReasonUnhealthy},
-		{"preference is local-only", FilterReasonUnhealthy},
-		{"some unknown reason", FilterReasonScoredBelowTop},
+		{"context too small", routing.FilterReasonContextTooSmall, FilterReasonContextTooSmall, "ctx window 4096 < required 8000"},
+		{"no tool support", routing.FilterReasonNoToolSupport, FilterReasonNoToolSupport, "tools unavailable"},
+		{"reasoning unsupported", routing.FilterReasonReasoningUnsupported, FilterReasonReasoningUnsupported, "thinking high not advertised"},
+		{"unhealthy", routing.FilterReasonUnhealthy, FilterReasonUnhealthy, "harness offline"},
+		{"scored below top", routing.FilterReasonScoredBelowTop, FilterReasonScoredBelowTop, ""},
 	}
 	for _, tc := range cases {
-		got := routeCandidateFromInternal(routing.Candidate{
-			Eligible: false,
-			Reason:   tc.reason,
+		t.Run(tc.name, func(t *testing.T) {
+			got := routeCandidateFromInternal(routing.Candidate{
+				Eligible:     false,
+				Reason:       tc.freeform,
+				FilterReason: tc.typed,
+			})
+			if got.FilterReason != tc.want {
+				t.Errorf("typed=%q (Reason=%q): FilterReason=%q, want %q", tc.typed, tc.freeform, got.FilterReason, tc.want)
+			}
 		})
-		if got.FilterReason != tc.want {
-			t.Errorf("reason %q: FilterReason=%q, want %q", tc.reason, got.FilterReason, tc.want)
-		}
 	}
 }
 

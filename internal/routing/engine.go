@@ -155,6 +155,13 @@ type Candidate struct {
 	Eligible           bool
 	Reason             string
 
+	// FilterReason is the typed disqualification category, set at the
+	// rejection site that decided why this candidate is ineligible.
+	// Empty for eligible candidates. Service-layer code maps this to the
+	// public FilterReason* string constants without parsing free-form
+	// Reason text.
+	FilterReason FilterReason
+
 	// LatencyMS, SuccessRate, and CostClass expose the score-component
 	// inputs so callers can render per-axis explanations alongside the
 	// final Score. Zero / negative values mean unknown (see Inputs docs).
@@ -162,6 +169,32 @@ type Candidate struct {
 	SuccessRate float64
 	CostClass   string
 }
+
+// FilterReason categorizes why a routing candidate was disqualified.
+// The zero value (empty string) means the candidate is eligible.
+type FilterReason string
+
+const (
+	// FilterReasonEligible is the zero value for an eligible candidate.
+	FilterReasonEligible FilterReason = ""
+	// FilterReasonContextTooSmall: candidate's context window is below the
+	// request's MinContextWindow().
+	FilterReasonContextTooSmall FilterReason = "context_too_small"
+	// FilterReasonNoToolSupport: request needs tool calling but candidate
+	// does not support it.
+	FilterReasonNoToolSupport FilterReason = "no_tool_support"
+	// FilterReasonReasoningUnsupported: candidate cannot satisfy the
+	// requested reasoning policy.
+	FilterReasonReasoningUnsupported FilterReason = "reasoning_unsupported"
+	// FilterReasonUnhealthy: harness/provider is unavailable, in cooldown,
+	// out of quota, or excluded by a hard provider-preference gate.
+	FilterReasonUnhealthy FilterReason = "unhealthy"
+	// FilterReasonScoredBelowTop: catch-all for ineligibility that does
+	// not fit a more specific category (also used for capability
+	// mismatches such as permissions/model-pin/exact-pin and for model
+	// resolution failures).
+	FilterReasonScoredBelowTop FilterReason = "scored_below_top"
+)
 
 // NoViableCandidateError reports that routing evaluated candidates but every
 // one failed a gate.
@@ -551,9 +584,10 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 	if !h.Available {
 		return []rankedCandidate{{
 			out: Candidate{
-				Harness:    h.Name,
-				CostSource: CostSourceUnknown,
-				Reason:     "harness not available",
+				Harness:      h.Name,
+				CostSource:   CostSourceUnknown,
+				Reason:       "harness not available",
+				FilterReason: FilterReasonUnhealthy,
 			},
 			internal: candidateInternal{Harness: h.Name, CostClass: h.CostClass, CostSource: CostSourceUnknown},
 		}}
@@ -604,13 +638,19 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		}
 
 		eligible := true
+		var filterReason FilterReason
 		if reason == "" {
-			if g := CheckGating(entryCaps, req); g != "" {
+			if g, fr := CheckGating(entryCaps, req); g != "" {
 				eligible = false
 				reason = g
+				filterReason = fr
 			}
 		} else {
 			eligible = false
+			// resolveModel rejection — model resolution is a capability
+			// mismatch with no specific public category, so fall through
+			// to the catch-all.
+			filterReason = FilterReasonScoredBelowTop
 		}
 
 		// Hard preference filtering.
@@ -620,11 +660,13 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				if !h.IsLocal {
 					eligible = false
 					reason = "preference is local-only"
+					filterReason = FilterReasonUnhealthy
 				}
 			case ProviderPreferenceSubscriptionOnly:
 				if !h.IsSubscription {
 					eligible = false
 					reason = "preference is subscription-only"
+					filterReason = FilterReasonUnhealthy
 				}
 			}
 		}
@@ -635,12 +677,14 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		if eligible && h.IsSubscription && !h.SubscriptionOK {
 			eligible = false
 			reason = "subscription quota exhausted"
+			filterReason = FilterReasonUnhealthy
 		}
 
 		if eligible && req.Provider != "" && p.Name != "" && req.Provider != p.Name && req.Harness != "" {
 			// Hard provider pin under explicit harness: reject other providers.
 			eligible = false
 			reason = fmt.Sprintf("provider override requires %s", req.Provider)
+			filterReason = FilterReasonScoredBelowTop
 		}
 
 		inCooldown := false
@@ -686,6 +730,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				CostSource:         normalizeCostSource(p.CostSource),
 				Eligible:           eligible,
 				Reason:             reason,
+				FilterReason:       filterReason,
 				LatencyMS:          latencyMS,
 				SuccessRate:        providerSuccessRate,
 				CostClass:          h.CostClass,

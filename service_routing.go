@@ -108,7 +108,7 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 		CostSource:         candidate.CostSource,
 		Eligible:           candidate.Eligible,
 		Reason:             candidate.Reason,
-		FilterReason:       deriveFilterReason(candidate),
+		FilterReason:       publicFilterReason(candidate),
 		Components: RouteCandidateComponents{
 			Cost:        candidate.CostUSDPer1kTokens,
 			LatencyMS:   candidate.LatencyMS,
@@ -118,30 +118,15 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 	}
 }
 
-// deriveFilterReason classifies the rejection reason emitted by the
-// internal routing engine into one of the canonical FilterReason*
-// constants. Eligible candidates that scored below the top get
-// FilterReasonScoredBelowTop. Returns "" for the eligible winner.
-func deriveFilterReason(c routing.Candidate) string {
+// publicFilterReason maps the typed FilterReason emitted by the internal
+// routing engine to the public FilterReason* string constant. The internal
+// constants are defined to share string values with the public surface, so
+// this is a one-line passthrough — there is no string parsing.
+func publicFilterReason(c routing.Candidate) string {
 	if c.Eligible {
 		return ""
 	}
-	reason := strings.ToLower(c.Reason)
-	switch {
-	case strings.Contains(reason, "context window"):
-		return FilterReasonContextTooSmall
-	case strings.Contains(reason, "tool calling"):
-		return FilterReasonNoToolSupport
-	case strings.Contains(reason, "reasoning"):
-		return FilterReasonReasoningUnsupported
-	case strings.Contains(reason, "subscription quota"),
-		strings.Contains(reason, "cooldown"),
-		strings.Contains(reason, "unavailable"),
-		strings.Contains(reason, "preference is"):
-		return FilterReasonUnhealthy
-	default:
-		return FilterReasonScoredBelowTop
-	}
+	return string(c.FilterReason)
 }
 
 // capabilityScoreForCostClass maps the harness cost class to a coarse
