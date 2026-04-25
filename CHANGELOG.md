@@ -5,6 +5,124 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.9] — 2026-04-25
+
+This release lands ADR-005 (smart routing replaces `model_routes`) plus the
+preceding service-boundary work that made it possible. The agent now picks
+`(harness, provider, model)` automatically from the catalog, configured
+provider liveness, and per-(provider, model) signal — no
+`model_routes:` YAML required. Native Anthropic still does not write
+`cache_control`; that work is staged separately.
+
+### Breaking
+
+- **`ServiceExecuteRequest.PreResolved` removed.** Callers no longer round-trip
+  a `RouteDecision` from `ResolveRoute` into `Execute`. `ResolveRoute` is
+  informational only; `Execute` always re-resolves on its own inputs.
+  (`agent-ddcc903b`, ADR-005)
+- **`ServiceConfig.ModelRouteConfig` / `ModelRouteNames` removed from the
+  primary config surface.** Legacy `model_routes:` YAML still parses for one
+  release with a deprecation warning that names the offending key path; the
+  next release rejects it outright. The deprecation surface lives in
+  `internal/config/legacy_model_routes.go`. A boundary test forbids
+  reintroduction in `internal/config/config.go`. (`agent-21a521fc`, ADR-005)
+- **`cmd/agent/routing_provider.go` `routeProvider` type and
+  `cmd/agent/provider_build.go` deleted.** Provider construction and
+  per-Chat failover are owned by the service-side smart routing engine.
+  Route-status display helpers remain. (`agent-21a521fc`)
+
+### Added
+
+- **Smart routing auto-selection inputs.** `ServiceExecuteRequest` and
+  `RouteRequest` carry `EstimatedPromptTokens` and `RequiresTools`. When the
+  caller pins nothing, the service filters candidates by context window and
+  tool support before scoring. Explicit `--profile` / `--model` /
+  `--model-ref` / `--provider` always wins. (`agent-ddcc903b`, ADR-005)
+- **Per-candidate component scores on `RouteCandidate`.** Routing-decision
+  events expose `Components{Cost, LatencyMS, SuccessRate, Capability}` and a
+  typed `FilterReason` (`context_too_small`, `no_tool_support`,
+  `reasoning_unsupported`, `unhealthy`, `scored_below_top`,
+  `eligible`) set at the rejection site in `internal/routing.CheckGating`,
+  not parsed from free-form text. (`agent-ddcc903b`, `agent-2c55b8a4`)
+- **Liveness escalation in `ResolveRoute`.** When every candidate at the
+  requested tier is filtered out, the service walks the profile tier ladder
+  (cheap → standard → smart) before failing. Exhaustion surfaces a precise
+  `no live provider supports prompt of N tokens with tools=B at tier ≥ X`
+  error, replacing the engine's generic "tiers exhausted" jargon.
+  (`agent-99433b19`)
+- **`ContextWindows` wired from the catalog into every `ProviderEntry`.** The
+  engine's context-window gate now has data to act on; previously
+  `EstimatedPromptTokens` reached `routing.Request` but the filter saw an
+  empty context-window map. (`agent-c953a473`)
+- **Route-status redesigned around `ResolveRoute` candidate trace.**
+  `ddx agent route-status --profile smart` returns the full ranked candidate
+  list with score components and `filter_reason` per candidate, replacing the
+  old `model_routes:` enumeration. (`agent-9c9cc191`)
+- **Per-(provider, model) routing signal.** `routeMetricSignals` keys
+  success/latency on `(provider, model)` rather than per-tier; one bad model
+  no longer locks out its whole tier. (`agent-934fb8a2`)
+- **Service-owned session-log persistence.** Native and subprocess execution
+  write authoritative lifecycle records from inside the service execution
+  path; cmd/agent no longer synthesizes them. Final results still expose the
+  session-log path; replay/usage flows continue to work against
+  service-owned logs. (`agent-7faa0edf`, `agent-b9bd700f`, `agent-99549438`)
+- **`ServiceFinalUsage` distinguishes zero from unknown.** Token-count fields
+  are `*int`. Nil = harness did not emit; explicit zero = upstream provider
+  reported zero. Consumers MUST NOT treat nil as zero. CONTRACT-003 also now
+  documents that `success` final events with empty `final_text` are valid
+  outcomes — consumers must not retry on empty text alone. (`agent-a8cbdb87`)
+- **`cmd/agent` boundary allowlist tightened.** Production cmd/agent files
+  may import only seven internal packages: `config`, `modelcatalog`,
+  `observations`, `productinfo`, `prompt`, `reasoning`, `safefs`. A denylist
+  and symbol-level checks reject `internal/core`, `internal/provider/*`,
+  `internal/session`, `internal/tool`, `internal/compaction`,
+  `internal/harnesses`, `internal/routing`, plus the surfaces that have
+  public replacements (`agentcore.Run`, `compaction.NewCompactor`,
+  `tool.BuiltinToolsForPreset`, `session.NewLogger`, etc.).
+  (`agent-1023f072`)
+- **Beadbench: reasoning-control sweep manifest entries.** Added
+  `agent-vidar-omlx-qwen36-27b-high` and `agent-openrouter-sonnet46` for
+  isolating reasoning budget vs. tool-loop quality. Plus a Qwen
+  reasoning-control sweep research note. (Earlier in the release window.)
+- **Bash benchmark-mode policy.** The `bash` tool blocks shell `find` and
+  recursive `ls -R` in benchmark preset, surfacing a policy violation that
+  steers the agent toward the typed `find` and `ls` tools. Non-benchmark
+  presets remain unrestricted. (Earlier.)
+- **Pi local-provider pins + `--provider` flag.** (`agent-9dbfad9c`)
+- **Gemini PTY quota probe + routing guard for `/model manage`.**
+  (`agent-37659612`)
+- **LM Studio adopts Qwen reasoning wire format.** With server blocker
+  documented. (`agent-b79ecf22`)
+- **Beadbench reasoning-probe streaming, separability honor for
+  `model_comparison_valid`, partial-output preservation on timeout, and
+  preflight/phase-specific verification status.**
+  (`agent-74fc7a51`, `agent-39128ccf`, `agent-52529ba7`,
+  `agent-37aeb88e`)
+
+### Changed
+
+- **`ResolveRoute` semantics.** Returns ranked candidates without
+  short-circuiting on configured `model_routes`; consumers cannot inject
+  `RouteDecision` back into `Execute`. The previous short-circuit landed
+  briefly under `agent-6dd4ad97` and was effectively reverted.
+- **Per-tier adaptive min-tier window removed.** The trailing-success-rate
+  lockout that locked out `cheap` after 0.06 trailing-success over 17
+  attempts is gone; the per-(provider, model) signal lets individual models
+  recover without dragging their whole tier.
+- **Provider verification of reasoning control.** `low`/`medium`/`high` are
+  rejected when the provider has not been verified for request-level
+  reasoning control; previously some non-verified providers silently
+  ignored the request. (`agent-2168979d`)
+- **Status surfaces endpoint-down reasons for local providers.**
+  (`agent-90344fdc`)
+
+### Fixed
+
+- **`model_routes:` no longer required for same-tier failover.** Local LM
+  Studio hosts coordinate failover automatically via liveness + tier
+  escalation. (ADR-005)
+- **Beadbench timeouts preserve partial output.** (`agent-52529ba7`)
+
 ## [v0.7.0] — 2026-04-20
 
 ### Fixed
