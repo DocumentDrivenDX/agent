@@ -278,6 +278,13 @@ type StallPolicy struct {
 
 ### Selection precedence
 
+> **Pin precedence is implementation reference, not the primary user surface.**
+> Pinning `Harness`, `Provider`, or `Model` for a given prompt class indicates
+> auto-routing is mis-deciding for that class — file a routing-quality issue.
+> The rules below describe how the engine resolves conflicts when overrides
+> are used; they are not how callers should normally drive `Execute`. See
+> ADR-006 for override-tracking semantics.
+
 When multiple selection inputs are set on `ExecuteRequest`, they resolve in
 the following order, most-specific first. The list is also the precedence
 the routing engine enforces:

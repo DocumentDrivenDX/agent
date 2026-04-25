@@ -123,6 +123,8 @@ candidate per request without per-tier candidate lists in YAML.
 
 #### `routing.health_cooldown`
 
+*Implementation reference for the routing-quality signal stack; see ADR-006 for the override-tracking layer that feeds operator diagnosis.*
+
 `health_cooldown` is the TTL used by **two** routing signals with different
 keying — they share the duration but not the key:
 
@@ -374,7 +376,7 @@ This surface is distinct from the benchmark-based capability scoring used by
 smart-routing (`CapabilityScore` / `CapabilityWeight`); the two axes do not
 interact.
 
-**`RequiresTools` filter scope.** `RequiresTools=true` filters candidates at
+**`RequiresTools` filter scope.** *Implementation reference; routine `RequiresTools=true` is a routing-quality input, not an override (see ADR-006).* `RequiresTools=true` filters candidates at
 the `(harness, provider, model)` level via an **OR-permissive gate**: a
 candidate passes when **either** `routing.HarnessEntry.SupportsTools` **or**
 `routing.ProviderEntry.SupportsTools` is `true`, AND the catalog's per-model
