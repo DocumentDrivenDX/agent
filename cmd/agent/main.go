@@ -443,11 +443,20 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 	}
 	provider := params.SelectedProvider
 	harness := ""
-	if len(params.RouteCandidates) == 0 && params.SelectedProvider != "" {
+	if params.SelectedProvider != "" {
 		harness = "agent"
 	}
-	if len(params.RouteCandidates) > 0 && params.SelectedRoute != "" && params.SelectedRoute != params.SelectedProvider {
-		provider = ""
+	if len(params.RouteCandidates) > 0 {
+		// Pin the first scored candidate explicitly. Multi-candidate
+		// failover via PreResolved was removed in ADR-005 step 1; until
+		// model_routes deletion (step 3) ships, we fall back to the
+		// top-scored candidate from the CLI smart-route plan.
+		first := params.RouteCandidates[0]
+		harness = "agent"
+		provider = first.Provider
+		if first.Model != "" {
+			model = first.Model
+		}
 	}
 	req := agent.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
@@ -470,20 +479,6 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		CompactionReserveTokens: params.CompactionReserveTokens,
 		SelectedRoute:           params.SelectedRoute,
 		ResolvedModelRef:        params.ResolvedModelRef,
-	}
-	if len(params.RouteCandidates) > 0 {
-		first := params.RouteCandidates[0]
-		req.PreResolved = &agent.RouteDecision{
-			Harness:    "agent",
-			Provider:   first.Provider,
-			Endpoint:   first.Endpoint,
-			Model:      first.Model,
-			Reason:     "cli configured route",
-			Candidates: append([]agent.RouteCandidate(nil), params.RouteCandidates...),
-		}
-		req.Provider = first.Provider
-		req.Model = first.Model
-		req.Harness = "agent"
 	}
 	return req
 }

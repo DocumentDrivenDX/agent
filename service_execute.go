@@ -75,11 +75,11 @@ var readOnlyTools = map[string]bool{
 //   - Metadata bidirectional echo (events + session log)
 //   - SessionLogDir per-request override
 //
-// Routing: under-specified requests (no PreResolved, no Harness) are
-// dispatched through internal/routing.Resolve via ResolveRoute. Callers
-// can run with bare Profile/ModelRef/Model/Provider — the engine picks.
-// NativeProvider must still be supplied for the native path until
-// provider construction lands in a follow-up.
+// Routing: under-specified requests (no Harness) are dispatched through
+// internal/routing.Resolve via ResolveRoute. Callers can run with bare
+// Profile/ModelRef/Model/Provider — the engine picks. NativeProvider must
+// still be supplied for the native path until provider construction lands
+// in a follow-up.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
@@ -129,18 +129,15 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 }
 
 // resolveExecuteRoute reduces the request to a concrete RouteDecision.
-// PreResolved wins outright; otherwise the request is dispatched through
-// the routing engine (internal/routing.Resolve) when under-specified, or
-// accepted verbatim when Harness is set explicitly.
+// The request is dispatched through the routing engine
+// (internal/routing.Resolve) when under-specified, or accepted verbatim
+// when Harness is set explicitly.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
-	if req.PreResolved != nil {
-		return req.PreResolved, nil
-	}
 	// If Harness is omitted but the engine has enough hints (Profile/ModelRef/
 	// Model/Provider) to disambiguate, route through ResolveRoute.
 	if req.Harness == "" {
 		if req.Profile == "" && req.ModelRef == "" && req.Model == "" && req.Provider == "" {
-			return nil, fmt.Errorf("routing under-specified: pass PreResolved or set at least one of Harness/Profile/ModelRef/Model/Provider")
+			return nil, fmt.Errorf("routing under-specified: pass at least one of Harness/Profile/ModelRef/Model/Provider, or auto-selection inputs")
 		}
 		return s.resolveExecuteRouteWithEngine(req)
 	}
@@ -324,13 +321,14 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 
 	// Emit routing_decision start event. Include session_id so callers can
 	// extract it and pass to TailSessionLog.
-	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, meta, map[string]any{
-		"harness":    decision.Harness,
-		"provider":   decision.Provider,
-		"endpoint":   decision.Endpoint,
-		"model":      decision.Model,
-		"reason":     decision.Reason,
-		"session_id": sessionID,
+	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, meta, ServiceRoutingDecisionData{
+		Harness:    decision.Harness,
+		Provider:   decision.Provider,
+		Endpoint:   decision.Endpoint,
+		Model:      decision.Model,
+		Reason:     decision.Reason,
+		SessionID:  sessionID,
+		Candidates: routingDecisionEventCandidates(decision.Candidates),
 	})
 
 	// Branch: native ("agent") path runs the in-process loop; subprocess

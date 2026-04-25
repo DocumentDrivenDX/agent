@@ -139,7 +139,6 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 	assert.Equal(t, 3*time.Second, serviceReq.ReasoningStallTimeout)
 	assert.Equal(t, 128000, serviceReq.CompactionContextWindow)
 	assert.Equal(t, 4096, serviceReq.CompactionReserveTokens)
-	assert.Nil(t, serviceReq.PreResolved)
 }
 
 func toolNames(tools []agent.Tool) []string {

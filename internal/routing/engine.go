@@ -154,6 +154,13 @@ type Candidate struct {
 	CostSource         string
 	Eligible           bool
 	Reason             string
+
+	// LatencyMS, SuccessRate, and CostClass expose the score-component
+	// inputs so callers can render per-axis explanations alongside the
+	// final Score. Zero / negative values mean unknown (see Inputs docs).
+	LatencyMS   float64
+	SuccessRate float64
+	CostClass   string
 }
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -653,6 +660,9 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				CostSource:         normalizeCostSource(p.CostSource),
 				Eligible:           eligible,
 				Reason:             reason,
+				LatencyMS:          latencyMS,
+				SuccessRate:        providerSuccessRate,
+				CostClass:          h.CostClass,
 			},
 			internal: ci,
 		})

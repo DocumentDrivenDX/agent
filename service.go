@@ -354,6 +354,14 @@ type RouteRequest struct {
 	ModelRef    string
 	Reasoning   Reasoning
 	Permissions string
+
+	// EstimatedPromptTokens, when > 0, filters out candidates whose context
+	// window cannot accommodate the prompt (with a safety margin).
+	EstimatedPromptTokens int
+
+	// RequiresTools, when true, filters out candidates that do not support
+	// tool calling.
+	RequiresTools bool
 }
 
 // RouteDecision is the result of ResolveRoute.
@@ -396,6 +404,42 @@ type RouteCandidate struct {
 	// Reason is the scoring reason for eligible candidates or the rejection
 	// reason for ineligible candidates.
 	Reason string
+	// FilterReason names the gate that disqualified an ineligible candidate.
+	// Empty when Eligible. See the FilterReason* constants.
+	FilterReason string
+	// Components carries the per-axis score inputs (cost, latency, success
+	// rate, capability) that fed the final Score. Consumers use these to
+	// explain rankings without parsing the free-form Reason.
+	Components RouteCandidateComponents
+}
+
+// FilterReason* enumerate the canonical disqualification reasons surfaced
+// in RouteCandidate.FilterReason and the routing-decision event.
+const (
+	FilterReasonUnhealthy            = "unhealthy"
+	FilterReasonContextTooSmall      = "context_too_small"
+	FilterReasonNoToolSupport        = "no_tool_support"
+	FilterReasonReasoningUnsupported = "reasoning_unsupported"
+	FilterReasonScoredBelowTop       = "scored_below_top"
+)
+
+// RouteCandidateComponents breaks down the inputs that fed a candidate's
+// final Score so consumers can explain rankings without parsing the
+// free-form Reason. Zero fields mean "unknown / not contributing".
+type RouteCandidateComponents struct {
+	// Cost is the per-1k-token cost expressed as a numeric component (USD).
+	// Mirrors RouteCandidate.CostUSDPer1kTokens; surfaced here so the event
+	// payload carries a single component bundle.
+	Cost float64
+	// LatencyMS is the observed median latency for this candidate, in
+	// milliseconds. Zero when no observations are available.
+	LatencyMS float64
+	// SuccessRate is the observed success rate (0–1) for this candidate.
+	// Negative means insufficient data; zero means unknown.
+	SuccessRate float64
+	// Capability is a coarse capability score derived from the candidate's
+	// cost class / surface (higher = more capable).
+	Capability float64
 }
 
 // RouteAttempt is caller feedback about one attempted route candidate.
@@ -468,10 +512,13 @@ type ServiceExecuteRequest struct {
 	// Empty means the default preset; "benchmark" excludes the task tool.
 	ToolPreset string
 
-	// PreResolved bypasses ResolveRoute when the caller already has a
-	// decision. When non-nil, agent uses these values verbatim and does
-	// not re-route. Provider/Model/Harness fields above are ignored.
-	PreResolved *RouteDecision
+	// EstimatedPromptTokens, when > 0, drives auto-selection's
+	// context-window gate (filter out candidates whose context window is
+	// too small for the prompt + safety margin).
+	EstimatedPromptTokens int
+	// RequiresTools, when true, drives auto-selection's tool-support gate
+	// (filter out candidates that cannot invoke tools).
+	RequiresTools bool
 
 	// Three independent timeout knobs:
 	//   Timeout         — wall-clock cap on the entire request.

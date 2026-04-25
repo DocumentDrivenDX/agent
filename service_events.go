@@ -41,13 +41,72 @@ type ServiceCompactionData struct {
 	TokensFreed    int `json:"tokens_freed"`
 }
 
+func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisionCandidate {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ServiceRoutingDecisionCandidate, len(in))
+	for i, c := range in {
+		out[i] = ServiceRoutingDecisionCandidate{
+			Harness:            c.Harness,
+			Provider:           c.Provider,
+			Endpoint:           c.Endpoint,
+			Model:              c.Model,
+			Score:              c.Score,
+			CostUSDPer1kTokens: c.CostUSDPer1kTokens,
+			CostSource:         c.CostSource,
+			Eligible:           c.Eligible,
+			Reason:             c.Reason,
+			FilterReason:       c.FilterReason,
+			Components: ServiceRoutingDecisionComponents{
+				Cost:        c.Components.Cost,
+				LatencyMS:   c.Components.LatencyMS,
+				SuccessRate: c.Components.SuccessRate,
+				Capability:  c.Components.Capability,
+			},
+		}
+	}
+	return out
+}
+
 type ServiceRoutingDecisionData struct {
 	Harness       string   `json:"harness"`
 	Provider      string   `json:"provider,omitempty"`
+	Endpoint      string   `json:"endpoint,omitempty"`
 	Model         string   `json:"model"`
 	Reason        string   `json:"reason"`
 	FallbackChain []string `json:"fallback_chain,omitempty"`
 	SessionID     string   `json:"session_id,omitempty"`
+
+	// Candidates exposes the full ranked decision trace. Each candidate
+	// carries per-axis component scores (cost / latency / success rate /
+	// capability) plus an explicit filter_reason for rejected entries.
+	Candidates []ServiceRoutingDecisionCandidate `json:"candidates,omitempty"`
+}
+
+// ServiceRoutingDecisionCandidate is one entry in the routing-decision
+// event's candidates list. Mirrors RouteCandidate but with JSON tags
+// suited for event consumers.
+type ServiceRoutingDecisionCandidate struct {
+	Harness            string                            `json:"harness"`
+	Provider           string                            `json:"provider,omitempty"`
+	Endpoint           string                            `json:"endpoint,omitempty"`
+	Model              string                            `json:"model,omitempty"`
+	Score              float64                           `json:"score"`
+	CostUSDPer1kTokens float64                           `json:"cost_usd_per_1k_tokens,omitempty"`
+	CostSource         string                            `json:"cost_source,omitempty"`
+	Eligible           bool                              `json:"eligible"`
+	Reason             string                            `json:"reason,omitempty"`
+	FilterReason       string                            `json:"filter_reason,omitempty"`
+	Components         ServiceRoutingDecisionComponents `json:"components"`
+}
+
+// ServiceRoutingDecisionComponents exposes the per-axis score inputs.
+type ServiceRoutingDecisionComponents struct {
+	Cost        float64 `json:"cost"`
+	LatencyMS   float64 `json:"latency_ms"`
+	SuccessRate float64 `json:"success_rate"`
+	Capability  float64 `json:"capability"`
 }
 
 type ServiceStallData struct {

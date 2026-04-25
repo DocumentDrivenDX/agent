@@ -492,14 +492,10 @@ func TestExecute_NativeSupervisedPermissionRejected(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
 		Prompt:      "hi",
+		Harness:     "agent",
 		Provider:    "fake",
+		Model:       "fake-model",
 		Permissions: "supervised",
-		PreResolved: &agent.RouteDecision{
-			Harness:  "agent",
-			Provider: "fake",
-			Model:    "fake-model",
-			Reason:   "test bypasses route gating",
-		},
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -761,52 +757,6 @@ func TestExecute_OrphanModelFails(t *testing.T) {
 	errMsg := finalError(t, final)
 	if !strings.Contains(errMsg, "orphan model") && !strings.Contains(errMsg, "no provider") {
 		t.Errorf("error: want orphan/no-provider message, got %q", errMsg)
-	}
-}
-
-// TestExecute_PreResolvedSkipsRouting verifies that a request carrying
-// PreResolved bypasses route resolution and is honored verbatim. We use
-// an unknown harness name in PreResolved that ResolveRoute would otherwise
-// reject — Execute should accept it (and then fail with "dispatch not
-// wired" since it's not in the known switch).
-func TestExecute_PreResolvedSkipsRouting(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	req := agent.ServiceExecuteRequest{
-		Prompt: "hi",
-		PreResolved: &agent.RouteDecision{
-			Harness:  "made-up",
-			Provider: "made-up",
-			Model:    "made-up",
-			Reason:   "test pre-resolution",
-		},
-	}
-	ch, err := svc.Execute(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	events := drainEvents(t, ch, 2*time.Second)
-	if len(events) == 0 {
-		t.Fatal("expected events")
-	}
-	// The routing_decision event must reflect the pre-resolved values
-	// verbatim — confirming routing was skipped.
-	if events[0].Type != "routing_decision" {
-		t.Fatalf("first event: want routing_decision, got %q", events[0].Type)
-	}
-	var decision struct {
-		Harness  string `json:"harness"`
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
-		Reason   string `json:"reason"`
-	}
-	if err := json.Unmarshal(events[0].Data, &decision); err != nil {
-		t.Fatalf("unmarshal routing_decision: %v", err)
-	}
-	if decision.Harness != "made-up" || decision.Reason != "test pre-resolution" {
-		t.Errorf("routing_decision did not honor PreResolved: %+v", decision)
 	}
 }
 

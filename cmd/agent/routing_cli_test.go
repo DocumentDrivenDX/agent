@@ -286,6 +286,7 @@ default: bragi
 }
 
 func TestCLI_ModelRouteFailoverOnAvailabilityError(t *testing.T) {
+	t.Skip("ADR-005 step 1 removed multi-candidate failover via PreResolved; coverage returns when the smart-routing engine owns provider failover (steps 2+3).")
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
@@ -384,6 +385,7 @@ model_routes:
 }
 
 func TestCLI_ModelIntentAutoRoutingSkipsUnhealthyDefaultAndChoosesBestHealthyProvider(t *testing.T) {
+	t.Skip("ADR-005 step 1 removed multi-candidate failover via PreResolved; smart-routing-driven provider skipping returns once ResolveRoute owns dispatch (steps 2+3).")
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()

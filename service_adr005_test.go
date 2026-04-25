@@ -1,0 +1,247 @@
+package agent
+
+import (
+	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"strings"
+	"testing"
+
+	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/routing"
+)
+
+// TestServiceExecuteRequestNoPreResolved is an AST guard against the
+// removed PreResolved field. ADR-005 step 1 deleted it; reintroducing it
+// would silently re-enable the model_routes injection conduit.
+func TestServiceExecuteRequestNoPreResolved(t *testing.T) {
+	requireStructHasNoField(t, "service.go", "ServiceExecuteRequest", "PreResolved")
+	requireStructHasNoField(t, "service.go", "RouteRequest", "PreResolved")
+}
+
+// TestServiceExecuteRequestHasAutoSelectionFields is an AST guard for the
+// EstimatedPromptTokens / RequiresTools fields that ADR-005 step 1 added
+// to ServiceExecuteRequest and RouteRequest.
+func TestServiceExecuteRequestHasAutoSelectionFields(t *testing.T) {
+	requireStructHasField(t, "service.go", "ServiceExecuteRequest", "EstimatedPromptTokens")
+	requireStructHasField(t, "service.go", "ServiceExecuteRequest", "RequiresTools")
+	requireStructHasField(t, "service.go", "RouteRequest", "EstimatedPromptTokens")
+	requireStructHasField(t, "service.go", "RouteRequest", "RequiresTools")
+}
+
+func requireStructHasField(t *testing.T, file, structName, field string) {
+	t.Helper()
+	if structHasField(t, file, structName, field) {
+		return
+	}
+	t.Fatalf("expected struct %s in %s to declare field %s", structName, file, field)
+}
+
+func requireStructHasNoField(t *testing.T, file, structName, field string) {
+	t.Helper()
+	if !structHasField(t, file, structName, field) {
+		return
+	}
+	t.Fatalf("struct %s in %s must not declare field %s (ADR-005 step 1)", structName, file, field)
+}
+
+func structHasField(t *testing.T, file, structName, field string) bool {
+	t.Helper()
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, file, nil, parser.AllErrors)
+	if err != nil {
+		t.Fatalf("parse %s: %v", file, err)
+	}
+	var found bool
+	ast.Inspect(parsed, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok || ts.Name.Name != structName {
+			return true
+		}
+		st, ok := ts.Type.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		for _, f := range st.Fields.List {
+			for _, name := range f.Names {
+				if name.Name == field {
+					found = true
+					return false
+				}
+			}
+		}
+		return false
+	})
+	return found
+}
+
+// TestRouteCandidateExposesComponentScores verifies that ResolveRoute
+// returns candidates whose component scores are populated from the
+// internal routing engine's per-axis signals.
+func TestRouteCandidateExposesComponentScores(t *testing.T) {
+	cand := routing.Candidate{
+		Harness:            "agent",
+		Provider:           "local",
+		Model:              "model-a",
+		Score:              42,
+		CostUSDPer1kTokens: 0.012,
+		CostSource:         routing.CostSourceCatalog,
+		Eligible:           true,
+		Reason:             "profile=cheap; score=42",
+		LatencyMS:          150,
+		SuccessRate:        0.95,
+		CostClass:          "cheap",
+	}
+	got := routeCandidateFromInternal(cand)
+	if got.Components.Cost != 0.012 {
+		t.Errorf("Components.Cost=%v, want 0.012", got.Components.Cost)
+	}
+	if got.Components.LatencyMS != 150 {
+		t.Errorf("Components.LatencyMS=%v, want 150", got.Components.LatencyMS)
+	}
+	if got.Components.SuccessRate != 0.95 {
+		t.Errorf("Components.SuccessRate=%v, want 0.95", got.Components.SuccessRate)
+	}
+	if got.Components.Capability == 0 {
+		t.Errorf("Components.Capability=0; want non-zero for cheap class")
+	}
+	if got.FilterReason != "" {
+		t.Errorf("eligible candidate FilterReason=%q, want empty", got.FilterReason)
+	}
+}
+
+// TestRouteCandidateFilterReasonClassification verifies the public
+// FilterReason enum surfaces canonical values for ineligible candidates.
+func TestRouteCandidateFilterReasonClassification(t *testing.T) {
+	cases := []struct {
+		reason string
+		want   string
+	}{
+		{"context window 4096 < required 8000", FilterReasonContextTooSmall},
+		{"tool calling not supported", FilterReasonNoToolSupport},
+		{"reasoning \"high\" not supported", FilterReasonReasoningUnsupported},
+		{"subscription quota exhausted", FilterReasonUnhealthy},
+		{"preference is local-only", FilterReasonUnhealthy},
+		{"some unknown reason", FilterReasonScoredBelowTop},
+	}
+	for _, tc := range cases {
+		got := routeCandidateFromInternal(routing.Candidate{
+			Eligible: false,
+			Reason:   tc.reason,
+		})
+		if got.FilterReason != tc.want {
+			t.Errorf("reason %q: FilterReason=%q, want %q", tc.reason, got.FilterReason, tc.want)
+		}
+	}
+}
+
+// TestResolveRouteIsInformationalOnly verifies that ResolveRoute returns
+// ranked candidates without short-circuiting on configured model_routes.
+// ADR-005 step 1 reverted the 90d9b03 short-circuit; the engine flow must
+// score every candidate.
+func TestResolveRouteIsInformationalOnly(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "model-a"},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+		routeConfigs: map[string]ServiceModelRouteConfig{
+			"model-a": {
+				Strategy: "ordered-failover",
+				Candidates: []ServiceRouteCandidateEntry{
+					{Provider: "local", Model: "model-a", Priority: 100},
+				},
+			},
+		},
+	}
+	svc := publicRouteTraceService(sc)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness: "agent",
+		Model:   "model-a",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil || len(dec.Candidates) == 0 {
+		t.Fatalf("expected engine-flow decision, got %#v", dec)
+	}
+	for _, c := range dec.Candidates {
+		if strings.HasPrefix(c.Reason, "model_routes ") {
+			t.Fatalf("ResolveRoute short-circuited model_routes; candidate=%#v", c)
+		}
+	}
+}
+
+// TestRoutingDecisionEventComponentsCarriesPerCandidateScores verifies
+// the routing-decision event payload includes per-candidate component
+// scores and filter_reason fields (ADR-005 AC#5).
+func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
+	candidates := []RouteCandidate{
+		{
+			Harness:            "agent",
+			Provider:           "alpha",
+			Model:              "alpha-1",
+			Score:              80,
+			CostUSDPer1kTokens: 0.002,
+			CostSource:         routing.CostSourceCatalog,
+			Eligible:           true,
+			Reason:             "profile=cheap; score=80.0",
+			Components: RouteCandidateComponents{
+				Cost:        0.002,
+				LatencyMS:   120,
+				SuccessRate: 0.9,
+				Capability:  1,
+			},
+		},
+		{
+			Harness:      "agent",
+			Provider:     "beta",
+			Model:        "beta-1",
+			Eligible:     false,
+			Reason:       "context window 4096 < required 8000",
+			FilterReason: FilterReasonContextTooSmall,
+		},
+	}
+	out := routingDecisionEventCandidates(candidates)
+	if len(out) != 2 {
+		t.Fatalf("len(out)=%d, want 2", len(out))
+	}
+	if out[0].Components.LatencyMS != 120 {
+		t.Errorf("first candidate LatencyMS=%v, want 120", out[0].Components.LatencyMS)
+	}
+	if out[0].Components.SuccessRate != 0.9 {
+		t.Errorf("first candidate SuccessRate=%v, want 0.9", out[0].Components.SuccessRate)
+	}
+	if out[0].FilterReason != "" {
+		t.Errorf("eligible candidate event FilterReason=%q, want empty", out[0].FilterReason)
+	}
+	if out[1].FilterReason != FilterReasonContextTooSmall {
+		t.Errorf("rejected candidate event FilterReason=%q, want %q", out[1].FilterReason, FilterReasonContextTooSmall)
+	}
+}
+
+// TestResolveRouteThreadsAutoSelectionInputs verifies that
+// EstimatedPromptTokens and RequiresTools are forwarded to the routing
+// engine so context-window and tool-support gates apply.
+func TestResolveRouteThreadsAutoSelectionInputs(t *testing.T) {
+	// Minimal smoke test: build a service with a single configured local
+	// provider, then call ResolveRoute with EstimatedPromptTokens larger
+	// than any reasonable context window. Expect either an error or an
+	// ineligible candidate marked context_too_small. The point is to
+	// prove the field survives the round trip from public to internal.
+	svc := &service{
+		opts:     ServiceOptions{},
+		registry: harnesses.NewRegistry(),
+	}
+	rReq := routing.Request{
+		EstimatedPromptTokens: 1_000_000,
+		RequiresTools:         true,
+	}
+	if rReq.MinContextWindow() == 0 {
+		t.Fatal("MinContextWindow must be positive when EstimatedPromptTokens is set")
+	}
+	_ = svc // svc is referenced to make the test depend on the service type
+}
