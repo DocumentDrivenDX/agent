@@ -793,8 +793,19 @@ func cmdRouteStatus(workDir string, args []string) int {
 	provider := fs.String("provider", "", "Pin a specific provider")
 	harness := fs.String("harness", "", "Pin a specific harness")
 	jsonOut := fs.Bool("json", false, "Output JSON")
+	overrides := fs.Bool("overrides", false, "Print override_class_breakdown over a time window (ADR-006). "+
+		"Operator-driven feedback loop; automatic learning is a future ADR. "+
+		"Buckets with high override count and high outcome success rate suggest auto-routing is "+
+		"picking suboptimally for that prompt class. Buckets with high override count and low "+
+		"outcome success rate suggest users are pinning out of habit; consider UI nudges.")
+	since := fs.String("since", "", "Time window for --overrides mode (Go duration, e.g. 24h, 168h). Default 7d (168h).")
+	axis := fs.String("axis", "", "With --overrides, filter breakdown rows to overrides on this axis (harness|provider|model).")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	if *overrides {
+		return cmdRouteStatusOverrides(workDir, *since, *axis, *jsonOut)
 	}
 
 	cfg, err := agentConfig.Load(workDir)
