@@ -5,6 +5,37 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.12] — 2026-04-26
+
+Operational/research release — scaffolds the harness-parity iteration loop
+that compares native agent vs pi on shared backings. Benchmark execution
+itself is in progress at tag time (long-running; ~3-8h wall-clock); results
++ winner declaration + top-3 gaps land in v0.9.13.
+
+### Added
+
+- **Beadbench arms for harness-parity comparison** on the same omlx vidar
+  Qwen3.6-27B-MLX-8bit backing, both with codex/gpt-5.5 reviewer pin:
+  `agent-omlx-vidar-qwen36` (native agent harness) and
+  `pi-omlx-vidar-qwen36` (pi harness via pi's anthropic-messages
+  config to vidar omlx). Pairs in the manifest so the runner produces
+  apples-to-apples comparison output. (`agent-bea748e7`)
+- **Research AR scaffolding for the parity benchmark.**
+  `docs/research/AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md` lands
+  with sections 1 (methodology — paired design, N≥8, reviewer pin, win
+  condition, tiebreaker) and 2 (pi-config evidence — the trailing-comma
+  JSON syntax fix and the openai-completions → anthropic-messages
+  switch that unblocked pi against omlx). Sections 3–5 (per-task
+  pairwise table, aggregate metrics, top-3 gaps) marked TBD pending the
+  benchmark run. (`agent-1bffdd79`)
+
+### Changed
+
+- **Harness-parity bead split into four children** matching the
+  iteration-loop structure: manifest arms (filed v0.9.12), doc skeleton
+  (filed v0.9.12), benchmark execution (in-flight at tag time), reactive
+  iteration tweak beads (filed after data lands).
+
 ## [v0.9.11] — 2026-04-26
 
 ADR-006 chain ships: manual overrides become first-class auto-routing
