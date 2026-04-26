@@ -5,6 +5,96 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.11] — 2026-04-26
+
+ADR-006 chain ships: manual overrides become first-class auto-routing
+failure signals. Plus the codex-design reasoning-variants chain
+(catalog fields → provider-wire enforcement → auto-resolution),
+selection-precedence spec amendments, and the AGENTS.md discipline
+sections that operationalize this session's learnings.
+
+### Added
+
+- **Override-as-failure-signal telemetry (ADR-006).** `Execute` now
+  emits `override` and `rejected_override` events when callers pin any
+  of `Harness`/`Provider`/`Model`. The override event captures both the
+  user-pinned decision and the unconstrained auto-decision (computed
+  via a second in-process `ResolveRoute` with override axes stripped),
+  so future routing improvements have data on where users disagree
+  with the optimizer. Per-axis tracking; coincidental agreement still
+  fires the event. (`agent-9fc2633c`, `agent-017b043f`,
+  `agent-79aedde2`)
+- **Routing-quality metrics on `RouteStatus` and `UsageReport`.**
+  `auto_acceptance_rate`, `override_disagreement_rate`, and
+  `override_class_breakdown` exposed as first-class metrics distinct
+  from per-(provider, model) provider reliability. UsageReport reads
+  from session logs over the `--since` window; RouteStatus uses the
+  in-memory ring. Both honor the new metric-vs-reliability separation
+  in their UI. (`agent-017b043f`)
+- **`ddx agent route-status --overrides --since DURATION` operator
+  surface.** Prints the override-class breakdown over the selected
+  window, with `--axis harness|provider|model` filter and `--json`
+  output. Help text references ADR-006. (`agent-79aedde2`)
+- **Catalog reasoning capability fields.** `ModelEntry` gains
+  `reasoning_levels []string`, `reasoning_control string`
+  (`tunable | fixed | none`), and `reasoning_wire string`
+  (`provider | model_id | none`). Eight manifest entries populated
+  covering all three control/wire cases. Captures the codex-design
+  distinction between tunable-effort and reasoning-variant models.
+  (`agent-a0160cde`)
+- **`Reasoning=auto` resolves to surface-policy default before
+  capability gate.** Routing engine looks up the target's
+  `reasoning_default` for the requested tier and uses it as the
+  resolved level for gating. Empty/unset `Reasoning` still bypasses
+  the gate. Forward-protection against future non-thinking variants
+  landing in higher tiers. (`agent-ba467996`)
+- **Spec selection-precedence section in CONTRACT-003.** Documents
+  pin precedence (Harness → Provider → Model → ModelRef → Profile)
+  with explicit hard/soft semantics and Profile's role as
+  cost-vs-time intent. Demoted to "implementation reference" per
+  ADR-006 — the user-facing surface is profile + auto, pins are
+  override hatches. (`9a04ad4`)
+- **AGENTS.md discipline sections.** Three new sections operationalize
+  this session's learnings: Review and Verification Discipline, Spec
+  Amendment Discipline, Bead Sizing and Cross-Repo Triage. Locks in
+  the local-verify-before-accept loop that caught real defects this
+  session. (`d7f2a1c`)
+- **AR-2026-04-25-routing-and-overrides alignment review.** Captures
+  the v0.9.9 / v0.9.10 / ADR-006 narrative through-line with seven
+  findings driving the discipline updates.
+
+### Fixed
+
+- **`rejected_override` events now persist to session log.** Pre-
+  dispatch validation failures (orphan model, unknown provider) emit
+  rejected_override events to both the channel and the session log so
+  UsageReport's window aggregation sees them. Prior implementation
+  broadcast-only, missing the persistent record. (`6c4340f`)
+- **Provider-wire enforcement for fixed-variant models.** The
+  openai-compat dispatch consults the resolved model's
+  `reasoning_wire` field. `model_id` mode strips the reasoning field
+  on the wire (model name is the encoding); `none` mode rejects
+  pre-flight when `Reasoning` is non-off. Closes a silent
+  OpenRouter-emits-reasoning-for-fixed-variant-Qwen bug codex flagged.
+  (`agent-b6b15fb0`)
+- **Pi+provider-pin model validation duplicated on engine path.** The
+  routing engine's `pinValidation` rejected pi+qwen with
+  `ErrHarnessModelIncompatible` even though `service_execute` had a
+  bypass for pi-with-explicit-provider. Mirrored the bypass in the
+  engine. (`605729c`)
+- **`TestListHarnesses_GeminiAccountAndUsageWindows` UTC-midnight
+  flake.** Test now uses an injected deterministic clock; passes 10/10
+  in repeat without time manipulation. (`0b22784`)
+
+### Changed
+
+- **Selection-precedence section in CONTRACT-003 demoted to
+  implementation reference.** Pin precedence prose stays accurate but
+  is no longer presented as the primary user-facing surface. ADR-006
+  reframes pins as override hatches; routine pinning for a given
+  prompt class is a routing-quality issue to file. (`9a04ad4`,
+  `c687caf`)
+
 ## [v0.9.10] — 2026-04-25
 
 Prompt-caching support lands across the public surface, the Anthropic provider,
