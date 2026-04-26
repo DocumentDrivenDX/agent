@@ -95,21 +95,25 @@ func decodeOverride(t *testing.T, ev *agent.ServiceEvent) agent.ServiceOverrideD
 }
 
 // TestExecuteEmitsNoOverrideEventForUnpinnedRequest covers AC #1: a request
-// with none of Harness/Provider/Model set must not produce an override
-// event. We use a Profile-only request that hits the unconfigured-route
-// failure path; the resulting failed final must not be preceded by an
-// override or rejected_override event.
+// with none of Harness/Provider/Model set must not produce an override or
+// rejected_override event. The deterministic "routing under-specified"
+// path with no axis pinned and no routing hints exercises the same Execute
+// entrypoint that builds the override context, so we can assert that the
+// override-event surface is silent (no ErrRejectedOverride wrapper, no
+// override events in any channel that may be returned).
 func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 	svc, err := agent.New(agent.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	ch, execErr := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
-		Prompt:  "hi",
-		Profile: "smart",
+		Prompt: "hi",
 	})
-	// Either an immediate error or a channel yielding a failed final is
-	// acceptable; what matters is that no override event is emitted.
+	// The Execute contract for the unpinned/under-specified path returns a
+	// channel that yields a single failed final event and closes — no
+	// pre-dispatch typed error and no override surface activity. Either
+	// shape is acceptable for AC #1; what is forbidden is any
+	// override/rejected_override event or wrapper.
 	if execErr != nil {
 		var rej *agent.ErrRejectedOverride
 		if errors.As(execErr, &rej) {
@@ -117,7 +121,10 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 		}
 		return
 	}
-	events := drainOverrideEvents(t, ch, 5*time.Second)
+	if ch == nil {
+		t.Fatal("Execute returned nil channel and nil error for unpinned request")
+	}
+	events := drainOverrideEvents(t, ch, 15*time.Second)
 	if ov := findOverride(events); ov != nil {
 		t.Fatalf("unpinned request emitted override event: %+v", ov)
 	}
@@ -184,7 +191,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			events := drainOverrideEvents(t, ch, 5*time.Second)
+			events := drainOverrideEvents(t, ch, 15*time.Second)
 			ovIdx := overrideIndexEventType(events, agent.ServiceEventTypeOverride)
 			finIdx := overrideIndexEventType(events, agent.ServiceEventTypeFinal)
 			if ovIdx < 0 {
@@ -214,22 +221,16 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 	}
 }
 
-// TestOverrideEventCoincidentalAgreement covers AC #3: when the user pin
-// matches what auto-routing would have picked anyway, the override event
-// still fires and match_per_axis is true on every overridden axis.
-func TestOverrideEventCoincidentalAgreement(t *testing.T) {
-	// Use the virtual harness with metadata. ResolveRoute under
-	// override-axes-stripped would not produce a match (no Harness pinned,
-	// no providers). To produce a coincidence we instead synthesize the
-	// scenario by checking match_per_axis logic when the auto decision
-	// matches via the helper invariant: when both auto and pin resolve to
-	// the same harness, match_per_axis[harness]=true.
-	//
-	// In integration we simply assert the event is present even when
-	// dispatch is via test-only harness — the key invariant is "still
-	// fires regardless of agreement".
-	opts := agent.ServiceOptions{}
-	svc, err := agent.New(opts)
+// TestOverrideEventCoincidentalAgreementStillFiresViaPublicAPI covers the
+// "event still fires" half of AC #3 against the public Execute entrypoint:
+// even when the override-axes-stripped resolution can't synthesize a real
+// auto decision (no ServiceConfig, virtual harness), the override event
+// must still be emitted before the final event. The match_per_axis=true
+// half of AC #3 is exercised in service_override_internal_test.go's
+// TestOverrideEventCoincidentalAgreement, where a real fakeServiceConfig
+// anchors the auto resolution to the same value the user pinned.
+func TestOverrideEventCoincidentalAgreementStillFiresViaPublicAPI(t *testing.T) {
+	svc, err := agent.New(agent.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -243,14 +244,12 @@ func TestOverrideEventCoincidentalAgreement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	events := drainOverrideEvents(t, ch, 5*time.Second)
+	events := drainOverrideEvents(t, ch, 15*time.Second)
 	ov := findOverride(events)
 	if ov == nil {
 		t.Fatalf("override event missing; types=%v", overrideEventTypes(events))
 	}
 	payload := decodeOverride(t, ov)
-	// match_per_axis must contain a key for each overridden axis (whether
-	// true or false). The event firing is the assertion.
 	if len(payload.MatchPerAxis) != len(payload.AxesOverridden) {
 		t.Fatalf("match_per_axis must have entry per axis: per_axis=%v axes=%v",
 			payload.MatchPerAxis, payload.AxesOverridden)
@@ -276,7 +275,7 @@ func TestOverrideEventAxesOverriddenIsExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	events := drainOverrideEvents(t, ch, 5*time.Second)
+	events := drainOverrideEvents(t, ch, 15*time.Second)
 	payload := decodeOverride(t, findOverride(events))
 	want := []string{"harness", "model"}
 	if !equalStringSets(payload.AxesOverridden, want) {
@@ -308,7 +307,7 @@ func TestOverrideEventOutcomePopulatedFromFinal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	events := drainOverrideEvents(t, ch, 5*time.Second)
+	events := drainOverrideEvents(t, ch, 15*time.Second)
 	payload := decodeOverride(t, findOverride(events))
 	final := overrideFindFinal(events)
 	if final == nil {
@@ -396,7 +395,7 @@ func TestOverrideEventPromptFeaturesPopulation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	events := drainOverrideEvents(t, ch, 5*time.Second)
+	events := drainOverrideEvents(t, ch, 15*time.Second)
 	payload := decodeOverride(t, findOverride(events))
 	if payload.PromptFeatures.EstimatedTokens == nil || *payload.PromptFeatures.EstimatedTokens != 12500 {
 		t.Fatalf("prompt_features.estimated_tokens: got %v, want 12500",

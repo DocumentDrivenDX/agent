@@ -178,6 +178,9 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
 		return nil, err
 	}
+	if err := validateExplicitProvider(s.opts.ServiceConfig, cfg, req.Provider); err != nil {
+		return nil, err
+	}
 	if err := validateExplicitHarnessModel(canonical, cfg, req.Model, req.Provider); err != nil {
 		return nil, err
 	}
@@ -235,7 +238,35 @@ func isExplicitPinError(err error) bool {
 		return true
 	}
 	var profileErr *ErrProfilePinConflict
-	return errors.As(err, &profileErr)
+	if errors.As(err, &profileErr) {
+		return true
+	}
+	var providerErr *ErrUnknownProvider
+	return errors.As(err, &providerErr)
+}
+
+// validateExplicitProvider rejects pre-dispatch when the caller pinned a
+// provider name that the service configuration does not recognize. Returns
+// nil when no provider was pinned, when no ServiceConfig is configured (no
+// provider catalog to validate against), when the provider name is known,
+// or when the harness is test-only / does not consume Provider (virtual,
+// script, etc. have no real provider lookup).
+func validateExplicitProvider(sc ServiceConfig, cfg harnesses.HarnessConfig, provider string) error {
+	if provider == "" || sc == nil {
+		return nil
+	}
+	if cfg.TestOnly {
+		return nil
+	}
+	lookup := provider
+	if base, _, ok := splitEndpointProviderRef(provider); ok {
+		lookup = base
+	}
+	if _, ok := sc.Provider(lookup); ok {
+		return nil
+	}
+	known := sc.ProviderNames()
+	return &ErrUnknownProvider{Provider: provider, KnownProviders: append([]string(nil), known...)}
 }
 
 func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, model, provider string) error {

@@ -12,7 +12,40 @@ var (
 	errNoProfileCandidate       = errors.New("agent: no profile candidate")
 	errUnknownProfile           = errors.New("agent: unknown profile")
 	errNoLiveProvider           = errors.New("agent: no live provider")
+	errUnknownProvider          = errors.New("agent: unknown provider")
 )
+
+// ErrUnknownProvider reports an explicit Provider pin that is not present in
+// the service configuration. This is a pre-dispatch pin failure: the caller
+// asked for a provider name that the service has no record of, so no route
+// can be constructed.
+type ErrUnknownProvider struct {
+	// Provider is the provider name supplied by the caller.
+	Provider string
+	// KnownProviders is the set of provider names the service knows about
+	// (empty when no ServiceConfig is configured).
+	KnownProviders []string
+}
+
+func (e ErrUnknownProvider) Error() string {
+	if len(e.KnownProviders) == 0 {
+		return fmt.Sprintf("unknown provider %q", e.Provider)
+	}
+	return fmt.Sprintf("unknown provider %q; known providers: %s", e.Provider, strings.Join(e.KnownProviders, ", "))
+}
+
+func (e ErrUnknownProvider) Is(target error) bool {
+	switch target.(type) {
+	case ErrUnknownProvider, *ErrUnknownProvider:
+		return true
+	default:
+		return errors.Is(errUnknownProvider, target)
+	}
+}
+
+func (e ErrUnknownProvider) Unwrap() error {
+	return errUnknownProvider
+}
 
 // DecisionWithCandidates is implemented by routing errors that retain the
 // evaluated candidate trace for a failed ResolveRoute call.
