@@ -137,7 +137,12 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 
 // TestExecuteEmitsOverrideEventBeforeFinal covers AC #2: any pinned axis
 // produces exactly one override event before the final event. Tested with
-// each axis individually (where dispatch can succeed) and in combination.
+// each axis combination dispatchable through the virtual harness.
+//
+// Pure provider-only and model-only cases (without Harness) cannot reach
+// successful dispatch — they pre-fail validation and emit
+// rejected_override instead. Those paths are covered by
+// TestRejectedOverrideOnUnknownProvider and TestRejectedOverrideEventOnOrphanModel.
 func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -154,6 +159,18 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 				},
 			},
 			wantAxes: []string{"harness"},
+		},
+		{
+			name: "harness_and_provider_virtual",
+			req: agent.ServiceExecuteRequest{
+				Prompt:   "hi",
+				Harness:  "virtual",
+				Provider: "synthetic",
+				Metadata: map[string]string{
+					"virtual.response": "ok",
+				},
+			},
+			wantAxes: []string{"harness", "provider"},
 		},
 		{
 			name: "harness_and_model_virtual",
