@@ -753,29 +753,32 @@ func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOver
 func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 	pc = normalizeProviderConfig(pc)
 	knownModels := openAIKnownModels()
+	modelWire := modelReasoningWireMap()
 	switch pc.Type {
 	case "openai":
 		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:        pc.BaseURL,
-			APIKey:         pc.APIKey,
-			Model:          pc.Model,
-			ProviderName:   "openai",
-			ProviderSystem: "openai",
-			ModelPattern:   pc.ModelPattern,
-			KnownModels:    knownModels,
-			Headers:        pc.Headers,
-			Reasoning:      pc.Reasoning,
-			Capabilities:   &oaiProvider.OpenAIProtocolCapabilities,
+			BaseURL:            pc.BaseURL,
+			APIKey:             pc.APIKey,
+			Model:              pc.Model,
+			ProviderName:       "openai",
+			ProviderSystem:     "openai",
+			ModelPattern:       pc.ModelPattern,
+			KnownModels:        knownModels,
+			Headers:            pc.Headers,
+			Reasoning:          pc.Reasoning,
+			Capabilities:       &oaiProvider.OpenAIProtocolCapabilities,
+			ModelReasoningWire: modelWire,
 		}), nil
 	case "openrouter":
 		return openrouter.New(openrouter.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
+			BaseURL:            pc.BaseURL,
+			APIKey:             pc.APIKey,
+			Model:              pc.Model,
+			ModelPattern:       pc.ModelPattern,
+			KnownModels:        knownModels,
+			Headers:            pc.Headers,
+			Reasoning:          pc.Reasoning,
+			ModelReasoningWire: modelWire,
 		}), nil
 	case "lmstudio":
 		return lmstudio.New(lmstudio.Config{
@@ -809,15 +812,16 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 		}), nil
 	case "minimax", "qwen", "zai":
 		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:        pc.BaseURL,
-			APIKey:         pc.APIKey,
-			Model:          pc.Model,
-			ProviderName:   pc.Type,
-			ProviderSystem: pc.Type,
-			ModelPattern:   pc.ModelPattern,
-			KnownModels:    knownModels,
-			Headers:        pc.Headers,
-			Reasoning:      pc.Reasoning,
+			BaseURL:            pc.BaseURL,
+			APIKey:             pc.APIKey,
+			Model:              pc.Model,
+			ProviderName:       pc.Type,
+			ProviderSystem:     pc.Type,
+			ModelPattern:       pc.ModelPattern,
+			KnownModels:        knownModels,
+			Headers:            pc.Headers,
+			Reasoning:          pc.Reasoning,
+			ModelReasoningWire: modelWire,
 		}), nil
 	case "anthropic":
 		return anthropic.New(anthropic.Config{
@@ -851,6 +855,27 @@ func openAIKnownModels() map[string]string {
 		return cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
 	}
 	return nil
+}
+
+// modelReasoningWireMap returns a model_id → reasoning_wire map sourced from
+// the embedded catalog. Models without an explicit reasoning_wire field are
+// omitted (the provider treats absence as the "provider" default).
+func modelReasoningWireMap() map[string]string {
+	cat, err := modelcatalog.Default()
+	if err != nil {
+		return nil
+	}
+	all := cat.AllModels()
+	if len(all) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(all))
+	for id, entry := range all {
+		if entry.ReasoningWire != "" {
+			out[id] = entry.ReasoningWire
+		}
+	}
+	return out
 }
 
 func rejectLegacyProviderReasoningKeys(data []byte) error {

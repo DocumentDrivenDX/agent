@@ -950,3 +950,92 @@ func TestNew_ExplicitProviderSystemControlsIdentity(t *testing.T) {
 	assert.Equal(t, "vidar", host)
 	assert.Equal(t, 1234, port)
 }
+
+// TestOpenAIRespectsReasoningWireModelID verifies that a model whose catalog
+// reasoning_wire is "model_id" (the model name encodes the reasoning level —
+// e.g. fixed-variant Qwen3.6 plus) does NOT receive a reasoning field on the
+// wire even when the caller passes Reasoning=high. The upstream endpoint for
+// such models cannot honor an external reasoning toggle, so emitting the
+// field would be silently ignored or rejected by the provider.
+func TestOpenAIRespectsReasoningWireModelID(t *testing.T) {
+	const model = "qwen/qwen3.6-plus"
+	body, err := captureOpenAIChatBodyWithReasoningWire(t, model, map[string]string{
+		model: "model_id",
+	}, agent.Options{Reasoning: agent.ReasoningHigh})
+	require.NoError(t, err)
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.NotContains(t, reqBody, "reasoning", "reasoning_wire=model_id must strip reasoning field: %s", string(body))
+	assert.NotContains(t, reqBody, "thinking")
+	assert.NotContains(t, reqBody, "enable_thinking")
+	assert.NotContains(t, reqBody, "thinking_budget")
+}
+
+// TestOpenAIRespectsReasoningWireProvider verifies that a model whose catalog
+// reasoning_wire is "provider" preserves the existing OpenRouter wire
+// behavior: the nested reasoning object is emitted with the requested effort.
+func TestOpenAIRespectsReasoningWireProvider(t *testing.T) {
+	const model = "anthropic/claude-sonnet-4.6"
+	body, err := captureOpenAIChatBodyWithReasoningWire(t, model, map[string]string{
+		model: "provider",
+	}, agent.Options{Reasoning: agent.ReasoningHigh})
+	require.NoError(t, err)
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	reasoning, ok := reqBody["reasoning"].(map[string]interface{})
+	require.True(t, ok, "reasoning_wire=provider must emit reasoning field: %s", string(body))
+	assert.Equal(t, "high", reasoning["effort"])
+}
+
+// TestOpenAIRejectsReasoningWireNoneWithLevel verifies that a model whose
+// catalog reasoning_wire is "none" (no reasoning surface at all) fails
+// pre-flight when the caller asks for an explicit non-off reasoning level —
+// surfacing the catalog/wire mismatch instead of silently dropping the
+// request.
+func TestOpenAIRejectsReasoningWireNoneWithLevel(t *testing.T) {
+	const model = "no-reasoning-model"
+	body, err := captureOpenAIChatBodyWithReasoningWire(t, model, map[string]string{
+		model: "none",
+	}, agent.Options{Reasoning: agent.ReasoningHigh})
+	require.Error(t, err)
+	assert.Nil(t, body, "request must not be sent when reasoning_wire=none rejects the call")
+	assert.Contains(t, err.Error(), "reasoning_wire=none")
+	assert.Contains(t, err.Error(), model)
+}
+
+// captureOpenAIChatBodyWithReasoningWire constructs an openrouter-style
+// provider (Thinking=true, OpenRouter wire format) with the given per-model
+// reasoning_wire metadata and returns the captured request body.
+func captureOpenAIChatBodyWithReasoningWire(t *testing.T, model string, modelWire map[string]string, opts agent.Options) ([]byte, error) {
+	t.Helper()
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"` + model + `",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+		}`))
+	}))
+	defer srv.Close()
+
+	caps := openai.OpenAIProtocolCapabilities
+	caps.Thinking = true
+	caps.ThinkingFormat = openai.ThinkingWireFormatOpenRouter
+
+	p := openai.New(openai.Config{
+		BaseURL:            srv.URL + "/v1",
+		APIKey:             "test",
+		Model:              model,
+		ProviderSystem:     "openrouter",
+		Capabilities:       &caps,
+		ModelReasoningWire: modelWire,
+	})
+	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
+	return capturedBody, err
+}

@@ -27,10 +27,11 @@ type Provider struct {
 	providerName     string
 	providerSystem   string
 	capabilities     *ProtocolCapabilities
-	usageCost        func(rawUsage string) (*agent.CostAttribution, bool)
-	serverAddress    string
-	serverPort       int
-	reasoningDefault reasoningpolicy.Reasoning
+	usageCost          func(rawUsage string) (*agent.CostAttribution, bool)
+	serverAddress      string
+	serverPort         int
+	reasoningDefault   reasoningpolicy.Reasoning
+	modelReasoningWire map[string]string
 
 	// lazy model discovery — runs at most once per Provider instance
 	discoverOnce     sync.Once
@@ -61,6 +62,13 @@ type Config struct {
 	// UsageCostAttribution extracts provider-owned gateway cost metadata from
 	// the raw usage object, when that provider reports one.
 	UsageCostAttribution func(rawUsage string) (*agent.CostAttribution, bool)
+	// ModelReasoningWire maps a concrete model ID to the catalog
+	// reasoning_wire value for that model. Recognized values are "provider"
+	// (default), "model_id" (model name encodes reasoning level — strip the
+	// reasoning field at serialization), and "none" (model has no reasoning
+	// surface — reject explicit non-off requests pre-flight). Models not
+	// listed default to "provider", preserving existing behavior.
+	ModelReasoningWire map[string]string
 }
 
 // New creates a new OpenAI-compatible provider.
@@ -89,9 +97,10 @@ func New(cfg Config) *Provider {
 		providerSystem:   providerSystem,
 		capabilities:     cfg.Capabilities,
 		usageCost:        cfg.UsageCostAttribution,
-		serverAddress:    serverAddress,
-		serverPort:       serverPort,
-		reasoningDefault: cfg.Reasoning,
+		serverAddress:      serverAddress,
+		serverPort:         serverPort,
+		reasoningDefault:   cfg.Reasoning,
+		modelReasoningWire: cfg.ModelReasoningWire,
 	}
 }
 
@@ -273,6 +282,25 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	if !policy.IsSet() || policy.Kind == reasoningpolicy.KindAuto {
 		return nil, nil
 	}
+
+	// Catalog reasoning_wire metadata gates the wire shape before any
+	// provider-specific encoding runs. Models flagged as reasoning_wire=none
+	// have no reasoning surface at all; an explicit non-off request is a
+	// catalog/wire mismatch and must surface as an error rather than be
+	// silently dropped. Models flagged as reasoning_wire=model_id encode the
+	// reasoning level in the model name (e.g. fixed-variant Qwen3.6) and the
+	// upstream endpoint cannot honor an external reasoning toggle, so the
+	// reasoning field must be stripped from the wire body.
+	switch p.modelReasoningWireFor(model) {
+	case "none":
+		if explicitRequest && !policy.IsExplicitOff() {
+			return nil, fmt.Errorf("openai: model %q has reasoning_wire=none; explicit reasoning=%q is not supported", model, policy.Value)
+		}
+		return nil, nil
+	case "model_id":
+		return nil, nil
+	}
+
 	if !p.SupportsThinking() {
 		if policy.IsExplicitOff() {
 			return nil, nil
@@ -336,6 +364,18 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	default:
 		return nil, fmt.Errorf("openai: unsupported thinking wire format %q for provider type %q", p.thinkingWireFormat(), p.providerSystem)
 	}
+}
+
+// modelReasoningWireFor returns the catalog reasoning_wire value for the
+// given model, defaulting to "provider" when the model is not catalog-known.
+// Returned values are normalized: only "model_id" and "none" trigger
+// catalog-driven wire overrides; everything else falls through to the
+// provider's protocol capability path.
+func (p *Provider) modelReasoningWireFor(model string) string {
+	if p.modelReasoningWire == nil || model == "" {
+		return ""
+	}
+	return p.modelReasoningWire[model]
 }
 
 func isQwenModel(model string) bool {

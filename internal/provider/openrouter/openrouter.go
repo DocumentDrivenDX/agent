@@ -26,13 +26,14 @@ var ProtocolCapabilities = openai.ProtocolCapabilities{
 }
 
 type Config struct {
-	BaseURL      string
-	APIKey       string
-	Model        string
-	ModelPattern string
-	KnownModels  map[string]string
-	Headers      map[string]string
-	Reasoning    reasoning.Reasoning
+	BaseURL            string
+	APIKey             string
+	Model              string
+	ModelPattern       string
+	KnownModels        map[string]string
+	Headers            map[string]string
+	Reasoning          reasoning.Reasoning
+	ModelReasoningWire map[string]string
 }
 
 func New(cfg Config) *openai.Provider {
@@ -52,6 +53,7 @@ func New(cfg Config) *openai.Provider {
 		Reasoning:            cfg.Reasoning,
 		Capabilities:         &ProtocolCapabilities,
 		UsageCostAttribution: UsageCostAttribution,
+		ModelReasoningWire:   cfg.ModelReasoningWire,
 	})
 }
 

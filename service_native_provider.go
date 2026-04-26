@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
+	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
 	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
@@ -159,6 +160,7 @@ func (s *service) availableProviderTypes() string {
 }
 
 func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {
+	modelWire := nativeModelReasoningWireMap()
 	switch normalizeServiceProviderType(entry.Type) {
 	case "anthropic":
 		return anthropic.New(anthropic.Config{
@@ -174,9 +176,10 @@ func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Prov
 		})
 	case "openrouter":
 		return openrouter.New(openrouter.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
+			BaseURL:            entry.BaseURL,
+			APIKey:             entry.APIKey,
+			Model:              entry.Model,
+			ModelReasoningWire: modelWire,
 		})
 	case "omlx":
 		return omlx.New(omlx.Config{
@@ -192,13 +195,36 @@ func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Prov
 		})
 	case "openai", "minimax", "qwen", "zai":
 		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:        entry.BaseURL,
-			APIKey:         entry.APIKey,
-			Model:          entry.Model,
-			ProviderName:   name,
-			ProviderSystem: normalizeServiceProviderType(entry.Type),
+			BaseURL:            entry.BaseURL,
+			APIKey:             entry.APIKey,
+			Model:              entry.Model,
+			ProviderName:       name,
+			ProviderSystem:     normalizeServiceProviderType(entry.Type),
+			ModelReasoningWire: modelWire,
 		})
 	default:
 		return nil
 	}
+}
+
+// nativeModelReasoningWireMap returns the catalog reasoning_wire map for use
+// by the native (service-side) provider builder. Models without an explicit
+// reasoning_wire are omitted; the provider treats absence as the "provider"
+// default.
+func nativeModelReasoningWireMap() map[string]string {
+	cat, err := modelcatalog.Default()
+	if err != nil {
+		return nil
+	}
+	all := cat.AllModels()
+	if len(all) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(all))
+	for id, entry := range all {
+		if entry.ReasoningWire != "" {
+			out[id] = entry.ReasoningWire
+		}
+	}
+	return out
 }
