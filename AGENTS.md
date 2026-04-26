@@ -115,3 +115,86 @@ Forbidden on execute-bead branches: `gh pr merge --squash`,
 `git filter-branch`, `git filter-repo`, and `git commit --amend` on
 any commit already in the trail.
 <!-- DDX-AGENTS:END -->
+
+## Review and Verification Discipline
+
+Worker close states (`success`, `already_satisfied`, `review_request_changes`,
+`review_block`) are not authoritative. Always run the bead's structural
+acceptance criteria locally before accepting a close.
+
+Two failure modes seen repeatedly:
+
+- **gpt-5.5 reviewers BLOCK on environmental test failures** —
+  `httptest.NewServer` cannot bind ports in the reviewer sandbox, so any
+  test using it fails the reviewer's local re-run even when the code is
+  correct. Verify locally; if the structural ACs pass and the reviewer's
+  cited failures are env-only (port binding, missing auth, etc.), the BLOCK
+  is a false positive. Close manually with a commit noting the false
+  positive.
+- **The harness's `already_satisfied` heuristic accepts "regression tests
+  pass" as the close condition** even when structural ACs aren't met.
+  Examples seen: AC promised "internal/routing.Candidate has typed
+  FilterReason field at the rejection site," regression tests passed,
+  bead closed — but the field had been added without changing the
+  rejection-site call. Reopen with `--append-notes` listing the specific
+  defects against the original AC.
+
+If structural ACs name specific test functions, those tests must run and
+pass. If they name a structural property (no field X, no import Y, file Z
+deleted), grep/AST-check the property holds. Don't trust outcome
+classifications; trust the property checks.
+
+## Spec Amendment Discipline
+
+Spec amendments must either:
+
+1. **Describe what the code already does** (descriptive) — verify by
+   citing file:line for every claim, or
+2. **Land in the same commit as the code change that makes the claim
+   true** (normative).
+
+Never amend a spec aspirationally — claiming behavior the code lacks
+creates a liability that future readers cite as truth. Codex flagged this
+pattern in this repo's spec history multiple times: a draft amendment
+claiming "Provider is a hard pin" when the code only hard-pinned under
+`Harness+Provider`; a draft "pre-dispatch HealthCheck re-validation" for
+behavior that wasn't implemented. Both would have been false specs once
+landed.
+
+When a surface is the wrong primary user-facing one but the underlying
+mechanics are accurate, **demote rather than rewrite**: add an
+"implementation reference" disclaimer paragraph above the existing prose,
+linking to the ADR that explains the right primary surface. ADR-006 is the
+canonical example — pin precedence stays accurate as implementation
+reference; profile-as-cost-vs-time is the new primary user surface.
+
+When in doubt about descriptive vs. normative, run a code-review pass
+(`ddx agent run --harness codex --model gpt-5.5 --prompt review-amendments.md`)
+before merging spec changes. Codex with gpt-5.5 has been reliable at
+catching code-vs-spec mismatch.
+
+## Bead Sizing and Cross-Repo Triage
+
+**Sizing.** A bead whose scope crosses CLI ↔ service ↔ engine boundaries,
+or one whose AC names ≥ 3 prescribed test files with rigor expectations,
+is too broad. The worker will correctly refuse to land partial work and
+return `already_satisfied` or `no_changes` with an analysis of the split.
+
+When that happens — or proactively, when filing — split into 3-4
+deps-chained sub-beads with sharper scope. Each sub-bead should land
+cleanly with a focused commit and reviewable AC. Recurring patterns:
+service-side change first, then CLI consumption, then test rigor; or
+public surface change → wiring → cleanup.
+
+**Cross-repo triage.** When a bug's actual fix surface lives in a sibling
+repo, don't let it sit half-owned. The pattern:
+
+1. File an explicit upstream bead in that repo's tracker with a sharp
+   principle in the description.
+2. Close the local bead as `tracked upstream` via
+   `ddx bead update --notes "Tracked upstream as <repo-id> ..."`.
+3. Cross-reference the upstream bead from the local close note.
+
+Common cross-repo surfaces from this repo: the `ddx` CLI (execute-loop,
+review pipeline, retry-pin propagation), upstream provider repos for
+catalog updates.
