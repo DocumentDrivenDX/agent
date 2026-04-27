@@ -5,7 +5,40 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
-## [v0.9.18] — 2026-04-27
+## [v0.9.19] — 2026-04-27
+
+Adds the `vllm` provider type and refines the ADR-007 §7 catalog-stale
+nudge to differentiate "server has a sane default" from "server will
+decode greedy."
+
+### Added
+
+- `internal/provider/vllm/` — full openai-compat capability set
+  (Tools / Stream / StructuredOutput) plus a new
+  `ImplicitGenerationConfig: true` flag declaring that the server
+  auto-applies the model's HuggingFace `generation_config.json` when
+  the request omits sampler fields. Default port 8000; APIKey optional
+  (vLLM accepts unauthenticated by default).
+- `openai.ProtocolCapabilities.ImplicitGenerationConfig` flag (no-op
+  default false). Captures the architectural distinction between
+  servers that pull HF model-card defaults (vllm) and those that ship
+  custom presets or strip generation_config.json at repackage time
+  (omlx, lmstudio, luce).
+- `agentConfig.ProviderImplicitGenerationConfig(providerType)` helper
+  for cmd/agent (which cannot import provider packages directly per
+  the import-boundary allowlist).
+- `samplingProfileNudgeMessageImplicit` — softer "note:" wording for
+  vllm: catalog profile would still be preferred but the server is
+  not decoding greedy without it.
+
+### Changed
+
+- `cmd/agent/main.go` nudge dispatch now picks message wording per
+  provider capability. omlx / lmstudio / luce / openai / openrouter
+  keep the loud "warning:" (their server fallback is decode-greedy or
+  worse). vllm gets the soft "note:".
+
+
 
 Promotes `luce` to a full openai-compat peer alongside lmstudio (:1234)
 and omlx (:1235). Upstream lucebox-hub gained tool calling, so the
