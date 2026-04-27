@@ -504,16 +504,12 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		CompactionReserveTokens: params.CompactionReserveTokens,
 		SelectedRoute:           params.SelectedRoute,
 		ResolvedModelRef:        params.ResolvedModelRef,
+		Temperature:             params.Temperature,
 		TopP:                    params.TopP,
 		TopK:                    params.TopK,
 		MinP:                    params.MinP,
 		RepetitionPenalty:       params.RepetitionPenalty,
-	}
-	if params.Temperature != nil {
-		req.Temperature = *params.Temperature
-	}
-	if params.Seed != nil {
-		req.Seed = *params.Seed
+		Seed:                    params.Seed,
 	}
 	return req
 }

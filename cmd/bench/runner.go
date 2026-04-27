@@ -92,13 +92,20 @@ func buildRunFunc(wd string, timeout time.Duration, maxCostUSD float64, baseSeed
 
 		start := time.Now()
 
+		// bench corpus runs pin temperature=0 + explicit seed for
+		// reproducibility (per CONTRACT-003 the wire emits 0 explicitly,
+		// distinct from "unset"). Per ADR-007 this is now a deliberate
+		// override — bench wants greedy decoding so its corpus comparisons
+		// are byte-stable across runs.
+		bTemp := float32(0)
+		bSeed := seed
 		req := agent.ServiceExecuteRequest{
 			Harness:     harness,
 			Model:       model,
 			Prompt:      prompt,
 			WorkDir:     wd,
-			Temperature: 0,
-			Seed:        seed,
+			Temperature: &bTemp,
+			Seed:        &bSeed,
 			// Use safe permissions for bench corpus tasks.
 			Permissions: "safe",
 		}

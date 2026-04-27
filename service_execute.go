@@ -813,11 +813,20 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	// cancelCtx — when read-only-tool-streak limit fires the callback
 	// cancels the context, the loop sees ctx.Done(), returns
 	// StatusCancelled, and we override the final to "stalled".
-	// Temperature: nil-means-unset (provider default applies). When
-	// req.Temperature is the zero float32 the historical behavior was to
-	// send 0 explicitly; preserve that, but a future ServiceExecuteRequest
-	// field can opt out via a sentinel if needed.
-	temperature := float64(req.Temperature)
+	// Temperature/Seed: per CONTRACT-003, nil means unset — omit from the
+	// wire so the server's default applies. The agent loop carries
+	// *float64 / int64 internally; we widen the float here and dereference
+	// Seed (which goes through openai-compat as the int64 zero-value
+	// sentinel — see internal/sdk/openaicompat/client.go).
+	var temperature *float64
+	if req.Temperature != nil {
+		t := float64(*req.Temperature)
+		temperature = &t
+	}
+	var seed int64
+	if req.Seed != nil {
+		seed = *req.Seed
+	}
 	loopReq := agentcore.Request{
 		Prompt:                req.Prompt,
 		SystemPrompt:          req.SystemPrompt,
@@ -829,12 +838,12 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		MaxIterations:         maxIter,
 		ResolvedModel:         actualModel,
 		SelectedProvider:      actualProvider,
-		Temperature:           &temperature,
+		Temperature:           temperature,
 		TopP:                  req.TopP,
 		TopK:                  req.TopK,
 		MinP:                  req.MinP,
 		RepetitionPenalty:     req.RepetitionPenalty,
-		Seed:                  req.Seed,
+		Seed:                  seed,
 		Reasoning:             effectiveReasoning(req.Reasoning),
 		NoStream:              req.NoStream,
 		MaxTokens:             req.MaxTokens,
@@ -1176,6 +1185,19 @@ func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Comp
 // re-uses the wall-clock-bounded ctx so PTY/orphan reaping is automatic
 // when our ctx (which already carries the request Timeout) cancels.
 func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, runner harnesses.Harness) {
+	// Wrapped harnesses (pi/codex/claude-code) pin samplers internally per
+	// ADR-007 §4. Per CONTRACT-003 our ServiceExecuteRequest carries pointer
+	// types; the harness ExecuteRequest still uses scalars. Dereference here
+	// — nil maps to the existing zero-value "unset" sentinel that adapters
+	// already ignore.
+	var hTemperature float32
+	if req.Temperature != nil {
+		hTemperature = *req.Temperature
+	}
+	var hSeed int64
+	if req.Seed != nil {
+		hSeed = *req.Seed
+	}
 	hReq := harnesses.ExecuteRequest{
 		Prompt:        req.Prompt,
 		SystemPrompt:  req.SystemPrompt,
@@ -1183,8 +1205,8 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 		Model:         decision.Model,
 		WorkDir:       req.WorkDir,
 		Permissions:   req.Permissions,
-		Temperature:   req.Temperature,
-		Seed:          req.Seed,
+		Temperature:   hTemperature,
+		Seed:          hSeed,
 		Reasoning:     adapterReasoning(req.Reasoning),
 		Timeout:       req.Timeout,
 		IdleTimeout:   req.IdleTimeout,

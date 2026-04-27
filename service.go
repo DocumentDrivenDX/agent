@@ -545,12 +545,12 @@ type ServiceExecuteRequest struct {
 	ModelRef          string
 	Profile           string
 	WorkDir           string
-	Temperature       float32
+	Temperature       *float32
 	TopP              *float64
 	TopK              *int
 	MinP              *float64
 	RepetitionPenalty *float64
-	Seed              int64
+	Seed              *int64
 	Reasoning         Reasoning
 	NoStream          bool
 	Permissions       string
