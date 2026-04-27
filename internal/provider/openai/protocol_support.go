@@ -24,6 +24,16 @@ type ProtocolCapabilities struct {
 	// should leave this false so reasoning controls silently no-op on
 	// non-matching models instead of failing the request.
 	StrictThinkingModelMatch bool
+	// ImplicitGenerationConfig declares that the inference server applies
+	// the model's HuggingFace `generation_config.json` automatically when
+	// the request omits sampler fields. vLLM does this by default; most
+	// other local servers (omlx, lmstudio, luce) ship custom presets and
+	// either ignore upstream defaults or replace them at repackage time
+	// (MLX / GGUF strip generation_config.json), which is why ADR-007's
+	// catalog sampling_profiles exist. Routing and the catalog-stale
+	// nudge use this flag to distinguish "server has a sane default" from
+	// "server will decode greedy" when no catalog profile is supplied.
+	ImplicitGenerationConfig bool
 }
 
 type ThinkingWireFormat string
@@ -91,4 +101,12 @@ func (p *Provider) thinkingWireFormat() ThinkingWireFormat {
 
 func (p *Provider) strictThinkingModelMatch() bool {
 	return p.protocolCapabilities().StrictThinkingModelMatch
+}
+
+// ImplicitGenerationConfig reports whether the provider's server applies a
+// model-card-derived sampler bundle (`generation_config.json`) when the
+// request omits sampler fields. Used by the agent CLI to tone the
+// catalog-stale nudge per ADR-007 §7.
+func (p *Provider) ImplicitGenerationConfig() bool {
+	return p.protocolCapabilities().ImplicitGenerationConfig
 }
