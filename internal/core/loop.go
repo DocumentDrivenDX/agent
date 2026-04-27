@@ -113,7 +113,17 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	})
 
 	seq := 1
-	opts := Options{Temperature: req.Temperature, Seed: req.Seed, MaxTokens: req.MaxTokens, Reasoning: req.Reasoning, CachePolicy: req.CachePolicy}
+	opts := Options{
+		Temperature:       req.Temperature,
+		TopP:              req.TopP,
+		TopK:              req.TopK,
+		MinP:              req.MinP,
+		RepetitionPenalty: req.RepetitionPenalty,
+		Seed:              req.Seed,
+		MaxTokens:         req.MaxTokens,
+		Reasoning:         req.Reasoning,
+		CachePolicy:       req.CachePolicy,
+	}
 
 	// Tool-call loop detection: abort when the same fingerprint repeats consecutively.
 	const toolCallLoopLimit = 3
@@ -268,16 +278,20 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				Type:      EventLLMRequest,
 				Timestamp: time.Now().UTC(),
 				Data: mustMarshal(map[string]any{
-					"attempt_index": attempt,
-					"messages":      providerMessages,
-					"tools":         toolDefs,
-					"model":         opts.Model,
-					"temperature":   opts.Temperature,
-					"max_tokens":    opts.MaxTokens,
-					"seed":          opts.Seed,
-					"stop":          opts.Stop,
-					"reasoning":     opts.Reasoning,
-					"cache_policy":  opts.CachePolicy,
+					"attempt_index":      attempt,
+					"messages":           providerMessages,
+					"tools":              toolDefs,
+					"model":              opts.Model,
+					"temperature":        opts.Temperature,
+					"top_p":              opts.TopP,
+					"top_k":              opts.TopK,
+					"min_p":              opts.MinP,
+					"repetition_penalty": opts.RepetitionPenalty,
+					"max_tokens":         opts.MaxTokens,
+					"seed":               opts.Seed,
+					"stop":               opts.Stop,
+					"reasoning":          opts.Reasoning,
+					"cache_policy":       opts.CachePolicy,
 				}),
 			})
 			seq++

@@ -813,6 +813,10 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	// cancelCtx — when read-only-tool-streak limit fires the callback
 	// cancels the context, the loop sees ctx.Done(), returns
 	// StatusCancelled, and we override the final to "stalled".
+	// Temperature: nil-means-unset (provider default applies). When
+	// req.Temperature is the zero float32 the historical behavior was to
+	// send 0 explicitly; preserve that, but a future ServiceExecuteRequest
+	// field can opt out via a sentinel if needed.
 	temperature := float64(req.Temperature)
 	loopReq := agentcore.Request{
 		Prompt:                req.Prompt,
@@ -826,6 +830,10 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		ResolvedModel:         actualModel,
 		SelectedProvider:      actualProvider,
 		Temperature:           &temperature,
+		TopP:                  req.TopP,
+		TopK:                  req.TopK,
+		MinP:                  req.MinP,
+		RepetitionPenalty:     req.RepetitionPenalty,
 		Seed:                  req.Seed,
 		Reasoning:             effectiveReasoning(req.Reasoning),
 		NoStream:              req.NoStream,

@@ -49,6 +49,21 @@ type ProviderConfig struct {
 	// automatic compaction: the compactor triggers when message history approaches
 	// this limit. Zero means use the compaction package default (8192).
 	ContextWindow int `yaml:"context_window,omitempty"`
+	// Sampling overrides the harness defaults for sampling parameters.
+	// Any nil/unset field falls through to harness/server defaults.
+	Sampling *SamplingProfile `yaml:"sampling,omitempty"`
+}
+
+// SamplingProfile is a named bundle of sampling overrides. Stored on
+// ProviderConfig (per-provider override) and intended to live on model
+// catalog entries (per-model recommendation) in a follow-up.
+type SamplingProfile struct {
+	Temperature       *float64 `yaml:"temperature,omitempty"`
+	TopP              *float64 `yaml:"top_p,omitempty"`
+	TopK              *int     `yaml:"top_k,omitempty"`
+	MinP              *float64 `yaml:"min_p,omitempty"`
+	RepetitionPenalty *float64 `yaml:"repetition_penalty,omitempty"`
+	Seed              *int64   `yaml:"seed,omitempty"`
 }
 
 // ProviderEndpoint describes one serving endpoint for providers that can run

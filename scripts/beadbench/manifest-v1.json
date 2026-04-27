@@ -201,6 +201,18 @@
       "rationale": "Native agent harness against bragi LM Studio qwen3.5-27b. Third server-side variation paired with omlx-vidar and openrouter for the same model family."
     },
     {
+      "id": "agent-omlx-vidar-qwen35-27b-recommended",
+      "harness": "agent",
+      "provider": "vidar-omlx-qwen-recommended",
+      "model": "Qwen3.5-27B-4bit",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "timeout_seconds": 7200,
+      "rationale": "Vidar OMLX Qwen3.5-27B-4bit with Qwen-recommended sampling (T=0.7, top_p=0.8, top_k=20, rep_penalty=1.05). Pairs with agent-omlx-vidar-qwen35-27b (greedy default) to isolate the sampling-stack contribution to the local-vs-cloud gap. omlx defaults to T=0 on omitted temperature; greedy decoding causes the exact-token loops observed in the prior run."
+    },
+    {
       "id": "agent-omlx-vidar-qwen35-27b-claude-distilled",
       "harness": "agent",
       "provider": "vidar-omlx",

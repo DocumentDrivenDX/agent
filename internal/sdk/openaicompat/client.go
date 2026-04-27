@@ -57,11 +57,21 @@ func NewClient(cfg Config) *Client {
 // Completions wire shape. ExtraOptions carries provider-owned extensions such
 // as non-standard reasoning/thinking fields.
 type RequestOptions struct {
-	MaxTokens    int
-	Temperature  *float64
-	Seed         int64
-	Stop         []string
-	ExtraOptions []option.RequestOption
+	MaxTokens int
+	// Temperature/TopP/TopK/MinP/RepetitionPenalty are sampling controls.
+	// TopP is OpenAI-standard; TopK / MinP / RepetitionPenalty are
+	// non-standard OpenAI-compat extras that omlx, lmstudio, vLLM, and
+	// llama.cpp accept as top-level body fields. Nil means unset
+	// (server default applies). RepetitionPenalty > 1.0 prevents
+	// exact-token loops.
+	Temperature       *float64
+	TopP              *float64
+	TopK              *int
+	MinP              *float64
+	RepetitionPenalty *float64
+	Seed              int64
+	Stop              []string
+	ExtraOptions      []option.RequestOption
 	// CachePolicy mirrors agent.Options.CachePolicy. The OpenAI-compatible
 	// protocol layer does not act on it today; it is plumbed so a future
 	// caching-aware OpenAI-style provider has a typed field to consume.
@@ -236,6 +246,9 @@ func buildParams(model string, messages []agent.Message, tools []agent.ToolDef, 
 	}
 	if opts.Temperature != nil {
 		params.Temperature = oai.Float(*opts.Temperature)
+	}
+	if opts.TopP != nil {
+		params.TopP = oai.Float(*opts.TopP)
 	}
 	if opts.Seed != 0 {
 		params.Seed = oai.Int(opts.Seed)

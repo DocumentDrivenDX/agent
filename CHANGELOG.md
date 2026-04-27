@@ -5,6 +5,60 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.15] — 2026-04-27
+
+Adds full sampling-parameter plumbing through the agent harness:
+`top_p`, `top_k`, `min_p`, `repetition_penalty` are now sent to
+OpenAI-compatible servers when set. Provider config gains a
+`sampling:` block so an operator can pin a sampling profile per
+provider without code changes. This unblocks the Qwen-on-omlx
+loop investigation: omlx defaults to T=0 (greedy) on omitted
+temperature, which causes deterministic exact-token repeats; the
+fix is to send the model-card-recommended stack.
+
+### Added
+
+- `agent.Options`: new fields `TopP`, `TopK`, `MinP`,
+  `RepetitionPenalty` (all `*<numeric>` with nil-means-unset
+  semantics). `core.Request` mirrors these and `core.loop` carries
+  them into `Options`. (`internal/core/agent.go`,
+  `internal/core/loop.go`)
+- `openaicompat.RequestOptions` accepts the new fields. `top_p` is
+  set on the OpenAI SDK params natively; `top_k` / `min_p` /
+  `repetition_penalty` ride as top-level body extras via
+  `option.WithJSONSet`. omlx, lmstudio, vLLM, and llama.cpp accept
+  these unconditionally; OpenAI proper silently ignores them.
+  (`internal/sdk/openaicompat/client.go`,
+  `internal/provider/openai/openai.go`)
+- `ServiceExecuteRequest` and the agent CLI's
+  `serviceExecuteRequestParams` accept the new fields, so callers
+  on the embedded service path (ddx execute-bead included) can
+  pass sampling through. (`service.go`, `service_execute.go`,
+  `cmd/agent/main.go`)
+- `config.ProviderConfig.Sampling` (new `SamplingProfile` type):
+  per-provider sampling override block in the operator config.
+  Applied in `cmd/agent/main.go` when no per-call override is
+  active. (`internal/config/config.go`, `cmd/agent/main.go`)
+- `llm.request` session events now log `top_p`, `top_k`, `min_p`,
+  `repetition_penalty` alongside the previous fields. Lets a
+  session log prove what each provider received.
+  (`internal/session/event.go`, `internal/core/loop.go`)
+- Beadbench runner honors per-arm `timeout_seconds` (vidar omlx
+  averages ~34s/turn vs openrouter's ~8.5s, so local-inference
+  arms need ~4× the wall budget for the same iteration cap).
+  (`scripts/beadbench/run_beadbench.py`)
+
+### Research
+
+- `docs/research/sampling-defaults-survey-2026-04-27.md`: per-server
+  default sampling and which non-standard fields each accepts
+  (omlx defaults to T=0; Ollama drops top_k/min_p/rep_penalty
+  silently on the OpenAI endpoint; vLLM defaults to T=1.0; the
+  catalog must key on (server, model-family) since GPT-OSS and
+  Qwen3 want opposite stacks).
+- `docs/research/provider-caching-survey-2026-04-27.md`: per-provider
+  prompt-cache surfaces (still in flight at tag time).
+
 ## [v0.9.14] — 2026-04-27
 
 Session-log instrumentation: capture sampling params and reasoning

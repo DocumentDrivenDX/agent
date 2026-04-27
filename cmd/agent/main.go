@@ -235,6 +235,28 @@ func run() int {
 	if cfg.CompactionPercent > 0 {
 		compactionCfg.EffectivePercent = cfg.CompactionPercent
 	}
+	// Apply provider-level sampling profile (config.yaml `providers.<name>.sampling`)
+	// when no per-call override is in scope. CLI flags / catalog profiles
+	// will layer on top in a follow-up.
+	var (
+		sTemp *float32
+		sTopP *float64
+		sTopK *int
+		sMinP *float64
+		sRep  *float64
+		sSeed *int64
+	)
+	if pc.Sampling != nil {
+		if pc.Sampling.Temperature != nil {
+			t := float32(*pc.Sampling.Temperature)
+			sTemp = &t
+		}
+		sTopP = pc.Sampling.TopP
+		sTopK = pc.Sampling.TopK
+		sMinP = pc.Sampling.MinP
+		sRep = pc.Sampling.RepetitionPenalty
+		sSeed = pc.Sampling.Seed
+	}
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  promptText,
 		SystemPrompt:            sysPrompt.Build(),
@@ -256,6 +278,12 @@ func run() int {
 		ReasoningStallTimeout:   reasoningStallTimeout,
 		CompactionContextWindow: resolvedContextWindow,
 		CompactionReserveTokens: compactionCfg.ReserveTokens,
+		Temperature:             sTemp,
+		TopP:                    sTopP,
+		TopK:                    sTopK,
+		MinP:                    sMinP,
+		RepetitionPenalty:       sRep,
+		Seed:                    sSeed,
 	})
 
 	result, err := executeViaService(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
@@ -401,6 +429,16 @@ type serviceExecuteRequestParams struct {
 	ReasoningStallTimeout   time.Duration
 	CompactionContextWindow int
 	CompactionReserveTokens int
+
+	// Sampling overrides. Nil/zero means leave-unset (let the request flow
+	// through the harness's effective defaults: today, Temperature is
+	// always sent as 0; the rest are unset).
+	Temperature       *float32
+	TopP              *float64
+	TopK              *int
+	MinP              *float64
+	RepetitionPenalty *float64
+	Seed              *int64
 }
 
 type cliExecutionResult struct {
@@ -466,6 +504,16 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		CompactionReserveTokens: params.CompactionReserveTokens,
 		SelectedRoute:           params.SelectedRoute,
 		ResolvedModelRef:        params.ResolvedModelRef,
+		TopP:                    params.TopP,
+		TopK:                    params.TopK,
+		MinP:                    params.MinP,
+		RepetitionPenalty:       params.RepetitionPenalty,
+	}
+	if params.Temperature != nil {
+		req.Temperature = *params.Temperature
+	}
+	if params.Seed != nil {
+		req.Seed = *params.Seed
 	}
 	return req
 }

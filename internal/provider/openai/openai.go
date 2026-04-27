@@ -229,13 +229,30 @@ func (p *Provider) compatRequestOptions(model string, opts agent.Options) (opena
 	if err != nil {
 		return openaicompat.RequestOptions{}, err
 	}
+	// Non-standard sampling fields (top_k, min_p, repetition_penalty) ride
+	// as top-level body extras on the OpenAI-compat wire. omlx, lmstudio,
+	// vLLM, and llama.cpp accept these unconditionally; OpenAI proper
+	// silently ignores them.
+	if opts.TopK != nil {
+		extra = append(extra, option.WithJSONSet("top_k", *opts.TopK))
+	}
+	if opts.MinP != nil {
+		extra = append(extra, option.WithJSONSet("min_p", *opts.MinP))
+	}
+	if opts.RepetitionPenalty != nil {
+		extra = append(extra, option.WithJSONSet("repetition_penalty", *opts.RepetitionPenalty))
+	}
 	return openaicompat.RequestOptions{
-		MaxTokens:    opts.MaxTokens,
-		Temperature:  opts.Temperature,
-		Seed:         opts.Seed,
-		Stop:         opts.Stop,
-		ExtraOptions: extra,
-		CachePolicy:  opts.CachePolicy,
+		MaxTokens:         opts.MaxTokens,
+		Temperature:       opts.Temperature,
+		TopP:              opts.TopP,
+		TopK:              opts.TopK,
+		MinP:              opts.MinP,
+		RepetitionPenalty: opts.RepetitionPenalty,
+		Seed:              opts.Seed,
+		Stop:              opts.Stop,
+		ExtraOptions:      extra,
+		CachePolicy:       opts.CachePolicy,
 	}, nil
 }
 

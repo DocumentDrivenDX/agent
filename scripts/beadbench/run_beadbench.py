@@ -400,10 +400,15 @@ def run_one(
         command = execute_command(bead_id, base_rev, arm, project_root=sandbox)
         result["planned_command"] = command
 
+        # Per-arm timeout override: local-inference arms run ~4× slower per
+        # iteration than cloud (vidar omlx ~34s/turn vs openrouter ~8.5s/turn
+        # on agent-beadbench-preflight). With max-iterations 200, vidar
+        # needs ~6800s minimum. Honor an arm-level timeout_seconds when set.
+        arm_timeout = arm.get("timeout_seconds") or args.timeout_seconds
         proc = run_cmd(
             command,
             cwd=sandbox,
-            timeout=args.timeout_seconds,
+            timeout=arm_timeout,
             check=False,
         )
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -430,7 +435,7 @@ def run_one(
                 artifact_dir,
                 task,
                 parsed,
-                args.timeout_seconds,
+                arm_timeout,
                 keep_worktree=args.keep_sandboxes,
             )
             result["verify"] = verify

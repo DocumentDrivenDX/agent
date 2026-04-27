@@ -537,19 +537,23 @@ type ServiceEvent = harnesses.Event
 // (§"Public types") for the canonical shape; this struct is its in-process
 // twin under the agent module.
 type ServiceExecuteRequest struct {
-	Prompt       string
-	SystemPrompt string
-	Model        string
-	Provider     string
-	Harness      string
-	ModelRef     string
-	Profile      string
-	WorkDir      string
-	Temperature  float32
-	Seed         int64
-	Reasoning    Reasoning
-	NoStream     bool
-	Permissions  string
+	Prompt            string
+	SystemPrompt      string
+	Model             string
+	Provider          string
+	Harness           string
+	ModelRef          string
+	Profile           string
+	WorkDir           string
+	Temperature       float32
+	TopP              *float64
+	TopK              *int
+	MinP              *float64
+	RepetitionPenalty *float64
+	Seed              int64
+	Reasoning         Reasoning
+	NoStream          bool
+	Permissions       string
 	// Tools overrides the built-in native agent tool set when Harness is
 	// "agent". Nil uses the native built-ins for ToolPreset and WorkDir.
 	Tools []Tool

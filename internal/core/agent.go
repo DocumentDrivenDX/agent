@@ -97,9 +97,16 @@ type Options struct {
 
 	Model       string   `json:"model,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
-	Seed        int64    `json:"seed,omitempty"`
-	MaxTokens   int      `json:"max_tokens,omitempty"`
-	Stop        []string `json:"stop,omitempty"`
+	TopP        *float64 `json:"top_p,omitempty"`
+	TopK        *int     `json:"top_k,omitempty"`
+	MinP        *float64 `json:"min_p,omitempty"`
+	// RepetitionPenalty is the OpenAI-compat field name; openai-compat
+	// servers (omlx, lmstudio, vLLM, OpenRouter) accept it as a top-level
+	// extra. >1.0 discourages exact repeats; 1.05–1.1 is typical for Qwen.
+	RepetitionPenalty *float64 `json:"repetition_penalty,omitempty"`
+	Seed              int64    `json:"seed,omitempty"`
+	MaxTokens         int      `json:"max_tokens,omitempty"`
+	Stop              []string `json:"stop,omitempty"`
 	// Reasoning controls model-side reasoning with one scalar value. Empty means
 	// unset; use ReasoningOff or ReasoningTokens(0) for explicit off.
 	Reasoning Reasoning `json:"reasoning,omitempty"`
@@ -327,6 +334,15 @@ type Request struct {
 	// Temperature is the model sampling temperature for each provider call.
 	// Nil means no explicit setting (provider default applies).
 	Temperature *float64
+
+	// TopP, TopK, MinP, RepetitionPenalty are model sampling fields that
+	// most OpenAI-compat servers (omlx, lmstudio, vLLM, OpenRouter) accept
+	// as top-level extras. Nil means no explicit setting (server default
+	// applies). Setting RepetitionPenalty > 1.0 prevents exact-token loops.
+	TopP              *float64
+	TopK              *int
+	MinP              *float64
+	RepetitionPenalty *float64
 
 	// Seed is an optional model sampling seed. Zero means unset/provider chooses.
 	Seed int64
