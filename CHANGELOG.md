@@ -5,7 +5,29 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
-## [v0.9.17] — 2026-04-27
+## [v0.9.18] — 2026-04-27
+
+Promotes `luce` to a full openai-compat peer alongside lmstudio (:1234)
+and omlx (:1235). Upstream lucebox-hub gained tool calling, so the
+provider's narrow Tools=false / StructuredOutput=false stance is no
+longer accurate — luce now participates in routing and benchmarks the
+same way the other local providers do.
+
+### Changed
+
+- `internal/provider/luce`: `ProtocolCapabilities` flips to
+  `Tools=true, Stream=true, StructuredOutput=true` (mirrors lmstudio).
+  Package and field doc-comments updated to reflect the full-peer
+  treatment; the previous "narrow surface" caveats are gone.
+- `internal/modelcatalog/catalog/models.yaml` — `luce-dflash` entry
+  drops `sampling_control: harness_pinned`, `reasoning_levels: [off]`,
+  `reasoning_control: none`, `reasoning_wire: none`. The model is now
+  treated as a normal openai-compat tier-`code-economy` entry; per-model
+  overrides only land back if a future observation shows the server
+  actually pins something.
+- `catalog_version`: `2026-04-27.2` → `2026-04-27.3`.
+
+
 
 Adds support for `luce`, a new provider type backed by the lucebox-hub
 DFlash speculative-decoding server
