@@ -180,6 +180,26 @@ type AttemptMetadata struct {
 22. Provider configuration exposes only `reasoning`; older split provider
     config names are rejected with a clear error.
 
+#### Sampling Defaults
+
+22a. Sampling parameters (`temperature`, `top_p`, `top_k`, `min_p`,
+     `repetition_penalty`) are **catalog policy**, not user configuration.
+     The model catalog carries named `sampling_profiles` bundles; the active
+     profile resolves through a precedence chain (catalog → per-provider
+     config → CLI) with per-field merge. Any field unset at every layer is
+     omitted from the wire so the server's own default applies — this is a
+     first-class outcome, not a fallback. See
+     [ADR-007](../../02-design/adr/ADR-007-sampling-profiles-in-catalog.md)
+     for the full design.
+22b. `ModelEntry.sampling_control` records whether the catalog values reach
+     the wire: `client_settable` (native agent path; values flow),
+     `harness_pinned` (subprocess harnesses pi/codex/claude-code; values are
+     metadata only), or `partial` (provider honors a subset; reserved).
+22c. The native agent default avoids greedy decoding (`temperature=0`) for
+     reasoning-capable models; the Qwen3 model cards explicitly warn that
+     greedy decoding under `enable_thinking=True` causes endless repetitions
+     and is the failure mode catalog-driven sampling exists to prevent.
+
 #### Model Auto-Discovery
 
 23. When `model` is empty in config, the provider queries `GET /v1/models`,

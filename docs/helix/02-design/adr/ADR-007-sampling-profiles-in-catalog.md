@@ -19,7 +19,9 @@ Field-omitted means the server picks. On oMLX (vidar, grendel) and on most OpenA
 
 Greedy decoding combined with reasoning-mode Qwen3.x models causes deterministic tool-call loops — the same tool invocation with the same arguments emits repeatedly until the harness's loop-detector aborts. This is the failure mode visible in the 2026-04-27 harness-parity run (`benchmark-results/beadbench/run-20260427T122221Z-1549045/`): four of five local arms failed before producing output, with the one that produced output failing on `agent: identical tool calls repeated, aborting loop`.
 
-The empirical fix is a non-greedy sampler bundle. Qwen3 model cards recommend roughly `T=0.6, top_p=0.95, top_k=20, repetition_penalty=1.05` for code generation. The plumbing to deliver this exists. What is missing is **policy** for where the values come from.
+The Qwen team's own Hugging Face model cards for the reasoning-capable Qwen3 family ([Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B), [Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B), [Qwen3-235B-A22B](https://huggingface.co/Qwen/Qwen3-235B-A22B)) include an explicit warning in the `enable_thinking=True` section: **"DO NOT use greedy decoding, as it can lead to performance degradation and endless repetitions."** Our bug is the harness doing exactly what the upstream guidance says not to.
+
+The empirical fix is a non-greedy sampler bundle. The [Qwen3.6-27B model card](https://huggingface.co/Qwen/Qwen3.6-27B) "Best Practices" section recommends `T=0.6, top_p=0.95, top_k=20` for thinking-mode precise-coding tasks, with `presence_penalty=0` and `repetition_penalty=1.0` (i.e., both penalties disabled). The plumbing to deliver these values exists. What is missing is **policy** for where the values come from.
 
 ## Decision
 
@@ -43,11 +45,11 @@ A per-`(model, profile)` override layer between L1 and L2 is **explicitly out of
 
 ### 3. Sampling composes with reasoning at the provider seam
 
-The resolver does not know what reasoning encoding will be sent on the wire, and reasoning-mode models often want different sampler bundles than non-thinking-mode runs of the same model. (Qwen3 thinking-mode behavior degrades under the same low-temperature sampler that is correct for non-thinking code generation.)
+The resolver does not know what reasoning encoding will be sent on the wire, and reasoning-mode models can want different sampler bundles than non-thinking-mode runs of the same model. To avoid the resolver and `reasoningRequestOptions` (`internal/provider/openai/openai.go:286`) silently fighting on the same request body, **the openai-compat provider is the single owner of final wire-field composition**. The provider receives the resolved sampling profile *and* the reasoning policy and is the canonical home for any future clipping or substitution rule.
 
-To avoid the resolver and `reasoningRequestOptions` (`internal/provider/openai/openai.go:286`) silently fighting on the same request body, **the openai-compat provider is the single owner of final wire-field composition**. The provider receives the resolved sampling profile *and* the reasoning policy and is responsible for any clipping or substitution when reasoning is active.
+For v1, the seam ships **without an active composition rule**: the seeded `code` profile (`T=0.6, top_p=0.95, top_k=20`) happens to match Qwen's published "thinking-mode precise-coding" recommendation exactly, and is also non-greedy enough to be safe in the non-thinking-mode case (slightly off the upstream non-thinking optimum, but never in the loop-inducing regime). The provider seam is established as the architectural home for `(model_family × reasoning_state × profile)` clipping; it just doesn't have a rule to apply yet. When a future profile adds a value that diverges between thinking and non-thinking states for some family, the rule lives at the seam — not in the resolver, not in the catalog.
 
-This keeps the catalog flat (one `sampling_profiles.code` bundle, not a `code` × thinking-state matrix) and concentrates the interaction logic at one site.
+This keeps the catalog flat (one `sampling_profiles.code` bundle, not a `code` × thinking-state matrix) and concentrates the interaction logic at one site when it appears.
 
 ### 4. Wrapped harnesses do not honor catalog sampling
 

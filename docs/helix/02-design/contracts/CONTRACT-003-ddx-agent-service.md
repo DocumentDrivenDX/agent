@@ -218,8 +218,19 @@ type ExecuteRequest struct {
     Harness      string  // optional preference (hard); empty = router decides
     Profile      string  // optional named routing policy bundle: cheap/standard/smart/custom
     ModelRef     string  // optional alias from the catalog: cheap/standard/smart/<custom>
-    Temperature  float32 // model sampling temperature; 0 = deterministic
-    Seed         int64   // sampling seed; 0 = unset/provider chooses
+    // Sampling controls. All five sampler fields use pointer types so that
+    // nil means "unset — defer to lower layers / server defaults" and any
+    // concrete value (including 0) means "send this on the wire". See ADR-007
+    // for the full resolution chain (catalog sampling_profiles → providers.*
+    // .sampling → CLI). Direct callers may set these fields explicitly; the
+    // CLI populates them from internal/sampling.Resolve before constructing
+    // the request.
+    Temperature       *float32 // model sampling temperature; nil = unset
+    TopP              *float64 // nucleus sampling cutoff; nil = unset
+    TopK              *int     // top-k sampling cutoff; nil = unset
+    MinP              *float64 // min-p sampling cutoff; nil = unset
+    RepetitionPenalty *float64 // repetition penalty (>1.0 penalizes); nil = unset
+    Seed              *int64   // sampling seed; nil = unset/provider chooses
     Reasoning    Reasoning // optional; auto|off|low|medium|high|minimal|xhigh|max|<tokens>
     Permissions  string  // "safe" | "supervised" | "unrestricted"; default "safe"
     WorkDir      string  // required when the chosen harness uses tools
@@ -1219,12 +1230,30 @@ these defaults, including supported values above high such as `xhigh` or
 
 ## Sampling contract
 
-`ExecuteRequest.Temperature` and `ExecuteRequest.Seed` are the portable
-sampling controls. `Temperature=0` requests deterministic sampling. `Seed=0`
-means unset and lets the provider choose. Native OpenAI-compatible providers
-honor both fields. Providers or subprocess harnesses that do not expose an
-equivalent seed control may ignore `Seed`; callers that require strict parity
-must treat those runs as advisory/non-deterministic.
+`ExecuteRequest` carries six pointer-typed sampling fields: `Temperature`,
+`TopP`, `TopK`, `MinP`, `RepetitionPenalty`, and `Seed`. Each field uses a
+pointer so `nil` is a first-class "unset — let lower layers or the server
+decide" state distinct from any concrete value (notably distinct from `0`,
+which is a meaningful greedy-decoding request).
+
+Per [ADR-007](../adr/ADR-007-sampling-profiles-in-catalog.md), sampling values
+are catalog policy and resolve through a precedence chain before the request
+reaches the service:
+
+1. **Catalog `sampling_profiles`** (manifest top level, named bundles).
+2. **`providers.<name>.sampling`** in user config (per-provider override).
+3. **CLI flags** (deferred — not in v1).
+
+Higher layers stomp lower layers **per field, not per bundle**. Any field nil
+at every layer is omitted from the wire and the server's own default applies.
+
+Native OpenAI-compatible providers honor all six fields. Anthropic Messages
+honors `Temperature`/`TopP`/`TopK` only; other fields are silently dropped at
+the provider seam. Subprocess harnesses (pi, codex, claude-code) do not honor
+catalog sampling — they pin samplers internally; the catalog's
+`ModelEntry.sampling_control` records this with `harness_pinned`. Callers
+requiring strict deterministic parity should note that the oMLX server
+silently ignores `Seed` (empirical, 2026-04-27).
 
 ## Bead Execution Policy
 
