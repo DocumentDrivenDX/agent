@@ -158,6 +158,25 @@ vLLM serving the same weights typically emits a tool_call with a fabricated/best
 
 This becomes moot once Gap 1 is fixed — clients can pass `tool_choice:"required"` to force a call.
 
+## 🟡 Gap 3 — Blackwell-consumer (sm_120) perf unverified
+
+Bragi is a **mobile RTX 5090** (Blackwell consumer, sm_120, 24 GB VRAM — same VRAM as the 3090 reference; different SM architecture). The upstream README explicitly notes:
+
+- "**Perf numbers (207 tok/s demo, 129.5 HumanEval, 2.8× vs SGLang AWQ) are RTX 3090 @ stock. Blackwell/Ada not yet swept, PRs with `RESULTS.md` entries welcome.**"
+- The `budget=22` DDTree parameter was tuned for 3090 + Q4_K_M + 24 GB.
+
+Empirical: under our agent harness (Tier-2 grading, 8 prompts, minimal preset), lucebox on this 5090-mobile measured **mean 114.8 s per prompt** — **7× slower than omlx's Apple Silicon path serving the same Qwen3.6-27B-class model, 23× slower than the openrouter cloud baseline.** All 8 prompts pass with correct content; the issue is throughput, not quality.
+
+Not surprising given the README caveat — same VRAM as 3090 but Blackwell kernels (sm_120) haven't been benchmark-swept. The three custom CUDA kernels (`ggml_ssm_conv_tree`, `ggml_gated_delta_net_tree`, `ggml_gated_delta_net_tree_persist`) are the natural place to look for SM-architecture sensitivity.
+
+**Suggested:** a sm_120 sweep against the same `Qwen3.6-27B-Q4_K_M.gguf` reference task set. We can re-run our Tier-2 + Tier-3 (beadbench) on bragi against any tuned `budget=` value the lucebox team publishes — happy to be a public Blackwell datapoint.
+
+## 🟡 Gap 4 — Server stability under sustained load
+
+Observed twice today during conformance + Tier-2 runs: under a burst of ~5+ chat requests in quick succession (with thinking-mode reasoning emitting long traces), the server enters a state where `/v1/chat/completions` returns either HTTP 500 or `finish_reason:"stop"` with empty `content` and `completion_tokens:0`, while `/v1/models` continues to respond normally. A server restart restores chat functionality immediately.
+
+Pattern fits a dflash subprocess crash that the FastAPI handler doesn't detect or restart. Not blocking for our integration (we wait for the next restart), but worth a watchdog or process-supervisor on the daemon side so the client sees a 500/503 it can retry against rather than empty success responses.
+
 ## 📝 Minor observation — `content` is `null` not `""`
 
 When the response carries a tool_call, `message.content` is `null` (JSON null, not omitted, not empty string). OpenAI spec allows either. Most clients handle both, but some assume `string` and treat null as a parse error. Our Go SDK handles it; flagging because openai-python and a few JS clients have had bugs here.
