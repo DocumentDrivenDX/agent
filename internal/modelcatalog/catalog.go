@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	"github.com/DocumentDrivenDX/agent/internal/sampling"
 )
 
 // Surface identifies the consumer-specific naming surface for a model target.
@@ -286,6 +287,14 @@ func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
 		}
 	}
 	return out
+}
+
+// SamplingProfile returns the catalog-defined sampling-parameter bundle for
+// the given profile name (e.g., "code"). The second return value is false
+// when the profile is not declared in the manifest. See ADR-007.
+func (c *Catalog) SamplingProfile(name string) (sampling.Profile, bool) {
+	p, ok := c.manifest.SamplingProfiles[name]
+	return p, ok
 }
 
 // LookupModel returns the ModelEntry for the given model ID from the top-level

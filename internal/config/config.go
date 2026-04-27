@@ -14,6 +14,7 @@ import (
 
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/agent/internal/sampling"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
@@ -54,17 +55,11 @@ type ProviderConfig struct {
 	Sampling *SamplingProfile `yaml:"sampling,omitempty"`
 }
 
-// SamplingProfile is a named bundle of sampling overrides. Stored on
-// ProviderConfig (per-provider override) and intended to live on model
-// catalog entries (per-model recommendation) in a follow-up.
-type SamplingProfile struct {
-	Temperature       *float64 `yaml:"temperature,omitempty"`
-	TopP              *float64 `yaml:"top_p,omitempty"`
-	TopK              *int     `yaml:"top_k,omitempty"`
-	MinP              *float64 `yaml:"min_p,omitempty"`
-	RepetitionPenalty *float64 `yaml:"repetition_penalty,omitempty"`
-	Seed              *int64   `yaml:"seed,omitempty"`
-}
+// SamplingProfile is the canonical sampling-overrides bundle. The type
+// itself lives in internal/sampling so model-catalog entries and provider
+// config can share it without a circular import; this alias preserves the
+// existing config.SamplingProfile spelling for callers.
+type SamplingProfile = sampling.Profile
 
 // ProviderEndpoint describes one serving endpoint for providers that can run
 // across multiple host:port locations.

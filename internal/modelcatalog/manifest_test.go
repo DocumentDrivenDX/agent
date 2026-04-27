@@ -146,3 +146,89 @@ targets:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reasoning_wire")
 }
+
+func TestManifestPreservesSamplingProfilesAndControl(t *testing.T) {
+	src := `
+version: 4
+generated_at: 2026-04-27T00:00:00Z
+sampling_profiles:
+  code:
+    temperature: 0.6
+    top_p: 0.95
+    top_k: 20
+models:
+  client-settable-default:
+    family: example
+    status: active
+    surfaces:
+      agent.anthropic: client-settable-default
+  pinned-by-harness:
+    family: example
+    status: active
+    sampling_control: harness_pinned
+    surfaces:
+      claude-code: pinned-by-harness
+profiles:
+  default:
+    target: example-tier
+targets:
+  example-tier:
+    family: example
+    aliases: [ex]
+    candidates: [client-settable-default, pinned-by-harness]
+    surfaces:
+      agent.anthropic: client-settable-default
+`
+	path := writeFixtureManifest(t, src)
+	catalog, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.NoError(t, err)
+
+	codeProfile, ok := catalog.SamplingProfile("code")
+	require.True(t, ok, "code profile present")
+	require.NotNil(t, codeProfile.Temperature)
+	assert.InDelta(t, 0.6, *codeProfile.Temperature, 1e-9)
+	require.NotNil(t, codeProfile.TopP)
+	assert.InDelta(t, 0.95, *codeProfile.TopP, 1e-9)
+	require.NotNil(t, codeProfile.TopK)
+	assert.Equal(t, 20, *codeProfile.TopK)
+	assert.Nil(t, codeProfile.MinP, "min_p unset → nil, distinct from 0")
+	assert.Nil(t, codeProfile.RepetitionPenalty, "rep_penalty unset → nil")
+
+	_, ok = catalog.SamplingProfile("nonexistent")
+	assert.False(t, ok)
+
+	models := catalog.AllModels()
+	defaulted := models["client-settable-default"]
+	assert.Equal(t, "", defaulted.SamplingControl, "field unset on YAML preserves empty string default")
+
+	pinned := models["pinned-by-harness"]
+	assert.Equal(t, SamplingControlHarnessPinned, pinned.SamplingControl)
+}
+
+func TestManifestRejectsInvalidSamplingControl(t *testing.T) {
+	src := `
+version: 4
+generated_at: 2026-04-27T00:00:00Z
+models:
+  bad-control:
+    family: example
+    status: active
+    sampling_control: nonsense
+    surfaces:
+      agent.anthropic: bad-control
+profiles:
+  default:
+    target: example-tier
+targets:
+  example-tier:
+    family: example
+    aliases: [ex]
+    candidates: [bad-control]
+    surfaces:
+      agent.anthropic: bad-control
+`
+	path := writeFixtureManifest(t, src)
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sampling_control")
+}

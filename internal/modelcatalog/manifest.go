@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	"github.com/DocumentDrivenDX/agent/internal/sampling"
 	"gopkg.in/yaml.v3"
 )
 
@@ -59,6 +60,15 @@ type ModelEntry struct {
 	ReasoningLevels    []string                    `yaml:"reasoning_levels,omitempty"`
 	ReasoningControl   string                      `yaml:"reasoning_control,omitempty"`
 	ReasoningWire      string                      `yaml:"reasoning_wire,omitempty"`
+	// SamplingControl declares whether catalog sampling_profiles reach the
+	// wire for runs that resolve to this model. See ADR-007 §4.
+	//   client_settable (default) — provider honors all five sampler fields.
+	//   harness_pinned             — wrapped harness pins samplers internally;
+	//                                 the resolver short-circuits to a
+	//                                 zero-value bundle.
+	//   partial                    — provider honors a subset (reserved; not
+	//                                 enforced in v1).
+	SamplingControl string `yaml:"sampling_control,omitempty"`
 }
 
 // Reasoning capability control values.
@@ -72,6 +82,13 @@ const (
 	ReasoningWireNone     = "none"
 )
 
+// Sampling-control values for ModelEntry.SamplingControl. See ADR-007 §4.
+const (
+	SamplingControlClientSettable = "client_settable"
+	SamplingControlHarnessPinned  = "harness_pinned"
+	SamplingControlPartial        = "partial"
+)
+
 type manifest struct {
 	Version        int                     `yaml:"version"`
 	GeneratedAt    string                  `yaml:"generated_at"`
@@ -79,6 +96,10 @@ type manifest struct {
 	Models         map[string]ModelEntry   `yaml:"models,omitempty"`
 	Profiles       map[string]profileEntry `yaml:"profiles"`
 	Targets        map[string]targetEntry  `yaml:"targets"`
+	// SamplingProfiles is a map from profile name (e.g., "code") to a named
+	// bundle of sampling-parameter overrides. Profile bundles are the L1
+	// layer of the resolution chain; see ADR-007.
+	SamplingProfiles map[string]sampling.Profile `yaml:"sampling_profiles,omitempty"`
 }
 
 type profileEntry struct {
@@ -381,6 +402,11 @@ func validateManifest(m manifest) error {
 		case "", ReasoningWireProvider, ReasoningWireModelID, ReasoningWireNone:
 		default:
 			return fmt.Errorf("model %q has invalid reasoning_wire %q (must be one of provider, model_id, none)", modelID, model.ReasoningWire)
+		}
+		switch model.SamplingControl {
+		case "", SamplingControlClientSettable, SamplingControlHarnessPinned, SamplingControlPartial:
+		default:
+			return fmt.Errorf("model %q has invalid sampling_control %q (must be one of client_settable, harness_pinned, partial)", modelID, model.SamplingControl)
 		}
 	}
 
