@@ -7,17 +7,18 @@
 
 ## Headline
 
-| Target | Pass rate | Mean total | Range | Mean output tok |
-|---|---|---|---|---|
-| openrouter qwen/qwen3.6-plus | **8/8 = 100%** | **4.9 s** | 4.0–7.7 s | 60.6 |
-| vidar omlx Qwen3.6-27B-MLX-8bit | 8/8 = 100% | 16.0 s | 12.1–19.9 s | 79.6 |
-| grendel-omlx Qwen3.6-27B-MLX-8bit | 8/8 = 100% | 33.7 s | 24.8–57.6 s | 69.0 |
-| grendel-omlx Qwen3.6-27B-UD-MLX-4bit | 8/8 = 100% | 35.7 s | 23.5–54.4 s | 81.4 |
-| bragi lucebox Qwen3.6-27B-Q4_K_M | 8/8 = 100% | 114.8 s | 11.1–168.0 s | 88.5 |
+| Target | Hardware | Pass rate | Mean total | Range | Mean output tok |
+|---|---|---|---|---|---|
+| openrouter qwen/qwen3.6-plus | cloud (Alibaba) | **8/8 = 100%** | **4.9 s** | 4.0–7.7 s | 60.6 |
+| **bragi lmstudio qwen/qwen3.6-27b** | **5090-mobile, 24 GB** | **8/8 = 100%** | **5.2 s** | 3.8–7.5 s | 66.4 |
+| vidar omlx Qwen3.6-27B-MLX-8bit | Apple Silicon (M-class) | 8/8 = 100% | 16.0 s | 12.1–19.9 s | 79.6 |
+| grendel-omlx Qwen3.6-27B-MLX-8bit | Apple Silicon (M1 Max 64 GB) | 8/8 = 100% | 33.7 s | 24.8–57.6 s | 69.0 |
+| grendel-omlx Qwen3.6-27B-UD-MLX-4bit | Apple Silicon (M1 Max 64 GB) | 8/8 = 100% | 35.7 s | 23.5–54.4 s | 81.4 |
+| bragi lucebox Qwen3.6-27B-Q4_K_M | 5090-mobile, 24 GB | 8/8 = 100% | 114.8 s | 11.1–168.0 s | 88.5 |
 
-**Quality:** all 5 targets correctly answered all 8 prompt categories (factual, math, reasoning-math, simple-instruction, code-py, json-out, structured-tool-shape, code-bug). The agent harness frames Qwen3.6 well enough that quality variance across these targets is not the discriminator.
+**Quality:** all 6 targets correctly answered all 8 prompt categories (factual, math, reasoning-math, simple-instruction, code-py, json-out, structured-tool-shape, code-bug). The agent harness frames Qwen3.6 well enough that quality variance across these targets is not the discriminator.
 
-**Speed: cloud ≫ vidar (omlx) ≫ grendel (omlx) ≈ grendel-4bit (omlx) ≫ lucebox.**
+**Speed: cloud ≈ bragi-lmstudio ≫ vidar (omlx) ≫ grendel (omlx) ≈ grendel-4bit (omlx) ≫ bragi-lucebox.**
 
 ## Per-prompt detail
 
@@ -67,11 +68,33 @@ bragi lucebox q4_k_m        code-py              164.4s   159
 bragi lucebox q4_k_m        json-out             148.1s    60
 bragi lucebox q4_k_m        structured-tool-shape 168.0s    90
 bragi lucebox q4_k_m        code-bug             156.9s   111
+
+bragi lmstudio q3.6-27b     factual                4.3s    30
+bragi lmstudio q3.6-27b     math                   5.0s    63
+bragi lmstudio q3.6-27b     reasoning-math         7.5s   133
+bragi lmstudio q3.6-27b     simple-instruction     3.9s    29
+bragi lmstudio q3.6-27b     code-py                6.1s    96
+bragi lmstudio q3.6-27b     json-out               3.8s    28
+bragi lmstudio q3.6-27b     structured-tool-shape  4.8s    60
+bragi lmstudio q3.6-27b     code-bug               5.9s    92
 ```
 
 Inputs were uniformly ~3500 tokens — the agent's minimal-preset overhead (system prompt + tools + scaffold) dominates, and is identical across targets. Cost-per-prompt comparison is therefore on output tokens + provider rate.
 
 ## Observations
+
+### 0. Bragi same-hardware A/B isolates the runtime: LM Studio is 22× faster than lucebox
+
+Same machine (mobile 5090, 24 GB), same model class (Qwen3.6-27B Q4_K_M-tier GGUF), different runtime:
+
+| Runtime | Mean total | tok/s implied | Notes |
+|---|---|---|---|
+| LM Studio (llama.cpp) | 5.2 s | ~13 | Quality identical, latency competitive with cloud baseline |
+| lucebox dflash | 114.8 s | ~0.8 | DDTree speculative decoding; sm_120 unswept upstream |
+
+**This is the critical local result.** The lucebox slowness is *not* a hardware problem — vanilla llama.cpp on the same GPU does the same job in 5 s. It's a tuning gap on Blackwell consumer (sm_120) per the upstream README, which explicitly says "Blackwell/Ada not yet swept, PRs welcome". For production use today on this hardware, **LM Studio is the right choice** — it's competitive with the cloud baseline (5.2 s vs 4.9 s).
+
+The lucebox value proposition (speculative decoding) wants warm-state multi-turn; our per-prompt cycle is its worst case. A re-test with prefix-caching enabled or a multi-turn driver would close part of the gap, but won't recover the missing sm_120 kernel sweep.
 
 ### 1. Cloud is 3-23× faster than every local target
 
@@ -107,10 +130,11 @@ Earlier the wire-shape probes saw lucebox return empty content (server wedge). T
 
 ## Take-aways for harness use today
 
-1. **Production local pick: vidar omlx 8bit.** 100% pass-rate, 16 s mean per prompt, fastest of the local options.
-2. **Backup local pick: grendel omlx (either quant).** Same quality, ~2× slower on weaker hardware. Use when vidar is unavailable.
-3. **Lucebox is not yet a production option** in our harness — both because of the tool-calling gaps already reported and because per-prompt latency under our cycle is too high. Re-evaluate after the upstream tool-choice fix and after a sustained-warm-state probe.
-4. **Cloud is the speed ceiling.** When latency matters more than privacy/cost, openrouter qwen3.6-plus is 3-7× faster than any local option here.
+1. **Production local pick: bragi LM Studio.** 5.2 s mean, matches cloud latency, 100% pass-rate. The mobile 5090 + llama.cpp combination is currently the best local option in this comparison.
+2. **Mac local pick: vidar omlx 8bit.** 16 s mean. When bragi isn't available or the workflow is on Apple Silicon.
+3. **Backup local pick: grendel omlx (either quant).** Same quality, ~2× slower than vidar on weaker hardware. Use when vidar is unavailable.
+4. **Lucebox is not yet a production option** for our per-prompt cycle on this 5090-mobile hardware — both because of the tool-calling gaps (`docs/research/lucebox-tool-support-2026-04-27.md`) and because sm_120 hasn't been benchmark-swept upstream. Re-evaluate after the upstream `tool_choice` fix AND after the Blackwell kernel sweep lands. The DFlash architecture is sound; the sm_120 implementation isn't tuned yet.
+5. **Cloud is the latency ceiling.** When privacy and cost don't dominate, openrouter qwen3.6-plus matches the best local option (LM Studio on the 5090). For Mac-only workflows, cloud is 3× faster than vidar omlx.
 
 ## Next moves
 
