@@ -5,7 +5,47 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
-## [v0.9.19] — 2026-04-27
+## [v0.9.20] — 2026-04-27
+
+Renames `luce` → `lucebox` (aligns with upstream lucebox-hub project,
+removes ambiguity with "Luce" the org), promotes the provider to
+Thinking=true (server returns Qwen3-style reasoning_content), and
+adds per-Capabilities knobs to the conformance suite so thinking-mode
+local providers can be exercised with appropriate headroom.
+
+### Renamed (breaking for existing config users)
+
+- Provider package `internal/provider/luce/` → `internal/provider/lucebox/`.
+- Provider type string `"luce"` → `"lucebox"` everywhere (config
+  validator, factory, harness registry, default-port table,
+  base-URL inferrer, surface map).
+- Conformance env vars: `LUCE_URL` → `LUCEBOX_URL`, `LUCE_MODEL` →
+  `LUCEBOX_MODEL`.
+- Catalog ModelEntry: `luce-dflash` → `lucebox-dflash` (and
+  `provider_system: luce` → `lucebox`).
+
+User config migration: change `type: luce` → `type: lucebox` in
+`providers.<name>.type`. The provider block name itself is operator
+choice; recommended to rename it to `lucebox` for clarity.
+
+### Changed
+
+- `lucebox.ProtocolCapabilities.Thinking = true`. The server emits
+  Qwen3-style `reasoning_content` alongside `content`; the existing
+  openai-compat client picks it up. No ThinkingWireFormat is set —
+  the server has no request-side toggle (no `enable_thinking` /
+  `reasoning_effort` field), so client-side wire emission stays off.
+- `catalog_version`: `2026-04-27.3` → `2026-04-27.4`.
+
+### Added
+
+- `internal/provider/conformance.Capabilities` gains `ChatMaxTokens`,
+  `StreamMaxTokensCheck`, `ScenarioTimeout` knobs. Backwards-compatible
+  defaults preserve existing test behavior; thinking-mode descriptors
+  (lucebox) opt into 1024-token / 120-second budgets so reasoning
+  output can complete before the visible content lands.
+
+
 
 Adds the `vllm` provider type and refines the ADR-007 §7 catalog-stale
 nudge to differentiate "server has a sane default" from "server will
