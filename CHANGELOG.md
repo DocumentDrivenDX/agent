@@ -5,7 +5,74 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
-## [v0.9.15] — 2026-04-27
+## [v0.9.16] — 2026-04-27
+
+Lands ADR-007 v1: sampling profiles become catalog policy. The
+embedded model catalog now ships a `code` profile (T=0.6, top_p=0.95,
+top_k=20) that flows to the wire by default for native-agent runs,
+fixing the Qwen3.6 deterministic-tool-loop failure mode that motivated
+the ADR. Existing users running this binary against a stale installed
+manifest get a single first-use warning pointing at
+`ddx-agent catalog update`; ADR-007 §7 codifies the additive-evolution
+rules that make catalog publication propagate code-coupled fixes.
+
+### Added
+
+- ADR-007 (`docs/helix/02-design/adr/ADR-007-sampling-profiles-in-catalog.md`):
+  three-layer resolution chain (catalog → providers.*.sampling → CLI),
+  per-field merge, harness-pinned short-circuit for wrapped harnesses,
+  provider seam as the architectural home for future
+  (model_family × reasoning_state × profile) composition rules, and
+  manifest-evolution rules. Status: Accepted.
+- `internal/sampling.Profile` and `internal/sampling.Resolve` —
+  pure-function resolver returning `ResolveResult{Profile, Sources,
+  MissingProfile}`. `MissingProfile` drives the first-use catalog-stale
+  nudge per ADR-007 §7 rule 4.
+- Manifest schema: top-level `sampling_profiles` map and per-model
+  `sampling_control` (`client_settable | harness_pinned | partial`).
+  Validator rejects unknown control values; YAML decoder remains
+  non-strict so old code reads new manifests without error.
+- `Catalog.SamplingProfile(name)`, `Catalog.SamplingProfileNames()`,
+  `Catalog.ModelSamplingControl(modelID)` accessors.
+- Embedded `models.yaml` ships `sampling_profiles.code` with the
+  Qwen3.6-27B "Best Practices: Thinking Mode — Precise Coding" values;
+  source comment cites the HF model card.
+- `LLMRequestData.SamplingSource` records resolution-layer attribution
+  (`catalog`, `provider_config`, or comma-combinations) for
+  ADR-006-style override telemetry.
+- `ddx-agent catalog show` advertises declared sampling profiles, or
+  prints `(none — using server defaults; run 'ddx-agent catalog update'
+  if missing)` when the installed manifest predates the feature.
+
+### Changed
+
+- `ServiceExecuteRequest.Temperature` migrates from `float32` to
+  `*float32`; `Seed` from `int64` to `*int64`. nil now means
+  "unset — defer to lower layers / server defaults", distinct from
+  any concrete value (notably 0). Conversion at the
+  `service_execute.go` seam preserves nil through the agent loop.
+  This is a breaking change for in-process callers constructing
+  `ServiceExecuteRequest` literals. CONTRACT-003 §Public types and
+  §Sampling contract updated accordingly.
+- Embedded manifest `catalog_version`: `2026-04-12.3` → `2026-04-27.1`.
+  ADR-007 §7 rule 3: bump on any change that requires
+  `ddx-agent catalog update` to take effect on existing installs.
+- Provider seam `compatRequestOptions` (`internal/provider/openai/openai.go`)
+  documented as the architectural home for future sampling × reasoning
+  composition. v1 ships pass-through; the seeded code-profile values
+  happen to be safe in both thinking and non-thinking states for
+  Qwen3.x.
+
+### Documentation
+
+- CONTRACT-003 §Sampling contract rewritten around the resolution
+  chain; cross-links the catalog distribution plan and ADR-007 §7.
+- FEAT-003 gains §Sampling Defaults declaring sampling as catalog
+  policy with first-use nudge for stale manifests.
+- `plan-2026-04-10-catalog-distribution-and-refresh.md` forward-references
+  ADR-007 as a worked example of additive schema evolution.
+
+
 
 Adds full sampling-parameter plumbing through the agent harness:
 `top_p`, `top_k`, `min_p`, `repetition_penalty` are now sent to
