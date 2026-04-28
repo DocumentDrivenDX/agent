@@ -25,9 +25,15 @@ Currently **manual on demand**. Per the bead scope, a recurring `/schedule` cade
 
 | Date | Backing model | N | Agent success | Pi success | Δ (pp) | Mean cost ratio (agent/pi) | Winner | AR doc |
 |------|---------------|---|---------------|------------|--------|----------------------------|--------|--------|
-| _pending_ | openrouter qwen/qwen3.6-plus | 1 | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | (run in flight 2026-04-28) |
+| 2026-04-28 | openrouter qwen/qwen3.6-plus | 1 | 0/1 [a] | 0/1 [b] | 0 | n/a [c] | tie (both blocked) | [AR-2026-04-28-agent-vs-pi-openrouter-qwen36plus](AR-2026-04-28-agent-vs-pi-openrouter-qwen36plus.md) |
 
-The first row is the run kicked off while this doc lands — paired beadbench preflight against `agent-openrouter-qwen36plus` and `pi-openrouter-qwen36plus` arms on the `agent-beadbench-preflight` task. Will be filled in upon completion.
+[a] Agent executed cleanly (status=success, $0.48, 1.4M tokens, 366s) but `go test ./...` verify gate failed on a test-config-isolation defect (`agent-27806ad5`) — verify-worktree at `8925d4b` baseline rejects the user's live config containing `type: lucebox`. Bead-completion was not the failure.
+
+[b] Pi panicked at startup with `send on closed channel` in `internal/harnesses/pi/runner.go:mirroredEvents` (`agent-195bb183`). Never reached the model.
+
+[c] Cost ratio is undefined because pi never ran long enough to attribute spend.
+
+**Match-criterion clock does not advance** for this row. Both arms are blocked on infrastructure bugs orthogonal to the agent-vs-pi quality question.
 
 Once the prior dated AR doc ([AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36](AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md)) §3-5 land with their per-task table + aggregates, that measurement appears as a separate row (different backing — local omlx, not openrouter).
 
@@ -76,8 +82,7 @@ Each new backing starts a separate row series. Don't conflate backings within a 
 
 ## Cross-references
 
-Existing dated AR docs in chronological order:
+Existing dated AR docs in chronological order (newest first):
 
+- [AR-2026-04-28-agent-vs-pi-openrouter-qwen36plus.md](AR-2026-04-28-agent-vs-pi-openrouter-qwen36plus.md) — first paired run on openrouter qwen/qwen3.6-plus; surfaced two blocker bugs (`agent-195bb183` pi-runner panic, `agent-27806ad5` test-config isolation). Match-criterion clock does not advance.
 - [AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md](AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md) — paired vidar omlx Qwen3.6-27B-MLX-8bit study; methodology + pi-config evidence complete (§1-2), per-task table + aggregates pending (§3-5).
-
-Append new entries above, newest first.
