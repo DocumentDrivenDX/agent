@@ -128,13 +128,45 @@ Earlier the wire-shape probes saw lucebox return empty content (server wedge). T
 - **Larger output (long-form).** Our prompts cap output around 100-160 tokens. lucebox's claimed advantage (>200 tok/s on the upstream HumanEval bench) may only show on longer generations.
 - **Tool-heavy workload.** The agent's tool-loop wasn't exercised here (the prompts didn't need tools). lucebox's tool-call gaps (filed in `lucebox-tool-support-2026-04-27.md`) only matter on tool-heavy work; quality numbers above don't reflect that.
 
+## Tier-3: beadbench preflight (real bead completion, agent loop)
+
+Same 3 arms via `scripts/beadbench/run_beadbench.py`, task
+`agent-beadbench-preflight` (bead `agent-37aeb88e`). One bead per arm.
+Verify gate: `go test ./...` against the produced patch.
+
+| Arm | Result | Duration | Tokens | Cost | Verify |
+|---|---|---|---|---|---|
+| **openrouter qwen/qwen3.6-plus** | ✅ success | 270 s (4.5 min) | 915,520 | $0.315 | **pass** |
+| vidar omlx Qwen3.6-27B-MLX-8bit | ❌ timeout | 1 h cap | — | — | skipped |
+| bragi lmstudio qwen/qwen3.6-27b | ❌ timeout | 1 h cap | — | — | skipped |
+
+(grendel was offline and not re-tested; lucebox + vllm couldn't run because the `ddx` binary's pinned agent module is older than v0.9.18 and rejects the lucebox/vllm provider types — filed `agent-4fed70eb` to bump the dep.)
+
+## What Tier-3 reveals that Tier-2 hid
+
+In Tier-2, all four targets in this comparison passed 8/8 quality at single-prompt latencies of 4.9-114.8 s mean. That looked like "quality is uniform; pick on speed."
+
+Tier-3 contradicts that read. Both 27B local arms — including bragi LM Studio at 5.2 s mean per Tier-2 prompt — **timed out at 1 hour** on a real coding bead. The cloud arm finished the same bead in 4.5 minutes.
+
+The arithmetic explains it. A coding bead's agent loop typically runs 20-40 iterations: read files, plan, edit, run tests, react. At 5 s per single-prompt turn (the Tier-2 measurement), 30 iterations ≈ 2.5 minutes — well inside the budget. But:
+
+- Real iterations carry growing context (each turn appends prior tool results), so per-turn latency creeps up.
+- Thinking-mode reasoning compounds: every turn the model thinks before answering, often producing 1500+ reasoning tokens that count toward wall-clock but not toward visible progress.
+- Tool-call cycles add network round trips between every model turn and the agent's tool execution.
+
+The cloud baseline doesn't pay these costs at the same rate because (a) faster per-token throughput, (b) Qwen-plus's reasoning is more concise on this task class, (c) the agent's tool-execute side runs locally so model + tool overlap better with cloud latency.
+
+**Practical conclusion:** Tier-2 single-prompt grading is necessary but not sufficient. Production-viability for an agent harness requires Tier-3-class measurement — multi-turn completion within a wall-clock budget. The bragi LM Studio result is the most striking: 5.2 s mean / 100% quality at Tier-2 → timeout at Tier-3. If you only ran Tier-2, you would have shipped that as the production local pick.
+
 ## Take-aways for harness use today
 
-1. **Production local pick: bragi LM Studio.** 5.2 s mean, matches cloud latency, 100% pass-rate. The mobile 5090 + llama.cpp combination is currently the best local option in this comparison.
-2. **Mac local pick: vidar omlx 8bit.** 16 s mean. When bragi isn't available or the workflow is on Apple Silicon.
-3. **Backup local pick: grendel omlx (either quant).** Same quality, ~2× slower than vidar on weaker hardware. Use when vidar is unavailable.
-4. **Lucebox is not yet a production option** for our per-prompt cycle on this 5090-mobile hardware — both because of the tool-calling gaps (`docs/research/lucebox-tool-support-2026-04-27.md`) and because sm_120 hasn't been benchmark-swept upstream. Re-evaluate after the upstream `tool_choice` fix AND after the Blackwell kernel sweep lands. The DFlash architecture is sound; the sm_120 implementation isn't tuned yet.
-5. **Cloud is the latency ceiling.** When privacy and cost don't dominate, openrouter qwen3.6-plus matches the best local option (LM Studio on the 5090). For Mac-only workflows, cloud is 3× faster than vidar omlx.
+**Updated after Tier-3.** Tier-2 alone misled — local arms passed quality but timed out on real bead completion.
+
+1. **Production pick: openrouter qwen/qwen3.6-plus.** Only target that completed a real bead within budget. 4.5 min, $0.32 per preflight bead. The cost is non-trivial at scale but the latency makes it the only currently-shippable option for ddx-agent loops.
+2. **Local Qwen3.6-27B is not yet production-viable for the agent loop.** Both bragi LM Studio (despite 5.2 s mean per single prompt) and vidar omlx (16 s mean) timed out at 1 hour on a single bead. Quality is fine; iteration latency × turn count is the killer.
+3. **For ad-hoc one-shot use** (chat / Q&A / single-prompt code-gen) **bragi LM Studio is the right local pick.** Tier-2 5.2 s mean matches cloud. Don't generalize this to "production agent harness" until Tier-3 numbers improve.
+4. **Lucebox** is blocked on (a) the upstream `tool_choice` fix per `docs/research/lucebox-tool-support-2026-04-27.md` Gap 1, (b) sm_120 Blackwell kernel sweep, (c) bumping DDX-cli's agent dep so beadbench can drive lucebox arms. Filed as `agent-4fed70eb`.
+5. **What would change the picture for local.** A long-lived agent process with persistent prefix caching (so the 3500-token system prompt amortizes across iterations) is the single biggest lever. Today's per-prompt subprocess model is local inference's worst case. Filed for design discussion alongside the warm-state work.
 
 ## Next moves
 
