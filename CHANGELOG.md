@@ -5,6 +5,46 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.23] — 2026-04-28
+
+External-benchmark integration. First adapter to compare our harness
+against the public scoreboard.
+
+### Added
+
+- **TerminalBench adapter** (`agent-6d6ae2f6`, PR #4). New
+  `internal/benchmark/external/termbench/` package that translates
+  TerminalBench task format → `agent.ServiceExecuteRequest` and
+  captures `harnesses.Event` streams into ATIF v1.4 trajectory output
+  the upstream verifier expects. Reads upstream `reward.txt` without
+  reimplementing grading — the value of an external benchmark is
+  using their rubric.
+- Submodule at `scripts/benchmark/external/terminal-bench-2/` pinned
+  to upstream commit `53ff2b8`. (Bead originally pointed at
+  `laude-institute/terminal-bench`; that's stale per SD-008 — current
+  dataset lives at terminal-bench-2.)
+- Frozen 20-task subset at
+  `scripts/beadbench/external/termbench-subset.json` (15 stratified
+  hard/medium tasks reused from the evidence-grade comparison + 5
+  easy smoke tasks).
+- `cmd/bench --external=termbench` flag plus
+  `cmd/bench/external_termbench.go` runner. Writes results to
+  `benchmark-results/termbench/<run-id>/results.json`.
+- `docs/helix/02-design/external-benchmarks.md` — pattern doc for
+  adding more external benchmark adapters (SWE-bench, AgentBench,
+  etc.) following the TerminalBench shape.
+- `docs/research/external-benchmark-baseline-2026-04-27.md` —
+  baseline matrix scaffold (3 tasks × 3 arms: ddx-agent on
+  Qwen3.6-plus, codex on GPT-5.4, claude-code on Sonnet-4.6). Cells
+  marked `_pending_` until the verifier-side run lands.
+
+### Honestly-scoped v1 gaps
+
+- The adapter does not invoke Harbor / pytest / Docker. It writes
+  the artifacts the verifier expects; actual scoring remains
+  `scripts/benchmark/run_benchmark.sh`'s job.
+- Baseline doc cells are placeholders pending verifier-side run.
+
 ## [v0.9.22] — 2026-04-28
 
 Refactor + reliability release. Closes the architectural smell that
