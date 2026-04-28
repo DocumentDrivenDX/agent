@@ -251,7 +251,7 @@ type beadRecord struct {
 }
 
 func loadBeadFromJSONL(path, id string) (*beadRecord, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is the workdir's .ddx/beads.jsonl, not attacker-controlled.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("no bead tracker at %s", path)

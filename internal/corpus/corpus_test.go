@@ -11,10 +11,10 @@ import (
 // returns it. Tests then mutate the returned strings and rewrite
 // individual files to drive specific rejection cases.
 type fixture struct {
-	root         string
-	indexYAML    string
-	capYAML      string
-	detailFiles  map[string]string // bead_id → YAML content
+	root        string
+	indexYAML   string
+	capYAML     string
+	detailFiles map[string]string // bead_id → YAML content
 }
 
 func newFixture(t *testing.T) *fixture {

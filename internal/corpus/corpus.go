@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -114,7 +115,7 @@ func Load(root string) (*Loaded, error) {
 	}
 
 	indexPath := IndexPath(root)
-	indexBytes, err := os.ReadFile(indexPath)
+	indexBytes, err := safefs.ReadFile(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", indexPath, err)
 	}
@@ -123,7 +124,7 @@ func Load(root string) (*Loaded, error) {
 	}
 
 	capPath := CapabilitiesPath(root)
-	capBytes, err := os.ReadFile(capPath)
+	capBytes, err := safefs.ReadFile(capPath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", capPath, err)
 	}
@@ -142,7 +143,7 @@ func Load(root string) (*Loaded, error) {
 			continue
 		}
 		p := filepath.Join(detailDir, name)
-		raw, err := os.ReadFile(p)
+		raw, err := safefs.ReadFile(p)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", p, err)
 		}

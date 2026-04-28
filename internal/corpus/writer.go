@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -104,14 +105,14 @@ func Promote(root string, req PromoteRequest) error {
 		return fmt.Errorf("marshal detail: %w", err)
 	}
 
-	if err := os.MkdirAll(DetailDir(root), 0o755); err != nil {
+	if err := safefs.MkdirAll(DetailDir(root), 0o750); err != nil {
 		return fmt.Errorf("mkdir %s: %w", DetailDir(root), err)
 	}
 
-	if err := writeFileAtomic(indexPath, indexBytes, 0o644); err != nil {
+	if err := safefs.WriteFileAtomic(indexPath, indexBytes, 0o600); err != nil {
 		return err
 	}
-	if err := writeFileAtomic(detailPath, detailBytes, 0o644); err != nil {
+	if err := safefs.WriteFileAtomic(detailPath, detailBytes, 0o600); err != nil {
 		// Roll back the index.
 		_ = restoreFile(indexPath, prevIndex, indexExisted)
 		return err
@@ -160,35 +161,8 @@ func (r PromoteRequest) validate() error {
 	return errors.Join(errs...)
 }
 
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".corpus-*")
-	if err != nil {
-		return fmt.Errorf("create temp in %s: %w", dir, err)
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("write %s: %w", tmpPath, err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("close %s: %w", tmpPath, err)
-	}
-	if err := os.Chmod(tmpPath, mode); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("chmod %s: %w", tmpPath, err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("rename %s → %s: %w", tmpPath, path, err)
-	}
-	return nil
-}
-
 func readBytesIfExists(path string) ([]byte, bool, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err == nil {
 		return data, true, nil
 	}
@@ -202,5 +176,5 @@ func restoreFile(path string, prev []byte, existed bool) error {
 	if !existed {
 		return os.Remove(path)
 	}
-	return os.WriteFile(path, prev, 0o644)
+	return safefs.WriteFile(path, prev, 0o600)
 }
