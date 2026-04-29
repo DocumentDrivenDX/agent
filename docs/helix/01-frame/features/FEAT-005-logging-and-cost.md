@@ -103,26 +103,57 @@ conversation loop.
 
 18. Provider- or gateway-reported cost is recorded per `llm.response` event
     when available
-19. If no reported cost exists, DDX Agent may compute cost only from explicit
+19. Token usage is captured as **four distinct streams** per `llm.response`
+    and accumulated per session: `input_tokens`, `output_tokens`,
+    `cached_input_tokens`, and `retried_input_tokens`. These four streams are
+    the cost-bearing axes; any one may be zero but none may be folded into
+    another (e.g. cached input is not added to input). This matches the
+    telemetry schema lifted from SD-010 (see SD-009 §9.2 / SD-010 D4).
+20. If no reported cost exists, DDX Agent may compute cost only from explicit
     pricing configuration for the exact runtime/provider system and resolved
-    model
-20. If neither reported cost nor explicit runtime pricing exists, cost remains
-    unknown and is never guessed from generic pricing tables
-21. Local inference runtimes are not implicitly free; `$0` cost must come from
+    model. The authoritative `$-per-Mtok` numbers (input, output,
+    cached-input, retried-input) come from the **profile pricing schema**
+    defined in SD-010 (`scripts/benchmark/profiles/<id>.yaml`, loaded by
+    `internal/benchmark/profile/`). DDX Agent does not maintain a separate
+    pricing table.
+21. If neither reported cost nor a matching profile pricing entry exists,
+    cost remains unknown and is never guessed from generic pricing tables
+22. Local inference runtimes are not implicitly free; `$0` cost must come from
     reported billing or explicit configuration
-22. Session totals are accumulated only when all contributing turn costs are
+23. Session totals are accumulated only when all contributing turn costs are
     known; otherwise the session total is unknown
-23. `Result.CostUSD` reflects the known total session cost or `-1` when
+24. `Result.CostUSD` reflects the known total session cost or `-1` when
     unknown
-24. Usage reporting aggregates token and timing data for all sessions, known
+25. Usage reporting aggregates token and timing data for all sessions, known
     costs for priced sessions, and reports unknown-cost session counts
+
+#### Cost-Cap Enforcement
+
+26. The caller may configure a **per-run cost cap** (USD). When the running
+    session total reaches or exceeds the cap, DDX Agent halts the loop
+    deterministically before issuing the next `llm.request`, writes a
+    `session.end` event with `process_outcome=budget_halted`, and returns a
+    `Result` whose status reflects the halt.
+27. `budget_halted` is a first-class terminal `process_outcome` (per the
+    SD-010 / SD-009 §9 failure taxonomy). It is distinct from `completed`,
+    `timeout`, and `harness_crash`, and survives resume semantics: a
+    `budget_halted` run is not silently retried.
+28. Cost-cap enforcement requires that turn cost be **known** (from provider
+    report or profile pricing). If cost is unknown, the cap cannot fire and
+    the run proceeds; this matches §22 — unknown is never coerced to a
+    number.
+29. Cost-cap enforcement is a feature requirement of DDX Agent itself, not
+    solely a property of the benchmark harness. The benchmark runner relies
+    on this contract, but standalone `ddx-agent run` invocations honor the
+    same cap when one is configured.
 
 #### Usage Reporting (P1 — Standalone CLI)
 
-25. `ddx-agent usage` aggregates session logs and telemetry: per-provider/model
-    token counts, known cost, and throughput summaries, with time-window
-    filtering (today, 7d, 30d, date range)
-26. Output formats: table (default), JSON, CSV — patterned on
+30. `ddx-agent usage` aggregates session logs and telemetry: per-provider/model
+    token counts (broken out by the four streams in §19), known cost, and
+    throughput summaries, with time-window filtering (today, 7d, 30d, date
+    range)
+31. Output formats: table (default), JSON, CSV — patterned on
     `ddx agent usage`
 
 ### Non-Functional Requirements
@@ -166,7 +197,8 @@ conversation loop.
 |----|-----------|------------------------|
 | AC-FEAT-005-01 | JSONL session logs contain ordered `session.start`, `llm.request`, `llm.response`, `tool.call`, and `session.end` events with stable `session_id`, `seq`, timestamps, correlation metadata, and full prompt/response bodies subject only to documented truncation rules. | `go test ./session ./...` |
 | AC-FEAT-005-02 | Replay renders a human-readable transcript of prompts, assistant turns, tool calls, tokens, timing, workdir/model/provider metadata, and known-vs-unknown cost state without mutating the underlying log. | `go test ./session ./...` |
-| AC-FEAT-005-03 | Provider-reported cost wins over configured pricing, configured runtime pricing applies only on exact runtime/model matches, and mixed or unknown constituent costs force the session total to remain unknown rather than guessed. | `go test ./session ./telemetry ./...` |
+| AC-FEAT-005-03 | Provider-reported cost wins over configured pricing, configured runtime pricing applies only on exact runtime/model matches, and mixed or unknown constituent costs force the session total to remain unknown rather than guessed. The four token streams (input, output, cached-input, retried-input) are tracked separately per turn and per session and never folded into one another. Profile pricing is sourced from the SD-010 profile schema. | `go test ./session ./telemetry ./...` |
+| AC-FEAT-005-07 | A configured per-run cost cap halts the loop before the next `llm.request` once the known running total meets or exceeds the cap, the `session.end` event records `process_outcome=budget_halted`, and `Result` surfaces the halt; if cost is unknown the cap does not fire and the run proceeds. | `go test ./session ./...` |
 | AC-FEAT-005-04 | OTel export conforms to `CONTRACT-001`, including span taxonomy, identity fields, cost/timing attributes, tool error semantics, and throughput formulas derived only from valid timing windows. | `go test ./telemetry ./...` |
 | AC-FEAT-005-05 | `ddx-agent usage` preserves known-cost and unknown-cost session semantics across time-window filtering and supports the documented table, JSON, and CSV output modes. | `go test ./cmd/ddx-agent ./session ./...` |
 | AC-FEAT-005-06 | Unwritable log directories and telemetry-export failures are best-effort failures: the run still completes, operators receive a warning, and whatever partial log/telemetry data exists remains readable. | `go test ./session ./telemetry ./...` |
@@ -180,6 +212,9 @@ conversation loop.
   for gaps such as cost source and runtime-specific timing
 - `CONTRACT-001` is authoritative for telemetry field names, formulas, and
   capture semantics
+- SD-010's profile pricing schema is authoritative for `$-per-Mtok` rates
+  across the four token streams; FEAT-005 consumes those rates and does not
+  define a parallel pricing source
 - Log format is DDX Agent-specific but designed to be consumable by DDx's
   session inspection tooling with a thin adapter
 - No log rotation or retention policy in P0
@@ -196,6 +231,3 @@ conversation loop.
 - Log shipping to external systems (Grafana, DataDog, etc.)
 - Real-time log streaming to a UI
 - Automatic log rotation or retention policies
-- Budget enforcement (stopping the agent when cost exceeds a threshold) —
-  the caller can do this via context cancellation based on streaming
-  cost callbacks
