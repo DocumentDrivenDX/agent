@@ -33,6 +33,31 @@ func TestLoadDir_AllShippedProfilesValidate(t *testing.T) {
 	// SD-010 §3 + bead AC: smoke + noop fixtures must ship in v1.
 	require.Contains(t, ids, "smoke")
 	require.Contains(t, ids, "noop")
+	// NEW6 Step 0 census selected gpt-5-3-mini as the Phase A.1 anchor.
+	require.Contains(t, ids, "gpt-5-3-mini")
+}
+
+func TestLoad_GPT53MiniAnchorProfile(t *testing.T) {
+	p, err := Load(filepath.Join(repoProfilesDir(t), "gpt-5-3-mini.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5-3-mini", p.ID)
+	require.Equal(t, ProviderOpenAI, p.Provider.Type)
+	require.Equal(t, "gpt-5.3-mini", p.Provider.Model)
+	require.Equal(t, "OPENAI_API_KEY", p.Provider.APIKeyEnv)
+	// Census §5 pricing snapshot — values must stay inside the ≤ $3/Mtok
+	// output bracket that selected this row.
+	require.Equal(t, 2.00, p.Pricing.OutputUSDPerMTok)
+	require.Equal(t, 0.25, p.Pricing.InputUSDPerMTok)
+	require.Equal(t, 0.05, p.Pricing.CachedInputUSDPerMTok)
+	require.LessOrEqual(t, p.Pricing.OutputUSDPerMTok, 3.00)
+	require.Equal(t, 16384, p.Limits.MaxOutputTokens)
+	require.Greater(t, p.Limits.ContextTokens, 0)
+	require.Greater(t, p.Limits.RateLimitRPM, 0)
+	require.Greater(t, p.Limits.RateLimitTPM, 0)
+	require.Equal(t, "medium", p.Sampling.Reasoning)
+	require.Equal(t, "2026-04-29", p.Versioning.ResolvedAt)
+	// Snapshot is pinned at profile-creation time (alias drift guard).
+	require.NotEmpty(t, p.Versioning.Snapshot)
 }
 
 func TestLoad_SmokeProfileFields(t *testing.T) {
