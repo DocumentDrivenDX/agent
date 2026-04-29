@@ -90,7 +90,7 @@ type Profile struct {
 
 // Load reads and validates a single profile YAML file at path.
 func Load(path string) (*Profile, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied profile location, scoped by Validate()
 	if err != nil {
 		return nil, fmt.Errorf("read profile %s: %w", path, err)
 	}
