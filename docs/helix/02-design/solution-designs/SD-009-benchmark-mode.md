@@ -251,11 +251,25 @@ scripts/benchmark/
 
 ### Thresholds (Grounded in Baseline)
 
+**Scope of thresholds.** The floor and target values in the table below
+apply **only to ddx-agent's own runs** under one fixed harness, runtime,
+profile, and dataset. They were calibrated against a single-arm baseline
+(ddx-agent on `claude-haiku-4-5` via OpenRouter, 2026-04-08) and are not
+valid as pass/fail gates for any other harness.
+
+For **cross-harness cells** (e.g. ddx-agent vs. pi vs. opencode under the
+matrix benchmark in SD-010), reporting uses **mean reward + SD over reps
+(minimum 3 reps per cell)**, not the floor/target. Reusing a single-arm
+floor as a multi-arm pass criterion is an apples-to-oranges error: each
+harness has different priors over the subset, and the threshold was never
+calibrated against them. Cross-harness comparison rules are normative in
+SD-010 §7 and the multi-harness extension in §7 below.
+
 The 2026-04-08 baseline on 6 tasks with `claude-haiku-4-5` via OpenRouter:
 
 | Metric | Baseline (6-task pilot) | v1 Regression Floor | Aspirational Target |
 |--------|------------------------|--------------------|--------------------|
-| Resolved-task rate | 100% (6/6 simple tasks) | ≥ 55% on v1 subset | ≥ 70% |
+| Resolved-task rate (ddx-agent only) | 100% (6/6 simple tasks) | ≥ 55% on v1 subset | ≥ 70% |
 | Clarification-question rate | 0% | < 10% | < 5% |
 | Shell anti-pattern rate | 50% of bash calls (T6 only) | < 30% of bash calls | < 10% |
 | Structured-edit success rate | 75% (3/4 attempts) | ≥ 70% | ≥ 90% |
@@ -372,6 +386,59 @@ They are not left to memo-time interpretation.
 - If a subset version changes, the run establishes a new baseline and MUST NOT
   be compared numerically against older subset versions without that caveat.
 
+### 7.1 Multi-harness extension (cross-reference SD-010)
+
+The protocol above governs **single-harness** before/after claims about
+ddx-agent. The multi-harness × model matrix benchmark — comparing
+ddx-agent to other CLIs (pi, opencode, claude-code, codex) on the same
+model and subset — is specified in
+`docs/helix/02-design/solution-designs/SD-010-harness-matrix-benchmark.md`.
+SD-010 is normative for any cell that involves more than one harness;
+the rules in this subsection are a summary of the obligations SD-009
+inherits when the matrix runner is invoked.
+
+**Same-model, different-harness comparison rules.** When publishing a
+matrix cell that compares two or more harnesses on the same model and
+profile:
+
+1. **One harness binary per row, one model snapshot per column.** Each
+   cell pins (harness commit, harness CLI version, profile YAML hash,
+   resolved model snapshot ID, dataset commit, Harbor commit, Docker
+   image digests). Mixing harness commits within a row, or model
+   snapshots within a column, is not a valid comparison.
+2. **Identical adapter contract.** Every harness uses the SD-010 adapter
+   protocol (`install`, `command`, `apply_profile`, `parse_telemetry`,
+   `redact_secrets`) and the same telemetry schema (D4 in SD-010 / §9
+   below). Cross-harness numbers obtained under different scoring or
+   telemetry pipelines are not comparable.
+3. **Minimum 3 reps per cell.** Cross-harness cells report **mean
+   reward + SD across at least 3 reps**, not the SD-009 §5 floor/target.
+   SD is reported, not gated; cells with high SD are discussed in the
+   memo rather than masked.
+4. **Identical profile, no harness-side overrides.** A harness adapter
+   may translate the profile YAML into harness-native config but MUST
+   NOT silently override sampling, model, or limits. Any unavoidable
+   translation lossiness is recorded in the cell's `report.json` and
+   carried into the memo's caveat block.
+5. **Required caveat block.** Every cross-harness memo MUST include the
+   caveat block defined in SD-010 §7: same-model-different-harness is a
+   *harness ergonomics* comparison, not a *model capability*
+   comparison; differences in scaffolding, prompt template, tool
+   surface, and turn budget account for an unknown share of the delta.
+   Memos that omit the caveat block are not evidence-grade.
+
+**Failure handling.** Cross-harness cells use the failure taxonomy and
+state machine in §9 below (lifted from SD-010). A cell whose
+`final_status` is not `graded_*` is **reported with cause and excluded
+from mean reward**; the memo states `n_reported` per cell so the reader
+can see how many reps actually scored.
+
+**Pointer for the running runner.** The `ddx-agent-bench matrix`
+subcommand specified in SD-010 is the only graded multi-harness path.
+The legacy `cmd/bench --external=termbench` path remains as a
+single-harness smoke (SD-010 D3) and MUST NOT be used to produce
+cross-harness comparison memos.
+
 ---
 
 ## 8. Implementation Order
@@ -384,6 +451,103 @@ They are not left to memo-time interpretation.
 | `agent-78c86322` | adapter + baseline | Automated baseline capture in CI |
 | `agent-8e46e7e2` | This doc (§6) | Structured patch / exact-match edit evals |
 | `agent-77d95bdc` | This doc (§6) | Task-tracking tools and planning evals |
+
+---
+
+## 9. Resumability and Failure Taxonomy (Normative)
+
+This section is **lifted verbatim from SD-010 (D4, D5, and the failure
+taxonomy)** and is normative for every benchmark run produced under
+SD-009 — single-harness or multi-harness. Any deviation requires a
+spec change to both SD-009 and SD-010.
+
+### 9.1 Run state machine
+
+A run has three orthogonal axes; `final_status` is derived from them
+deterministically. Adapters report the first two; the runner derives
+the third.
+
+```
+process_outcome  ∈ {completed, timeout, harness_crash, install_failed, harness_refused, budget_halted}
+grading_outcome  ∈ {graded, ungraded}                # ungraded = no verifier output
+reward           ∈ {0, 1, null}                      # null iff ungraded
+
+final_status (derived)
+  = graded_pass            if grading_outcome=graded ∧ reward=1
+  = graded_fail            if grading_outcome=graded ∧ reward=0
+  = budget_halted          if process_outcome=budget_halted
+  = install_fail_permanent if process_outcome=install_failed ∧ retriable=false
+  = install_fail_transient if process_outcome=install_failed ∧ retriable=true
+  = ran_ungraded           if grading_outcome=ungraded ∧ process_outcome=completed
+  = <process_outcome>      otherwise                 # timeout, harness_crash, harness_refused
+```
+
+### 9.2 Telemetry schema (per-run, mandatory)
+
+Every adapter MUST emit the following JSON object as part of its
+`report.json`:
+
+```json
+{
+  "process_outcome": "completed|timeout|harness_crash|install_failed|harness_refused|budget_halted",
+  "grading_outcome": "graded|ungraded",
+  "reward": 0,
+  "turns": 0, "tool_calls": 0, "tool_call_errors": 0,
+  "input_tokens": 0, "output_tokens": 0,
+  "cached_input_tokens": 0, "retried_input_tokens": 0,
+  "wall_seconds": 0.0
+}
+```
+
+`null` = unreported; the aggregator drops it from means (denominator
+shrinks), reports `n/a` in `matrix.md`, and emits `n_reported`
+alongside. Adapters and aggregator agree by construction — there is one
+source of truth (the two outcome fields) and one derivation function.
+
+### 9.3 Failure taxonomy (11 statuses)
+
+The complete enumeration of values that may appear as the persisted
+status in a cell's `report.json`:
+
+```
+install_fail_permanent | install_fail_transient | auth_fail | provider_refusal |
+timeout | malformed_command | verifier_fail | harness_crash | budget_halted |
+ran | graded_pass | graded_fail
+```
+
+(`graded_pass` and `graded_fail` are the two graded terminal statuses;
+`ran` denotes a completed-but-ungraded run; the remaining nine cover
+process and harness failure modes.)
+
+### 9.4 Resumability policy
+
+On `--resume`, a run is **skipped** when
+`final_status ∈ {graded_pass, graded_fail, install_fail_permanent, budget_halted}`.
+All other statuses retry on resume.
+
+- `--force-rerun` overrides everything (rerun regardless of prior
+  status).
+- `--retry-budget-halted` retries only `budget_halted` cells (useful
+  after raising a per-cell cost cap).
+
+`budget_halted` is treated as a terminal status because retrying without
+raising the cap is guaranteed to halt again; the operator must
+explicitly opt in via `--retry-budget-halted` (or `--force-rerun`).
+
+### 9.5 Memo acceptance
+
+A benchmark memo (single- or multi-harness) is **acceptance-grade only
+if**:
+
+1. Every run reaches a terminal `final_status` (one of the values
+   listed in §9.3).
+2. Non-`graded_*` runs are itemized in the memo with cause.
+3. SD per cell is **reported, not gated** — high SD is discussed, not
+   used to reject results.
+4. Cost is reconciled to the observed token streams (input, output,
+   cached-input, retried-input) per FEAT-005.
+5. The cross-harness caveat block from SD-010 §7 is included whenever
+   more than one harness appears in the result set.
 
 ---
 
