@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any
 
@@ -494,17 +495,18 @@ def run_one(
         # on agent-beadbench-preflight). With max-iterations 200, vidar
         # needs ~6800s minimum. Honor an arm-level timeout_seconds when set.
         arm_timeout = arm.get("timeout_seconds") or args.timeout_seconds
-        proc = run_cmd(
+        # Stream stdout/stderr to artifact files in real time so a SIGKILL on
+        # timeout cannot strand buffered output (agent-8288cd1f).
+        proc = run_cmd_streamed(
             command,
             cwd=sandbox,
             timeout=arm_timeout,
-            check=False,
+            stdout_path=artifact_dir / "stdout.txt",
+            stderr_path=artifact_dir / "stderr.txt",
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         result["exit_code"] = proc.returncode
         result["duration_ms"] = duration_ms
-        (artifact_dir / "stdout.txt").write_text(proc.stdout)
-        (artifact_dir / "stderr.txt").write_text(proc.stderr)
 
         parsed = parse_last_json_object(proc.stdout)
         result["execute_result"] = parsed
@@ -901,6 +903,84 @@ def run_cmd(
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
     return proc
+
+
+def run_cmd_streamed(
+    cmd: list[str],
+    cwd: pathlib.Path | None,
+    timeout: int | None,
+    stdout_path: pathlib.Path,
+    stderr_path: pathlib.Path,
+) -> subprocess.CompletedProcess[str]:
+    """Like run_cmd but tees stdout/stderr to artifact files in real time.
+
+    Fixes agent-8288cd1f: subprocess.run(capture_output=True, timeout=N) loses
+    buffered output to SIGKILL when the child has not yet flushed by the
+    deadline. Writing the data as it arrives means the artifact files reflect
+    whatever was emitted up to the kill moment, regardless of termination.
+
+    On TimeoutExpired the child is killed, drained, and the exception is
+    re-raised with exc.stdout / exc.stderr populated from the on-disk
+    captures so existing callers continue to work.
+    """
+    stdout_path.parent.mkdir(parents=True, exist_ok=True)
+    stdout_f = stdout_path.open("w", encoding="utf-8")
+    stderr_f = stderr_path.open("w", encoding="utf-8")
+    stdout_buf: list[str] = []
+    stderr_buf: list[str] = []
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
+
+    def pump(stream, sink_file, sink_buf) -> None:
+        try:
+            for line in iter(stream.readline, ""):
+                sink_buf.append(line)
+                sink_file.write(line)
+                sink_file.flush()
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    t_out = threading.Thread(target=pump, args=(proc.stdout, stdout_f, stdout_buf), daemon=True)
+    t_err = threading.Thread(target=pump, args=(proc.stderr, stderr_f, stderr_buf), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        proc.kill()
+        proc.wait()
+
+    t_out.join(timeout=5)
+    t_err.join(timeout=5)
+    stdout_f.close()
+    stderr_f.close()
+
+    stdout_text = "".join(stdout_buf)
+    stderr_text = "".join(stderr_buf)
+
+    if timed_out:
+        exc = subprocess.TimeoutExpired(cmd, timeout, output=stdout_text, stderr=stderr_text)
+        raise exc
+
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=proc.returncode,
+        stdout=stdout_text,
+        stderr=stderr_text,
+    )
 
 
 def parse_last_json_object(text: str) -> dict[str, Any]:

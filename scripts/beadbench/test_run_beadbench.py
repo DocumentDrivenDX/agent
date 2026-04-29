@@ -36,6 +36,61 @@ def _init_sandbox(root: pathlib.Path) -> str:
     return base_rev
 
 
+# Regression for agent-8288cd1f: a SIGKILL on timeout must not strand
+# already-emitted stdout/stderr. run_cmd_streamed tees to disk in real time
+# so artifact files survive the kill with whatever was written up to that
+# moment.
+def test_run_cmd_streamed_preserves_output_on_timeout(tmp: pathlib.Path) -> None:
+    artifacts = tmp / "stream-timeout"
+    artifacts.mkdir()
+    stdout_path = artifacts / "stdout.txt"
+    stderr_path = artifacts / "stderr.txt"
+
+    # Producer that emits a marker line, flushes, then sleeps past the timeout.
+    script = (
+        "import sys, time\n"
+        "sys.stdout.write('STARTED\\n'); sys.stdout.flush()\n"
+        "sys.stderr.write('PROGRESS\\n'); sys.stderr.flush()\n"
+        "time.sleep(30)\n"
+    )
+    try:
+        rb.run_cmd_streamed(
+            [sys.executable, "-c", script],
+            cwd=None,
+            timeout=2,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+        )
+    except subprocess.TimeoutExpired as exc:
+        assert "STARTED" in (exc.output or "")
+        assert "PROGRESS" in (exc.stderr or "")
+    else:
+        raise AssertionError("expected TimeoutExpired")
+
+    assert "STARTED" in stdout_path.read_text()
+    assert "PROGRESS" in stderr_path.read_text()
+
+
+def test_run_cmd_streamed_returns_completed_process(tmp: pathlib.Path) -> None:
+    artifacts = tmp / "stream-ok"
+    artifacts.mkdir()
+    stdout_path = artifacts / "stdout.txt"
+    stderr_path = artifacts / "stderr.txt"
+
+    proc = rb.run_cmd_streamed(
+        [sys.executable, "-c", "import sys; print('hi'); sys.stderr.write('bye\\n')"],
+        cwd=None,
+        timeout=10,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+    assert proc.returncode == 0
+    assert "hi" in proc.stdout
+    assert "bye" in proc.stderr
+    assert "hi" in stdout_path.read_text()
+    assert "bye" in stderr_path.read_text()
+
+
 def test_no_output_timeout(tmp: pathlib.Path) -> None:
     sandbox = tmp / "s1"
     base = _init_sandbox(sandbox)
@@ -421,6 +476,8 @@ def main() -> int:
         test_corpus_index_parses_minimal_shape,
         test_filter_corpus_corpus_only,
         test_filter_corpus_capability,
+        test_run_cmd_streamed_returns_completed_process,
+        test_run_cmd_streamed_preserves_output_on_timeout,
     ]
     failures: list[str] = []
     for case in cases:
