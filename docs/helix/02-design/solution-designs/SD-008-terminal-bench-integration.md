@@ -206,6 +206,140 @@ cat ~/.harbor/jobs/<job-id>/trials/*/verifier/reward.txt
 
 ---
 
+## 6. Multi-Harness Extension
+
+Sections 1–5 cover the ddx-agent integration via Harbor's `BaseInstalledAgent`.
+This section extends the integration model to **non-ddx-agent harnesses**
+(third-party CLI agents we want to benchmark side-by-side, e.g. `pi`, Claude
+Code, Codex, etc.) so that comparisons run on the same Terminal-Bench task set
+under the same scoring rules.
+
+The governing constraint, derived from §2: **the agent runs inside the task
+container with no host-side fallback**. Harbor's isolation model is what makes
+trial results comparable; an agent that runs on the host has different filesystem
+access, different network egress, and different timeout semantics, and its
+results are not comparable to in-container runs. See SD-010 for the broader
+multi-harness benchmarking plan that this section feeds into.
+
+### 6.1 In-container installability checklist
+
+Before a third-party harness is added to the benchmark matrix, it must clear
+every item on this checklist. Items (a)–(f) are hard requirements; an agent
+that cannot satisfy any one of them is dropped per §6.4.
+
+- [ ] **(a) Linux/amd64 binary or installable package.** A static binary, a
+  `pip install`-able wheel, an `npm install -g`-able package, or a `curl | sh`
+  installer that produces a working CLI on Debian bookworm amd64.
+- [ ] **(b) Non-interactive invocation.** The agent accepts a task instruction
+  via argv, stdin, or a file path and runs to completion without a TTY,
+  prompts, or human-in-the-loop confirmations.
+- [ ] **(c) Deterministic exit.** Exits 0 on task completion (regardless of
+  task pass/fail, since Harbor's verifier scores the workspace, not the agent
+  exit code) and non-zero only on agent-internal failure.
+- [ ] **(d) Credential injection via environment variables.** Reads provider
+  API keys from env vars set by Harbor's `get_env()` (see §3); does not
+  require interactive login or browser-based OAuth.
+- [ ] **(e) Bounded runtime.** Honors a wall-clock or step budget passed via
+  flag/env, so the per-task timeout in §2 is enforceable from the agent side
+  as well as from Harbor's container kill.
+- [ ] **(f) Trajectory output we can map to ATIF v1.4.** Either emits a
+  structured log (JSON/JSONL) with at minimum step source, message, tool
+  calls, and token counts, or writes a transcript the adapter can parse. See
+  §4 for the ATIF target schema.
+
+If a harness fails (a)–(c), it cannot be benchmarked and is dropped (§6.4).
+If it fails (d)–(f), the adapter must work around the gap (e.g. write a
+config file in `install()`, wrap the agent in a timeout, synthesize a minimal
+trajectory from logs) — but the gap is recorded in the adapter's docstring.
+
+### 6.2 Per-harness adapter file location
+
+Each harness gets its own Python adapter file under:
+
+```
+scripts/benchmark/harness_adapters/
+  ddx_agent.py        # the BaseInstalledAgent adapter from §1 / agent-a3ce467a
+  pi.py               # adapter for the `pi` CLI
+  claude_code.py      # adapter for Claude Code CLI
+  codex.py            # adapter for Codex CLI
+  __init__.py
+```
+
+Each adapter file:
+
+1. Defines a single `BaseInstalledAgent` subclass named after the harness.
+2. Implements `install()`, `run()`, `get_env()`, and
+   `populate_context_post_run()` per Harbor's adapter contract.
+3. Carries a module-level docstring covering: which harness version was
+   tested, which §6.1 checklist items required workarounds, and which
+   provider(s) it routes through.
+4. Is registered in a single `harness_adapters/registry.yaml` that maps
+   `--agent <name>` on the Harbor CLI to the adapter class.
+
+Keeping adapters in a single directory (as opposed to one file per harness
+elsewhere in the tree) makes the multi-harness sweep script trivially
+discoverable and lets the registry double as the canonical "what do we
+benchmark" list.
+
+### 6.3 Egress requirements for provider API calls
+
+Per §2, the task container has no general internet access. Harbors enforces
+this with a default-deny network policy and explicit egress allowlists per
+trial. Any harness that calls a provider API from inside the container must
+have its provider endpoint(s) added to the trial's egress allowlist.
+
+For each adapter, the following must be specified — typically as an
+`EGRESS_ALLOWLIST: list[str]` class attribute the sweep script reads when
+constructing the Harbor job config:
+
+- **Provider hostnames** that must be reachable (e.g. `api.anthropic.com`,
+  `api.openai.com`, `openrouter.ai`).
+- **Auxiliary hostnames** the harness reaches at startup (telemetry,
+  package registries hit at install time, model-list endpoints).
+- **Port and protocol** — Harbor's default policy permits `:443` HTTPS;
+  anything else (e.g. WebSocket on a non-standard port) must be explicitly
+  declared and reviewed.
+
+If a harness reaches out to a hostname not in its declared allowlist, the
+trial fails with a network error rather than silently routing through an
+unintended path. This is the desired behavior — undeclared egress is a
+benchmark integrity issue.
+
+For harnesses that call back to a developer-controlled endpoint (e.g. a
+forwarded local LLM, a custom router), the endpoint must be exposed via
+Harbor's per-trial port forwarding and added to the allowlist as a
+loopback-style entry. Routing benchmark traffic through host-side network
+namespaces that bypass the container's policy is **not** permitted, since it
+defeats the isolation guarantee that makes results comparable.
+
+### 6.4 Drop rule
+
+If a harness cannot be installed and run inside the task container per §6.1,
+it is **documented and excluded** from the benchmark matrix. It is **not**
+run host-side as a fallback.
+
+The mechanics:
+
+1. The harness's intended adapter file under `harness_adapters/` is replaced
+   (or never created) with a short stub or `EXCLUDED.md` entry that records:
+   the harness name and version evaluated, which §6.1 checklist item(s) it
+   failed, the date of the evaluation, and a one-line rationale.
+2. The harness is omitted from `registry.yaml` so the sweep script cannot
+   accidentally invoke it.
+3. SD-010's harness comparison table notes the exclusion and the reason, so
+   readers understand which CLIs were considered and why some are absent.
+
+The rationale: a host-side run produces a different number on a different
+substrate. Mixing host-side and in-container numbers in the same comparison
+is worse than excluding a harness entirely, because it gives the appearance
+of a fair comparison while violating the constraint that makes the
+comparison meaningful (§2 isolation). When a harness becomes
+in-container-installable later (vendor ships a Linux binary, exposes a
+non-interactive mode, etc.), its `EXCLUDED.md` is converted into a real
+adapter and it rejoins the matrix.
+
+---
+
 ## Downstream References
 
 Beads that depend on this audit:
