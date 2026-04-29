@@ -35,27 +35,27 @@ type LoadOptions struct {
 
 // ModelEntry holds per-model metadata introduced in manifest v4.
 type ModelEntry struct {
-	Family             string                      `yaml:"family,omitempty"`
-	DisplayName        string                      `yaml:"display_name,omitempty"`
-	Tier               string                      `yaml:"tier,omitempty"`
-	Status             string                      `yaml:"status,omitempty"`
-	ProviderSystem     string                      `yaml:"provider_system,omitempty"`
-	CostInputPerM      float64                     `yaml:"cost_input_per_m,omitempty"`
-	CostOutputPerM     float64                     `yaml:"cost_output_per_m,omitempty"`
-	CostCacheReadPerM  float64                     `yaml:"cost_cache_read_per_m,omitempty"`
-	CostCacheWritePerM float64                     `yaml:"cost_cache_write_per_m,omitempty"`
-	CostInputPerMTok   float64                     `yaml:"cost_input_per_mtok,omitempty"`
-	CostOutputPerMTok  float64                     `yaml:"cost_output_per_mtok,omitempty"`
-	SWEBenchVerified   float64                     `yaml:"swe_bench_verified,omitempty"`
-	LiveCodeBench      float64                     `yaml:"live_code_bench,omitempty"`
-	BenchmarkAsOf      string                      `yaml:"benchmark_as_of,omitempty"`
-	OpenRouterID       string                      `yaml:"openrouter_id,omitempty"`
-	OpenRouterRefID    string                      `yaml:"openrouter_ref_id,omitempty"`
-	Surfaces           map[string]string           `yaml:"surfaces,omitempty"`
-	SpeedTokensPerSec  float64                     `yaml:"speed_tokens_per_sec,omitempty"`
-	ContextWindow      int                         `yaml:"context_window,omitempty"`
-	NoTools            bool                        `yaml:"no_tools,omitempty"`
-	ReasoningMaxTokens int                         `yaml:"reasoning_max_tokens,omitempty"`
+	Family             string            `yaml:"family,omitempty"`
+	DisplayName        string            `yaml:"display_name,omitempty"`
+	Tier               string            `yaml:"tier,omitempty"`
+	Status             string            `yaml:"status,omitempty"`
+	ProviderSystem     string            `yaml:"provider_system,omitempty"`
+	CostInputPerM      float64           `yaml:"cost_input_per_m,omitempty"`
+	CostOutputPerM     float64           `yaml:"cost_output_per_m,omitempty"`
+	CostCacheReadPerM  float64           `yaml:"cost_cache_read_per_m,omitempty"`
+	CostCacheWritePerM float64           `yaml:"cost_cache_write_per_m,omitempty"`
+	CostInputPerMTok   float64           `yaml:"cost_input_per_mtok,omitempty"`
+	CostOutputPerMTok  float64           `yaml:"cost_output_per_mtok,omitempty"`
+	SWEBenchVerified   float64           `yaml:"swe_bench_verified,omitempty"`
+	LiveCodeBench      float64           `yaml:"live_code_bench,omitempty"`
+	BenchmarkAsOf      string            `yaml:"benchmark_as_of,omitempty"`
+	OpenRouterID       string            `yaml:"openrouter_id,omitempty"`
+	OpenRouterRefID    string            `yaml:"openrouter_ref_id,omitempty"`
+	Surfaces           map[string]string `yaml:"surfaces,omitempty"`
+	SpeedTokensPerSec  float64           `yaml:"speed_tokens_per_sec,omitempty"`
+	ContextWindow      int               `yaml:"context_window,omitempty"`
+	NoTools            bool              `yaml:"no_tools,omitempty"`
+	ReasoningMaxTokens int               `yaml:"reasoning_max_tokens,omitempty"`
 	// ReasoningStallTimeoutMS is the per-model maximum duration (in
 	// milliseconds) that only reasoning_content deltas may arrive before
 	// the agent aborts the stream with a REASONING_STALL error. Zero falls
@@ -63,11 +63,11 @@ type ModelEntry struct {
 	// local models (e.g. Qwen, Gemma reasoning variants) legitimately need
 	// more wall-clock thinking than the global default; this knob lets the
 	// catalog encode that without touching code.
-	ReasoningStallTimeoutMS int `yaml:"reasoning_stall_timeout_ms,omitempty"`
-	ReasoningBudgets   map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
-	ReasoningLevels    []string                    `yaml:"reasoning_levels,omitempty"`
-	ReasoningControl   string                      `yaml:"reasoning_control,omitempty"`
-	ReasoningWire      string                      `yaml:"reasoning_wire,omitempty"`
+	ReasoningStallTimeoutMS int                         `yaml:"reasoning_stall_timeout_ms,omitempty"`
+	ReasoningBudgets        map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
+	ReasoningLevels         []string                    `yaml:"reasoning_levels,omitempty"`
+	ReasoningControl        string                      `yaml:"reasoning_control,omitempty"`
+	ReasoningWire           string                      `yaml:"reasoning_wire,omitempty"`
 	// SamplingControl declares whether catalog sampling_profiles reach the
 	// wire for runs that resolve to this model. See ADR-007 §4.
 	//   client_settable (default) — provider honors all five sampler fields.

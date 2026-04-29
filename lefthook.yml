@@ -1,3 +1,11 @@
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      run: make fmt-check
+    vet:
+      run: make vet
+
 pre-push:
   parallel: false
   commands:
