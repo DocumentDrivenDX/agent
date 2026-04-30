@@ -1,14 +1,14 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 func TestServiceProfiles_ListResolveAliases(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListProfiles: %v", err)
 	}
-	byName := make(map[string]agent.ProfileInfo)
+	byName := make(map[string]fizeau.ProfileInfo)
 	for _, profile := range profiles {
 		byName[profile.Name] = profile
 	}
@@ -56,7 +56,7 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 }
 
 func TestServiceProfiles_ResolveProfile(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if nativeOpenAI.Model == "" || len(nativeOpenAI.Candidates) == 0 {
 		t.Fatalf("native-openai model candidates missing: %#v", nativeOpenAI)
 	}
-	if nativeOpenAI.ReasoningDefault != agent.ReasoningHigh {
+	if nativeOpenAI.ReasoningDefault != fizeau.ReasoningHigh {
 		t.Fatalf("ReasoningDefault: got %q, want high", nativeOpenAI.ReasoningDefault)
 	}
 	if nativeOpenAI.FailurePolicy != "ordered-failover" {
@@ -98,7 +98,7 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if gemini.Harness != "gemini" || gemini.Model != "gemini-2.5-pro" {
 		t.Fatalf("gemini smart surface: %#v", gemini)
 	}
-	if gemini.ReasoningDefault != agent.ReasoningOff {
+	if gemini.ReasoningDefault != fizeau.ReasoningOff {
 		t.Fatalf("gemini ReasoningDefault: got %q, want off", gemini.ReasoningDefault)
 	}
 	if len(gemini.Candidates) == 0 || gemini.Candidates[0] != "gemini-2.5-pro" {
@@ -107,7 +107,7 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 }
 
 func TestServiceProfiles_ResolveDeprecatedAliasAndUnknown(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestServiceProfiles_ResolveDeprecatedAliasAndUnknown(t *testing.T) {
 	}
 }
 
-func findProfileSurface(surfaces []agent.ProfileSurface, name string) *agent.ProfileSurface {
+func findProfileSurface(surfaces []fizeau.ProfileSurface, name string) *fizeau.ProfileSurface {
 	for i := range surfaces {
 		if surfaces[i].Name == name {
 			return &surfaces[i]

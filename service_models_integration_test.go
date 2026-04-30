@@ -1,6 +1,6 @@
 //go:build integration
 
-package agent
+package fizeau
 
 import (
 	"context"

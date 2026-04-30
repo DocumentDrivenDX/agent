@@ -1,6 +1,6 @@
 //go:build testseam
 
-package agent_test
+package fizeau_test
 
 import (
 	"testing"
@@ -13,12 +13,12 @@ import (
 func TestSeamFakeProvider(t *testing.T) {
 	callCount := 0
 
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
 			{Text: "hello", Status: "success"},
 		},
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
-			return agent.FakeResponse{Text: "dynamic", Status: "success"}, nil
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
+			return fizeau.FakeResponse{Text: "dynamic", Status: "success"}, nil
 		},
 		InjectError: func(callIndex int) error {
 			callCount++
@@ -26,7 +26,7 @@ func TestSeamFakeProvider(t *testing.T) {
 		},
 	}
 
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
 
 	if opts.FakeProvider == nil {
@@ -53,13 +53,13 @@ func TestSeamPromptAssertionHook(t *testing.T) {
 		contextFiles []string
 	}{}
 
-	hook := agent.PromptAssertionHook(func(systemPrompt, userPrompt string, contextFiles []string) {
+	hook := fizeau.PromptAssertionHook(func(systemPrompt, userPrompt string, contextFiles []string) {
 		captured.systemPrompt = systemPrompt
 		captured.userPrompt = userPrompt
 		captured.contextFiles = contextFiles
 	})
 
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.PromptAssertionHook = hook
 
 	if opts.PromptAssertionHook == nil {
@@ -85,13 +85,13 @@ func TestSeamPromptAssertionHook(t *testing.T) {
 func TestSeamCompactionAssertionHook(t *testing.T) {
 	var gotBefore, gotAfter, gotFreed int
 
-	hook := agent.CompactionAssertionHook(func(messagesBefore, messagesAfter int, tokensFreed int) {
+	hook := fizeau.CompactionAssertionHook(func(messagesBefore, messagesAfter int, tokensFreed int) {
 		gotBefore = messagesBefore
 		gotAfter = messagesAfter
 		gotFreed = tokensFreed
 	})
 
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.CompactionAssertionHook = hook
 
 	if opts.CompactionAssertionHook == nil {
@@ -111,12 +111,12 @@ func TestSeamToolWiringHook(t *testing.T) {
 	var gotHarness string
 	var gotTools []string
 
-	hook := agent.ToolWiringHook(func(harness string, toolNames []string) {
+	hook := fizeau.ToolWiringHook(func(harness string, toolNames []string) {
 		gotHarness = harness
 		gotTools = toolNames
 	})
 
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.ToolWiringHook = hook
 
 	if opts.ToolWiringHook == nil {

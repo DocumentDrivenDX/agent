@@ -1,6 +1,6 @@
 //go:build testseam
 
-package agent
+package fizeau
 
 // seamOptions carries the four test injection seams. It is embedded into
 // Options and is only compiled when the testseam build tag is set.

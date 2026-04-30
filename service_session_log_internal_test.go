@@ -1,4 +1,4 @@
-package agent
+package fizeau
 
 import (
 	"encoding/json"

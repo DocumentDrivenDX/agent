@@ -1,18 +1,18 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 func TestListHarnesses_shape(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fakeHome, ".config"))
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestListHarnesses_shape(t *testing.T) {
 	}
 
 	// Index by name for targeted assertions.
-	byName := make(map[string]agent.HarnessInfo, len(list))
+	byName := make(map[string]fizeau.HarnessInfo, len(list))
 	for _, h := range list {
 		if h.Name == "" {
 			t.Errorf("harness with empty Name found")
@@ -211,160 +211,160 @@ func TestListHarnesses_shape(t *testing.T) {
 	})
 
 	t.Run("capability_matrix_all_harnesses", func(t *testing.T) {
-		expected := map[string]agent.HarnessCapabilityMatrix{
+		expected := map[string]fizeau.HarnessCapabilityMatrix{
 			"codex": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
-				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityOptional),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityOptional),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityOptional),
 			},
 			"claude": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
-				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityOptional),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityOptional),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityOptional),
 			},
 			"gemini": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
-				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
-				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityOptional),
 			},
 			"opencode": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityOptional),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 			"agent": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityOptional),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityOptional),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityOptional),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 			"pi": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityOptional),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityOptional),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 			"virtual": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityNotApplicable),
-				ModelPinning:    capStatus(agent.HarnessCapabilityNotApplicable),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityNotApplicable),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityNotApplicable),
-				PermissionModes: capStatus(agent.HarnessCapabilityNotApplicable),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityNotApplicable),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
-				RecordReplay:    capStatus(agent.HarnessCapabilityRequired),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityNotApplicable),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityNotApplicable),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityNotApplicable),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityRequired),
 			},
 			"script": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityNotApplicable),
-				ModelPinning:    capStatus(agent.HarnessCapabilityNotApplicable),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityNotApplicable),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityNotApplicable),
-				PermissionModes: capStatus(agent.HarnessCapabilityNotApplicable),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityNotApplicable),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
-				RecordReplay:    capStatus(agent.HarnessCapabilityRequired),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityNotApplicable),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityNotApplicable),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityNotApplicable),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityNotApplicable),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityRequired),
 			},
 			"openrouter": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 			"lmstudio": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 			"omlx": {
-				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
-				ModelPinning:    capStatus(agent.HarnessCapabilityUnsupported),
-				WorkdirContext:  capStatus(agent.HarnessCapabilityUnsupported),
-				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
-				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
-				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
-				FinalText:       capStatus(agent.HarnessCapabilityOptional),
-				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityNotApplicable),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
+				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
+				ModelPinning:    capStatus(fizeau.HarnessCapabilityUnsupported),
+				WorkdirContext:  capStatus(fizeau.HarnessCapabilityUnsupported),
+				ReasoningLevels: capStatus(fizeau.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(fizeau.HarnessCapabilityUnsupported),
+				ProgressEvents:  capStatus(fizeau.HarnessCapabilityRequired),
+				UsageCapture:    capStatus(fizeau.HarnessCapabilityOptional),
+				FinalText:       capStatus(fizeau.HarnessCapabilityOptional),
+				ToolEvents:      capStatus(fizeau.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(fizeau.HarnessCapabilityNotApplicable),
+				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
 		}
 
@@ -385,11 +385,11 @@ func assertContains(t *testing.T, slice []string, want, context string) {
 	t.Errorf("%s: want %q in %v", context, want, slice)
 }
 
-func capStatus(status agent.HarnessCapabilityStatus) agent.HarnessCapability {
-	return agent.HarnessCapability{Status: status}
+func capStatus(status fizeau.HarnessCapabilityStatus) fizeau.HarnessCapability {
+	return fizeau.HarnessCapability{Status: status}
 }
 
-func assertCapabilityMatrix(t *testing.T, name string, got, want agent.HarnessCapabilityMatrix) {
+func assertCapabilityMatrix(t *testing.T, name string, got, want fizeau.HarnessCapabilityMatrix) {
 	t.Helper()
 	assertCapability(t, name, "ExecutePrompt", got.ExecutePrompt, want.ExecutePrompt)
 	assertCapability(t, name, "ModelDiscovery", got.ModelDiscovery, want.ModelDiscovery)
@@ -405,7 +405,7 @@ func assertCapabilityMatrix(t *testing.T, name string, got, want agent.HarnessCa
 	assertCapability(t, name, "RecordReplay", got.RecordReplay, want.RecordReplay)
 }
 
-func assertCapability(t *testing.T, harness, field string, got, want agent.HarnessCapability) {
+func assertCapability(t *testing.T, harness, field string, got, want fizeau.HarnessCapability) {
 	t.Helper()
 	if got.Status != want.Status {
 		t.Errorf("%s.%s Status: got %q, want %q", harness, field, got.Status, want.Status)

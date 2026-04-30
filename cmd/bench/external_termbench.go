@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/external/termbench"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
@@ -73,7 +73,7 @@ type termbenchRunReport struct {
 //     scripts/beadbench/external/termbench-subset.json).
 //  2. For each entry, locates the upstream task directory under
 //     scripts/benchmark/external/terminal-bench(-2)/tasks/<id>/.
-//  3. Builds an ExecutionPlan and feeds it to agent.Service.Execute.
+//  3. Builds an ExecutionPlan and feeds it to fizeau.Service.Execute.
 //  4. Captures harness events into ATIF v1.4 trajectory and writes
 //     them to benchmark-results/termbench/<run-id>/<task>/logs/agent/.
 //  5. Reads any verifier output (reward.txt) the upstream grader has
@@ -118,7 +118,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 		fmt.Fprintf(os.Stderr, "%s run --external=termbench: load config: %v\n", benchCommandName(), err)
 		return 1
 	}
-	svc, err := agent.New(agent.ServiceOptions{
+	svc, err := fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: &configAdapter{cfg: cfg, workDir: opts.workDir},
 	})
 	if err != nil {
@@ -180,7 +180,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 		}
 		// For the Go-side dry-run we operate the agent against a fresh
 		// per-task tempdir. Real Harbor runs would mount the container
-		// workspace; here we just need a writable cwd for the agent.
+		// workspace; here we just need a writable cwd for the fizeau.
 		workDir, err := os.MkdirTemp("", "termbench-"+entry.ID+"-")
 		if err != nil {
 			summary.Status = "error"

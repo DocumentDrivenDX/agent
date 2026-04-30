@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/comparison"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
@@ -43,7 +43,7 @@ func buildRunFunc(wd string, timeout time.Duration, maxCostUSD float64, baseSeed
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	svc, err := agent.New(agent.ServiceOptions{
+	svc, err := fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: &configAdapter{cfg: cfg, workDir: wd},
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func buildRunFunc(wd string, timeout time.Duration, maxCostUSD float64, baseSeed
 		// are byte-stable across runs.
 		bTemp := float32(0)
 		bSeed := seed
-		req := agent.ServiceExecuteRequest{
+		req := fizeau.ServiceExecuteRequest{
 			Harness:     harness,
 			Model:       model,
 			Prompt:      prompt,

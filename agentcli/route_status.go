@@ -19,7 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	rootagent "github.com/DocumentDrivenDX/fizeau"
+	rootfizeau "github.com/DocumentDrivenDX/fizeau"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
@@ -30,15 +30,15 @@ const defaultRouteStatusOverridesWindow = 7 * 24 * time.Hour
 // TestRouteStatusOverridesJSONStable; new fields must be added at the end
 // or behind a new flag.
 type routeStatusOverridesOutput struct {
-	Since                    string                          `json:"since"`
-	WindowStart              time.Time                       `json:"window_start"`
-	WindowEnd                time.Time                       `json:"window_end"`
-	AxisFilter               string                          `json:"axis_filter,omitempty"`
-	AutoAcceptanceRate       float64                         `json:"auto_acceptance_rate"`
-	OverrideDisagreementRate float64                         `json:"override_disagreement_rate"`
-	TotalRequests            int                             `json:"total_requests"`
-	TotalOverrides           int                             `json:"total_overrides"`
-	OverrideClassBreakdown   []rootagent.OverrideClassBucket `json:"override_class_breakdown"`
+	Since                    string                           `json:"since"`
+	WindowStart              time.Time                        `json:"window_start"`
+	WindowEnd                time.Time                        `json:"window_end"`
+	AxisFilter               string                           `json:"axis_filter,omitempty"`
+	AutoAcceptanceRate       float64                          `json:"auto_acceptance_rate"`
+	OverrideDisagreementRate float64                          `json:"override_disagreement_rate"`
+	TotalRequests            int                              `json:"total_requests"`
+	TotalOverrides           int                              `json:"total_overrides"`
+	OverrideClassBreakdown   []rootfizeau.OverrideClassBucket `json:"override_class_breakdown"`
 }
 
 // cmdRouteStatusOverrides implements the --overrides mode. It is wired in
@@ -67,7 +67,7 @@ func runRouteStatusOverrides(workDir, since, axis string, jsonOut bool, stdout, 
 		fmt.Fprintf(stderr, "error: %s\n", err)
 		return 1
 	}
-	svc, err := rootagent.New(rootagent.ServiceOptions{
+	svc, err := rootfizeau.New(rootfizeau.ServiceOptions{
 		ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir),
 		SessionLogDir: sessionLogDir(workDir, cfg),
 	})
@@ -76,7 +76,7 @@ func runRouteStatusOverrides(workDir, since, axis string, jsonOut bool, stdout, 
 		return 1
 	}
 
-	report, err := svc.UsageReport(context.Background(), rootagent.UsageReportOptions{
+	report, err := svc.UsageReport(context.Background(), rootfizeau.UsageReportOptions{
 		Since: formatUsageWindowSince(start, end),
 		Now:   now,
 	})
@@ -100,7 +100,7 @@ func runRouteStatusOverrides(workDir, since, axis string, jsonOut bool, stdout, 
 		OverrideClassBreakdown:   filtered,
 	}
 	if out.OverrideClassBreakdown == nil {
-		out.OverrideClassBreakdown = []rootagent.OverrideClassBucket{}
+		out.OverrideClassBreakdown = []rootfizeau.OverrideClassBucket{}
 	}
 
 	if jsonOut {
@@ -141,11 +141,11 @@ func validateRouteStatusOverridesAxis(axis string) error {
 // filterOverrideBreakdownByAxis returns rows where Axis == axis. Empty axis
 // returns the input unchanged. Rows are returned in the same deterministic
 // order produced by the aggregator.
-func filterOverrideBreakdownByAxis(rows []rootagent.OverrideClassBucket, axis string) []rootagent.OverrideClassBucket {
+func filterOverrideBreakdownByAxis(rows []rootfizeau.OverrideClassBucket, axis string) []rootfizeau.OverrideClassBucket {
 	if axis == "" {
 		return rows
 	}
-	out := make([]rootagent.OverrideClassBucket, 0, len(rows))
+	out := make([]rootfizeau.OverrideClassBucket, 0, len(rows))
 	for _, r := range rows {
 		if r.Axis == axis {
 			out = append(out, r)
@@ -157,8 +157,8 @@ func filterOverrideBreakdownByAxis(rows []rootagent.OverrideClassBucket, axis st
 // sortOverrideBreakdownForDisplay returns a copy sorted by Count desc, then
 // success rate desc, then deterministic key. The default JSON ordering is
 // preserved by the aggregator; this is the table-render ordering.
-func sortOverrideBreakdownForDisplay(rows []rootagent.OverrideClassBucket) []rootagent.OverrideClassBucket {
-	out := make([]rootagent.OverrideClassBucket, len(rows))
+func sortOverrideBreakdownForDisplay(rows []rootfizeau.OverrideClassBucket) []rootfizeau.OverrideClassBucket {
+	out := make([]rootfizeau.OverrideClassBucket, len(rows))
 	copy(out, rows)
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
@@ -180,7 +180,7 @@ func sortOverrideBreakdownForDisplay(rows []rootagent.OverrideClassBucket) []roo
 	return out
 }
 
-func bucketSuccessRate(b rootagent.OverrideClassBucket) float64 {
+func bucketSuccessRate(b rootfizeau.OverrideClassBucket) float64 {
 	total := b.SuccessOutcomes + b.StalledOutcomes + b.FailedOutcomes + b.CancelledOutcomes + b.UnknownOutcomes
 	if total == 0 {
 		return 0

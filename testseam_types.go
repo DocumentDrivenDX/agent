@@ -3,7 +3,7 @@
 // Package agent provides test seam types for injection during testing.
 // These types are ONLY compiled when the testseam build tag is set.
 // Production binaries cannot construct or reference these types.
-package agent
+package fizeau
 
 import agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 

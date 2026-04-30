@@ -25,7 +25,7 @@ func TestRouteStatusOverridesJSONStable(t *testing.T) {
 		OverrideDisagreementRate: 0.5,
 		TotalRequests:            5,
 		TotalOverrides:           3,
-		OverrideClassBreakdown: []agent.OverrideClassBucket{
+		OverrideClassBreakdown: []fizeau.OverrideClassBucket{
 			{
 				PromptFeatureBucket: "tokens=small,tools=no,reasoning=none",
 				Axis:                "harness",
@@ -64,7 +64,7 @@ func TestRouteStatusOverridesJSONStable(t *testing.T) {
 	}
 
 	// Bucket schema: every documented field must round-trip.
-	var bkt []agent.OverrideClassBucket
+	var bkt []fizeau.OverrideClassBucket
 	if err := json.Unmarshal(generic["override_class_breakdown"], &bkt); err != nil {
 		t.Fatalf("decode breakdown: %v", err)
 	}

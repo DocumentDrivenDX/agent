@@ -216,19 +216,19 @@ func runRouteStatusOverridesText(t *testing.T, workDir, since, axis string, now 
 func writeOverrideSessionLog(t *testing.T, dir, sessionID string, startedAt time.Time, axis string, coincide bool, outcomeStatus string) {
 	t.Helper()
 	tokens := 1500
-	ovr := agent.ServiceOverrideData{
+	ovr := fizeau.ServiceOverrideData{
 		AxesOverridden: []string{axis},
-		PromptFeatures: agent.ServiceOverridePromptFeatures{
+		PromptFeatures: fizeau.ServiceOverridePromptFeatures{
 			EstimatedTokens: &tokens,
 			Reasoning:       "",
 		},
-		Outcome: &agent.ServiceOverrideOutcome{Status: outcomeStatus},
+		Outcome: &fizeau.ServiceOverrideOutcome{Status: outcomeStatus},
 	}
 	if coincide {
 		ovr.MatchPerAxis = map[string]bool{axis: true}
 	}
-	startData := agent.SessionStartData{Provider: "p", Model: "m"}
-	endData := agent.SessionEndData{Status: agent.StatusSuccess}
+	startData := fizeau.SessionStartData{Provider: "p", Model: "m"}
+	endData := fizeau.SessionEndData{Status: fizeau.StatusSuccess}
 
 	mustEncode := func(v any) json.RawMessage {
 		b, err := json.Marshal(v)
@@ -237,10 +237,10 @@ func writeOverrideSessionLog(t *testing.T, dir, sessionID string, startedAt time
 		}
 		return b
 	}
-	events := []agent.SessionEvent{
-		{SessionID: sessionID, Seq: 0, Type: agent.EventSessionStart, Timestamp: startedAt, Data: mustEncode(startData)},
-		{SessionID: sessionID, Seq: 1, Type: agent.SessionEventType("override"), Timestamp: startedAt.Add(time.Second), Data: mustEncode(ovr)},
-		{SessionID: sessionID, Seq: 2, Type: agent.EventSessionEnd, Timestamp: startedAt.Add(2 * time.Second), Data: mustEncode(endData)},
+	events := []fizeau.SessionEvent{
+		{SessionID: sessionID, Seq: 0, Type: fizeau.EventSessionStart, Timestamp: startedAt, Data: mustEncode(startData)},
+		{SessionID: sessionID, Seq: 1, Type: fizeau.SessionEventType("override"), Timestamp: startedAt.Add(time.Second), Data: mustEncode(ovr)},
+		{SessionID: sessionID, Seq: 2, Type: fizeau.EventSessionEnd, Timestamp: startedAt.Add(2 * time.Second), Data: mustEncode(endData)},
 	}
 	path := filepath.Join(dir, sessionID+".jsonl")
 	f, err := os.Create(path)

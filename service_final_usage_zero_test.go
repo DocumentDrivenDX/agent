@@ -1,11 +1,11 @@
-package agent_test
+package fizeau_test
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 // TestServiceFinalUsage_DistinguishesZeroFromUnknown asserts that the public
@@ -15,13 +15,13 @@ import (
 // these two states.
 func TestServiceFinalUsage_DistinguishesZeroFromUnknown(t *testing.T) {
 	zero := 0
-	knownZero := agent.ServiceFinalUsage{
+	knownZero := fizeau.ServiceFinalUsage{
 		InputTokens:  &zero,
 		OutputTokens: &zero,
 		TotalTokens:  &zero,
 		Source:       "native_stream",
 	}
-	unknown := agent.ServiceFinalUsage{
+	unknown := fizeau.ServiceFinalUsage{
 		Source: "native_stream",
 	}
 
@@ -56,7 +56,7 @@ func TestServiceFinalUsage_DistinguishesZeroFromUnknown(t *testing.T) {
 
 	// Unmarshalling preserves provenance: present-with-zero round-trips to
 	// non-nil *int(0); absent round-trips to nil.
-	var knownBack agent.ServiceFinalUsage
+	var knownBack fizeau.ServiceFinalUsage
 	if err := json.Unmarshal(knownRaw, &knownBack); err != nil {
 		t.Fatalf("unmarshal knownRaw: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestServiceFinalUsage_DistinguishesZeroFromUnknown(t *testing.T) {
 		t.Fatalf("round-tripped value should be 0, got %d", *knownBack.InputTokens)
 	}
 
-	var unknownBack agent.ServiceFinalUsage
+	var unknownBack fizeau.ServiceFinalUsage
 	if err := json.Unmarshal(unknownRaw, &unknownBack); err != nil {
 		t.Fatalf("unmarshal unknownRaw: %v", err)
 	}
@@ -82,6 +82,6 @@ func TestServiceFinalUsage_DistinguishesZeroFromUnknown(t *testing.T) {
 	}
 }
 
-func isKnown(u agent.ServiceFinalUsage) bool {
+func isKnown(u fizeau.ServiceFinalUsage) bool {
 	return u.InputTokens != nil
 }

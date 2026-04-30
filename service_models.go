@@ -1,4 +1,4 @@
-package agent
+package fizeau
 
 // This file implements ListModels for the DdxAgent service.
 // It lives in the root package to avoid import cycles; provider and catalog

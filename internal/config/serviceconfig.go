@@ -3,14 +3,14 @@ package config
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 func init() {
-	// Register the config loader into the root package so that agent.New can
+	// Register the config loader into the root package so that fizeau.New can
 	// load configuration without importing this package directly (which would
 	// create an import cycle: config → agent → config).
-	agent.RegisterConfigLoader(func(dir string) (agent.ServiceConfig, error) {
+	fizeau.RegisterConfigLoader(func(dir string) (fizeau.ServiceConfig, error) {
 		cfg, err := Load(dir)
 		if err != nil {
 			return nil, err
@@ -19,14 +19,14 @@ func init() {
 	})
 }
 
-// configServiceConfig wraps a loaded *Config and satisfies agent.ServiceConfig.
+// configServiceConfig wraps a loaded *Config and satisfies fizeau.ServiceConfig.
 // It is the agent-internal equivalent of DDx's ServiceConfigAdapter.
 type configServiceConfig struct {
 	cfg     *Config
 	baseDir string
 }
 
-func NewServiceConfig(cfg *Config, baseDir string) agent.ServiceConfig {
+func NewServiceConfig(cfg *Config, baseDir string) fizeau.ServiceConfig {
 	return &configServiceConfig{cfg: cfg, baseDir: baseDir}
 }
 
@@ -44,22 +44,22 @@ func (c *configServiceConfig) DefaultProviderName() string {
 	return c.cfg.DefaultName()
 }
 
-func (c *configServiceConfig) Provider(name string) (agent.ServiceProviderEntry, bool) {
+func (c *configServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry, bool) {
 	if c.cfg == nil {
-		return agent.ServiceProviderEntry{}, false
+		return fizeau.ServiceProviderEntry{}, false
 	}
 	pc, ok := c.cfg.Providers[name]
 	if !ok {
-		return agent.ServiceProviderEntry{}, false
+		return fizeau.ServiceProviderEntry{}, false
 	}
-	endpoints := make([]agent.ServiceProviderEndpoint, 0, len(pc.Endpoints))
+	endpoints := make([]fizeau.ServiceProviderEndpoint, 0, len(pc.Endpoints))
 	for _, endpoint := range pc.Endpoints {
-		endpoints = append(endpoints, agent.ServiceProviderEndpoint{
+		endpoints = append(endpoints, fizeau.ServiceProviderEndpoint{
 			Name:    endpoint.Name,
 			BaseURL: endpoint.BaseURL,
 		})
 	}
-	return agent.ServiceProviderEntry{
+	return fizeau.ServiceProviderEntry{
 		Type:      pc.Type,
 		BaseURL:   pc.BaseURL,
 		Endpoints: endpoints,
@@ -90,23 +90,23 @@ func (c *configServiceConfig) ModelRouteCandidates(routeName string) []string {
 	return out
 }
 
-func (c *configServiceConfig) ModelRouteConfig(routeName string) agent.ServiceModelRouteConfig {
+func (c *configServiceConfig) ModelRouteConfig(routeName string) fizeau.ServiceModelRouteConfig {
 	if c.cfg == nil {
-		return agent.ServiceModelRouteConfig{}
+		return fizeau.ServiceModelRouteConfig{}
 	}
 	route, ok := c.cfg.ModelRoutes[routeName]
 	if !ok {
-		return agent.ServiceModelRouteConfig{}
+		return fizeau.ServiceModelRouteConfig{}
 	}
-	candidates := make([]agent.ServiceRouteCandidateEntry, 0, len(route.Candidates))
+	candidates := make([]fizeau.ServiceRouteCandidateEntry, 0, len(route.Candidates))
 	for _, cand := range route.Candidates {
-		candidates = append(candidates, agent.ServiceRouteCandidateEntry{
+		candidates = append(candidates, fizeau.ServiceRouteCandidateEntry{
 			Provider: cand.Provider,
 			Model:    cand.Model,
 			Priority: cand.Priority,
 		})
 	}
-	return agent.ServiceModelRouteConfig{
+	return fizeau.ServiceModelRouteConfig{
 		Strategy:   route.Strategy,
 		Candidates: candidates,
 	}

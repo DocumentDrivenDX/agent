@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,15 +26,15 @@ var (
 func seedMixedUsageLogs(t *testing.T, logDir string) {
 	t.Helper()
 
-	writeUsageLog := func(t *testing.T, sessionID string, startAt, endAt time.Time, start agent.SessionStartData, end agent.SessionEndData) {
+	writeUsageLog := func(t *testing.T, sessionID string, startAt, endAt time.Time, start fizeau.SessionStartData, end fizeau.SessionEndData) {
 		t.Helper()
 
-		logger := agent.NewSessionLogger(logDir, sessionID)
-		startEvent := agent.NewSessionEvent(sessionID, 0, agent.EventSessionStart, start)
+		logger := fizeau.NewSessionLogger(logDir, sessionID)
+		startEvent := fizeau.NewSessionEvent(sessionID, 0, fizeau.EventSessionStart, start)
 		startEvent.Timestamp = startAt
 		logger.Write(startEvent)
 
-		endEvent := agent.NewSessionEvent(sessionID, 1, agent.EventSessionEnd, end)
+		endEvent := fizeau.NewSessionEvent(sessionID, 1, fizeau.EventSessionEnd, end)
 		endEvent.Timestamp = endAt
 		logger.Write(endEvent)
 
@@ -45,40 +45,40 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 	recentDay := now.AddDate(0, 0, -2).Truncate(24 * time.Hour)
 	oldDay := now.AddDate(0, 0, -30).Truncate(24 * time.Hour)
 
-	writeUsageLog(t, "recent-known", recentDay.Add(10*time.Hour), recentDay.Add(10*time.Hour+time.Second), agent.SessionStartData{
+	writeUsageLog(t, "recent-known", recentDay.Add(10*time.Hour), recentDay.Add(10*time.Hour+time.Second), fizeau.SessionStartData{
 		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent known",
-	}, agent.SessionEndData{
-		Status:     agent.StatusSuccess,
+	}, fizeau.SessionEndData{
+		Status:     fizeau.StatusSuccess,
 		Output:     "ok",
-		Tokens:     agent.TokenUsage{Input: 10, Output: 5, Total: 15},
+		Tokens:     fizeau.TokenUsage{Input: 10, Output: 5, Total: 15},
 		CostUSD:    usageFloat64Ptr(0.25),
 		DurationMs: 1000,
 		Model:      "qwen3.5-7b",
 	})
 
-	writeUsageLog(t, "recent-unknown", recentDay.Add(11*time.Hour), recentDay.Add(11*time.Hour+2*time.Second), agent.SessionStartData{
+	writeUsageLog(t, "recent-unknown", recentDay.Add(11*time.Hour), recentDay.Add(11*time.Hour+2*time.Second), fizeau.SessionStartData{
 		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent unknown",
-	}, agent.SessionEndData{
-		Status:     agent.StatusSuccess,
+	}, fizeau.SessionEndData{
+		Status:     fizeau.StatusSuccess,
 		Output:     "ok",
-		Tokens:     agent.TokenUsage{Input: 20, Output: 10, Total: 30},
+		Tokens:     fizeau.TokenUsage{Input: 20, Output: 10, Total: 30},
 		CostUSD:    usageFloat64Ptr(-1),
 		DurationMs: 2000,
 		Model:      "qwen3.5-7b",
 	})
 
-	writeUsageLog(t, "old-session", oldDay.Add(9*time.Hour), oldDay.Add(9*time.Hour+3*time.Second), agent.SessionStartData{
+	writeUsageLog(t, "old-session", oldDay.Add(9*time.Hour), oldDay.Add(9*time.Hour+3*time.Second), fizeau.SessionStartData{
 		Provider: "anthropic",
 		Model:    "claude-sonnet-4-20250514",
 		Prompt:   "old",
-	}, agent.SessionEndData{
-		Status:     agent.StatusSuccess,
+	}, fizeau.SessionEndData{
+		Status:     fizeau.StatusSuccess,
 		Output:     "ok",
-		Tokens:     agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		Tokens:     fizeau.TokenUsage{Input: 100, Output: 50, Total: 150},
 		CostUSD:    usageFloat64Ptr(0.5),
 		DurationMs: 3000,
 		Model:      "claude-sonnet-4-20250514",

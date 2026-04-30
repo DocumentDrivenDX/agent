@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -144,7 +144,7 @@ func (s *countedOpenAIServer) setModelsStatus(status int) {
 	s.modelsStatus = status
 }
 
-func eventDataByType(t *testing.T, events []agent.SessionEvent, eventType agent.SessionEventType) map[string]any {
+func eventDataByType(t *testing.T, events []fizeau.SessionEvent, eventType fizeau.SessionEventType) map[string]any {
 	t.Helper()
 	for _, e := range events {
 		if e.Type != eventType {
@@ -178,14 +178,14 @@ func latestSessionLogPath(t *testing.T, workDir string) string {
 	return latest
 }
 
-func writeRoutingHistorySession(t *testing.T, workDir, sessionID string, ts time.Time, data agent.SessionEndData) {
+func writeRoutingHistorySession(t *testing.T, workDir, sessionID string, ts time.Time, data fizeau.SessionEndData) {
 	t.Helper()
 	logDir := filepath.Join(workDir, ".agent", "sessions")
 	require.NoError(t, os.MkdirAll(logDir, 0o755))
-	event := agent.SessionEvent{
+	event := fizeau.SessionEvent{
 		SessionID: sessionID,
 		Seq:       0,
-		Type:      agent.EventSessionEnd,
+		Type:      fizeau.EventSessionEnd,
 		Timestamp: ts.UTC(),
 	}
 	raw, err := json.Marshal(data)
@@ -254,12 +254,12 @@ default: bragi
 	assert.Equal(t, "qwen3.5-27b", bragi.requestedModel())
 
 	firstSessionPath := latestSessionLogPath(t, workDir)
-	firstEvents, err := agent.ReadSessionEvents(firstSessionPath)
+	firstEvents, err := fizeau.ReadSessionEvents(firstSessionPath)
 	require.NoError(t, err)
-	firstStart := eventDataByType(t, firstEvents, agent.EventSessionStart)
+	firstStart := eventDataByType(t, firstEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "qwen3.5-27b", firstStart["requested_model"])
 	assert.Equal(t, "qwen3.5-27b", firstStart["selected_route"])
-	firstEnd := eventDataByType(t, firstEvents, agent.EventSessionEnd)
+	firstEnd := eventDataByType(t, firstEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "qwen3.5-27b", firstEnd["requested_model"])
 	assert.Equal(t, "bragi", firstEnd["selected_provider"])
 
@@ -274,9 +274,9 @@ default: bragi
 	assert.Equal(t, "qwen3.5-27b", grendel.requestedModel())
 
 	secondSessionPath := latestSessionLogPath(t, workDir)
-	secondEvents, err := agent.ReadSessionEvents(secondSessionPath)
+	secondEvents, err := fizeau.ReadSessionEvents(secondSessionPath)
 	require.NoError(t, err)
-	secondEnd := eventDataByType(t, secondEvents, agent.EventSessionEnd)
+	secondEnd := eventDataByType(t, secondEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "qwen3.5-27b", secondEnd["requested_model"])
 	assert.Equal(t, "grendel", secondEnd["selected_provider"])
 
@@ -338,9 +338,9 @@ model_routes:
 	assert.Equal(t, 1, parsed.FailoverCount)
 
 	sessionPath := latestSessionLogPath(t, workDir)
-	events, err := agent.ReadSessionEvents(sessionPath)
+	events, err := fizeau.ReadSessionEvents(sessionPath)
 	require.NoError(t, err)
-	end := eventDataByType(t, events, agent.EventSessionEnd)
+	end := eventDataByType(t, events, fizeau.EventSessionEnd)
 	assert.Equal(t, "openrouter", end["selected_provider"])
 	assert.Equal(t, float64(1), end["failover_count"])
 
@@ -401,27 +401,27 @@ func TestCLI_ModelIntentAutoRoutingSkipsUnhealthyDefaultAndChoosesBestHealthyPro
 	openrouter.setModels("qwen/qwen3.5-27b-20260224")
 
 	knownCost := 0.09
-	writeRoutingHistorySession(t, workDir, "vidar-win", time.Now().Add(-5*time.Minute), agent.SessionEndData{
-		Status:           agent.StatusSuccess,
-		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+	writeRoutingHistorySession(t, workDir, "vidar-win", time.Now().Add(-5*time.Minute), fizeau.SessionEndData{
+		Status:           fizeau.StatusSuccess,
+		Tokens:           fizeau.TokenUsage{Input: 100, Output: 50, Total: 150},
 		CostUSD:          nil,
 		DurationMs:       800,
 		SelectedProvider: "vidar",
 		RequestedModel:   "qwen3.5-27b",
 		ResolvedModel:    "qwen3.5-27b",
 	})
-	writeRoutingHistorySession(t, workDir, "bragi-slow", time.Now().Add(-4*time.Minute), agent.SessionEndData{
-		Status:           agent.StatusSuccess,
-		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+	writeRoutingHistorySession(t, workDir, "bragi-slow", time.Now().Add(-4*time.Minute), fizeau.SessionEndData{
+		Status:           fizeau.StatusSuccess,
+		Tokens:           fizeau.TokenUsage{Input: 100, Output: 50, Total: 150},
 		CostUSD:          nil,
 		DurationMs:       2400,
 		SelectedProvider: "bragi",
 		RequestedModel:   "qwen3.5-27b",
 		ResolvedModel:    "qwen3.5-27b",
 	})
-	writeRoutingHistorySession(t, workDir, "openrouter-costly", time.Now().Add(-3*time.Minute), agent.SessionEndData{
-		Status:           agent.StatusSuccess,
-		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+	writeRoutingHistorySession(t, workDir, "openrouter-costly", time.Now().Add(-3*time.Minute), fizeau.SessionEndData{
+		Status:           fizeau.StatusSuccess,
+		Tokens:           fizeau.TokenUsage{Input: 100, Output: 50, Total: 150},
 		CostUSD:          &knownCost,
 		DurationMs:       1500,
 		SelectedProvider: "openrouter",
@@ -794,14 +794,14 @@ default_backend: code-pool
 	assert.Equal(t, "gpt-5.4-mini", vidar.requestedModel())
 
 	firstSessionPath := latestSessionLogPath(t, workDir)
-	firstEvents, err := agent.ReadSessionEvents(firstSessionPath)
+	firstEvents, err := fizeau.ReadSessionEvents(firstSessionPath)
 	require.NoError(t, err)
-	firstStart := eventDataByType(t, firstEvents, agent.EventSessionStart)
+	firstStart := eventDataByType(t, firstEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "vidar", firstStart["selected_provider"])
 	assert.Equal(t, "code-pool", firstStart["selected_route"])
 	assert.Equal(t, "code-medium", firstStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", firstStart["resolved_model"])
-	firstEnd := eventDataByType(t, firstEvents, agent.EventSessionEnd)
+	firstEnd := eventDataByType(t, firstEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "vidar", firstEnd["selected_provider"])
 	assert.Equal(t, "code-pool", firstEnd["selected_route"])
 	assert.Equal(t, "code-medium", firstEnd["resolved_model_ref"])
@@ -820,14 +820,14 @@ default_backend: code-pool
 	assert.Equal(t, "gpt-5.4-mini", bragi.requestedModel())
 
 	secondSessionPath := latestSessionLogPath(t, workDir)
-	secondEvents, err := agent.ReadSessionEvents(secondSessionPath)
+	secondEvents, err := fizeau.ReadSessionEvents(secondSessionPath)
 	require.NoError(t, err)
-	secondStart := eventDataByType(t, secondEvents, agent.EventSessionStart)
+	secondStart := eventDataByType(t, secondEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "bragi", secondStart["selected_provider"])
 	assert.Equal(t, "code-pool", secondStart["selected_route"])
 	assert.Equal(t, "code-medium", secondStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", secondStart["resolved_model"])
-	secondEnd := eventDataByType(t, secondEvents, agent.EventSessionEnd)
+	secondEnd := eventDataByType(t, secondEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "bragi", secondEnd["selected_provider"])
 	assert.Equal(t, "code-pool", secondEnd["selected_route"])
 	assert.Equal(t, "code-medium", secondEnd["resolved_model_ref"])

@@ -1,6 +1,6 @@
 //go:build testseam
 
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 // drainEvents collects everything from ch until it closes or the deadline
 // fires. The final element (when present) is always EventTypeFinal.
-func drainEvents(t *testing.T, ch <-chan agent.ServiceEvent, timeout time.Duration) []agent.ServiceEvent {
+func drainEvents(t *testing.T, ch <-chan fizeau.ServiceEvent, timeout time.Duration) []fizeau.ServiceEvent {
 	t.Helper()
-	var events []agent.ServiceEvent
+	var events []fizeau.ServiceEvent
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
@@ -41,7 +41,7 @@ func drainEvents(t *testing.T, ch <-chan agent.ServiceEvent, timeout time.Durati
 
 // findFinal returns the final event (the last EventTypeFinal in the slice)
 // or nil if absent.
-func findFinal(events []agent.ServiceEvent) *agent.ServiceEvent {
+func findFinal(events []fizeau.ServiceEvent) *fizeau.ServiceEvent {
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Type == "final" {
 			ev := events[i]
@@ -52,7 +52,7 @@ func findFinal(events []agent.ServiceEvent) *agent.ServiceEvent {
 }
 
 // finalStatus extracts the status field from a final event's JSON payload.
-func finalStatus(t *testing.T, ev *agent.ServiceEvent) string {
+func finalStatus(t *testing.T, ev *fizeau.ServiceEvent) string {
 	t.Helper()
 	if ev == nil {
 		return ""
@@ -68,7 +68,7 @@ func finalStatus(t *testing.T, ev *agent.ServiceEvent) string {
 }
 
 // finalError extracts the error message from a final event's JSON payload.
-func finalError(t *testing.T, ev *agent.ServiceEvent) string {
+func finalError(t *testing.T, ev *fizeau.ServiceEvent) string {
 	t.Helper()
 	if ev == nil {
 		return ""
@@ -82,7 +82,7 @@ func finalError(t *testing.T, ev *agent.ServiceEvent) string {
 	return payload.Error
 }
 
-func finalText(t *testing.T, ev *agent.ServiceEvent) string {
+func finalText(t *testing.T, ev *fizeau.ServiceEvent) string {
 	t.Helper()
 	if ev == nil {
 		return ""
@@ -96,19 +96,19 @@ func finalText(t *testing.T, ev *agent.ServiceEvent) string {
 	return payload.FinalText
 }
 
-func finalData(t *testing.T, ev *agent.ServiceEvent) agent.ServiceFinalData {
+func finalData(t *testing.T, ev *fizeau.ServiceEvent) fizeau.ServiceFinalData {
 	t.Helper()
 	if ev == nil {
 		t.Fatal("expected final event")
 	}
-	var payload agent.ServiceFinalData
+	var payload fizeau.ServiceFinalData
 	if err := json.Unmarshal(ev.Data, &payload); err != nil {
 		t.Fatalf("unmarshal final: %v", err)
 	}
 	return payload
 }
 
-func eventPayload[T any](t *testing.T, ev agent.ServiceEvent) T {
+func eventPayload[T any](t *testing.T, ev fizeau.ServiceEvent) T {
 	t.Helper()
 	var payload T
 	if err := json.Unmarshal(ev.Data, &payload); err != nil {
@@ -117,7 +117,7 @@ func eventPayload[T any](t *testing.T, ev agent.ServiceEvent) T {
 	return payload
 }
 
-func eventTypes(events []agent.ServiceEvent) []string {
+func eventTypes(events []fizeau.ServiceEvent) []string {
 	types := make([]string, len(events))
 	for i, ev := range events {
 		types[i] = string(ev.Type)
@@ -134,7 +134,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-func indexEventType(events []agent.ServiceEvent, want string) int {
+func indexEventType(events []fizeau.ServiceEvent, want string) int {
 	for i, ev := range events {
 		if string(ev.Type) == want {
 			return i
@@ -144,12 +144,12 @@ func indexEventType(events []agent.ServiceEvent, want string) int {
 }
 
 func TestExecute_ReturnsExplicitHarnessModelErrorBeforeDispatch(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "gemini",
 		Model:   "minimax/minimax-m2.7",
@@ -160,10 +160,10 @@ func TestExecute_ReturnsExplicitHarnessModelErrorBeforeDispatch(t *testing.T) {
 	if ch != nil {
 		t.Fatalf("expected no event channel for typed pre-resolution error, got %#v", ch)
 	}
-	if !errors.Is(err, agent.ErrHarnessModelIncompatible{}) {
+	if !errors.Is(err, fizeau.ErrHarnessModelIncompatible{}) {
 		t.Fatalf("errors.Is should match ErrHarnessModelIncompatible: %T %v", err, err)
 	}
-	var typed *agent.ErrHarnessModelIncompatible
+	var typed *fizeau.ErrHarnessModelIncompatible
 	if !errors.As(err, &typed) {
 		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
 	}
@@ -174,19 +174,19 @@ func TestExecute_ReturnsExplicitHarnessModelErrorBeforeDispatch(t *testing.T) {
 
 func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 	var calls atomic.Int64
-	opts := agent.ServiceOptions{}
-	opts.FakeProvider = &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	opts := fizeau.ServiceOptions{}
+	opts.FakeProvider = &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			calls.Add(1)
-			return agent.FakeResponse{Text: "should not dispatch"}, nil
+			return fizeau.FakeResponse{Text: "should not dispatch"}, nil
 		},
 	}
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Profile: "smart",
 		Harness: "agent",
@@ -200,10 +200,10 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatalf("provider calls=%d, want 0", calls.Load())
 	}
-	if !errors.Is(err, agent.ErrProfilePinConflict{}) {
+	if !errors.Is(err, fizeau.ErrProfilePinConflict{}) {
 		t.Fatalf("errors.Is should match ErrProfilePinConflict: %T %v", err, err)
 	}
-	var typed *agent.ErrProfilePinConflict
+	var typed *fizeau.ErrProfilePinConflict
 	if !errors.As(err, &typed) {
 		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
 	}
@@ -216,20 +216,20 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 // Execute drives loop.go through the FakeProvider seam, emits a routing
 // decision, forwards events with metadata, and terminates with success.
 func TestExecute_NativePathWithFakeProvider(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
-			{Text: "hello world", Usage: agent.TokenUsage{Input: 10, Output: 5, Total: 15}},
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
+			{Text: "hello world", Usage: fizeau.TokenUsage{Input: 10, Output: 5, Total: 15}},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
 
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
 		Harness:  "agent",
 		Model:    "fake-model",
@@ -271,20 +271,20 @@ func TestExecute_NativePathWithFakeProvider(t *testing.T) {
 }
 
 func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
-			{Text: "APPROVE\nTyped drain works.", Usage: agent.TokenUsage{Input: 8, Output: 4, Total: 12}},
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
+			{Text: "APPROVE\nTyped drain works.", Usage: fizeau.TokenUsage{Input: 8, Output: 4, Total: 12}},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
 
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:   "review",
 		Harness:  "agent",
 		Model:    "fake-model",
@@ -293,7 +293,7 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	result, err := agent.DrainExecute(context.Background(), ch)
+	result, err := fizeau.DrainExecute(context.Background(), ch)
 	if err != nil {
 		t.Fatalf("DrainExecute: %v", err)
 	}
@@ -312,26 +312,26 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 }
 
 func TestExecute_NativeReasoningForwarded(t *testing.T) {
-	var got agent.Reasoning
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	var got fizeau.Reasoning
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			got = req.Reasoning
-			return agent.FakeResponse{Text: "done"}, nil
+			return fizeau.FakeResponse{Text: "done"}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:    "hi",
 		Harness:   "agent",
 		Provider:  "fake",
 		Model:     "fake-model",
-		Reasoning: agent.ReasoningOff,
+		Reasoning: fizeau.ReasoningOff,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -340,7 +340,7 @@ func TestExecute_NativeReasoningForwarded(t *testing.T) {
 	if final := findFinal(events); final == nil || finalStatus(t, final) != "success" {
 		t.Fatalf("expected success final, got %#v", final)
 	}
-	if got != agent.ReasoningOff {
+	if got != fizeau.ReasoningOff {
 		t.Fatalf("Reasoning forwarded to native provider = %q, want off", got)
 	}
 }
@@ -348,21 +348,21 @@ func TestExecute_NativeReasoningForwarded(t *testing.T) {
 func TestExecute_NativeSamplingForwarded(t *testing.T) {
 	var gotTemperature *float64
 	var gotSeed int64
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			gotTemperature = req.Temperature
 			gotSeed = req.Seed
-			return agent.FakeResponse{Text: "done"}, nil
+			return fizeau.FakeResponse{Text: "done"}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
 		Harness:     "agent",
 		Provider:    "fake",
@@ -389,24 +389,24 @@ func TestExecute_NativeUnrestrictedToolsForwarded(t *testing.T) {
 	var providerTools []string
 	var hookHarness string
 	var hookTools []string
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			providerTools = append([]string(nil), req.Tools...)
-			return agent.FakeResponse{Text: "done"}, nil
+			return fizeau.FakeResponse{Text: "done"}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.ToolWiringHook = func(harness string, toolNames []string) {
 		hookHarness = harness
 		hookTools = append([]string(nil), toolNames...)
 	}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
 		Harness:     "agent",
 		Provider:    "fake",
@@ -440,20 +440,20 @@ func TestExecute_NativeUnrestrictedToolsForwarded(t *testing.T) {
 
 func TestExecute_NativeSafePermissionExposesReadOnlyTools(t *testing.T) {
 	var providerTools []string
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			providerTools = append([]string(nil), req.Tools...)
-			return agent.FakeResponse{Text: "done"}, nil
+			return fizeau.FakeResponse{Text: "done"}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
 		Harness:     "agent",
 		Provider:    "fake",
@@ -481,16 +481,16 @@ func TestExecute_NativeSafePermissionExposesReadOnlyTools(t *testing.T) {
 }
 
 func TestExecute_NativeSupervisedPermissionRejected(t *testing.T) {
-	opts := agent.ServiceOptions{}
-	opts.FakeProvider = &agent.FakeProvider{
-		Static: []agent.FakeResponse{{Text: "should not run"}},
+	opts := fizeau.ServiceOptions{}
+	opts.FakeProvider = &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{{Text: "should not run"}},
 	}
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
 		Harness:     "agent",
 		Provider:    "fake",
@@ -518,10 +518,10 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workDir, "hello.txt"), []byte("hello from service tools\n"), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
 			{
-				ToolCalls: []agent.ToolCall{{
+				ToolCalls: []fizeau.ToolCall{{
 					ID:        "read-1",
 					Name:      "read",
 					Arguments: json.RawMessage(`{"path":"hello.txt"}`),
@@ -530,14 +530,14 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 			{Text: "done"},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:   "read the fixture",
 		Harness:  "agent",
 		Provider: "fake",
@@ -557,8 +557,8 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 		t.Fatalf("expected success final, got %#v (types=%v)", final, eventTypes(events))
 	}
 
-	var toolCall *agent.ServiceEvent
-	var toolResult *agent.ServiceEvent
+	var toolCall *fizeau.ServiceEvent
+	var toolResult *fizeau.ServiceEvent
 	for i := range events {
 		switch events[i].Type {
 		case "tool_call":
@@ -615,11 +615,11 @@ func TestExecute_StallPolicy_ReadOnlyTrigger(t *testing.T) {
 	// would normally hit the tool-call-loop limit; we cap iterations short
 	// via a tight StallPolicy so the read-only ceiling fires first.
 	callCount := 0
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			callCount++
-			return agent.FakeResponse{
-				ToolCalls: []agent.ToolCall{{
+			return fizeau.FakeResponse{
+				ToolCalls: []fizeau.ToolCall{{
 					ID:        "c1",
 					Name:      "read",
 					Arguments: json.RawMessage(`{"path":"/tmp/x"}`),
@@ -627,18 +627,18 @@ func TestExecute_StallPolicy_ReadOnlyTrigger(t *testing.T) {
 			}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "stall please",
 		Harness:  "agent",
 		Provider: "fake",
 		Model:    "fake-model",
-		StallPolicy: &agent.StallPolicy{
+		StallPolicy: &fizeau.StallPolicy{
 			MaxReadOnlyToolIterations: 3,
 		},
 		Timeout: 5 * time.Second,
@@ -664,11 +664,11 @@ func TestExecute_StallPolicy_ReadOnlyTrigger(t *testing.T) {
 
 func TestExecute_StallPolicy_NonMutatingBashCountsAsNoProgress(t *testing.T) {
 	callCount := 0
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			callCount++
-			return agent.FakeResponse{
-				ToolCalls: []agent.ToolCall{{
+			return fizeau.FakeResponse{
+				ToolCalls: []fizeau.ToolCall{{
 					ID:   "bash-loop",
 					Name: "bash",
 					Arguments: json.RawMessage([]byte(
@@ -678,21 +678,21 @@ func TestExecute_StallPolicy_NonMutatingBashCountsAsNoProgress(t *testing.T) {
 			}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "stall on bash",
 		Harness:     "agent",
 		Provider:    "fake",
 		Model:       "fake-model",
 		WorkDir:     t.TempDir(),
 		Permissions: "unrestricted",
-		StallPolicy: &agent.StallPolicy{
+		StallPolicy: &fizeau.StallPolicy{
 			MaxReadOnlyToolIterations: 3,
 		},
 		Timeout: 5 * time.Second,
@@ -733,11 +733,11 @@ func TestExecute_StallPolicy_NonMutatingBashCountsAsNoProgress(t *testing.T) {
 // no provider and no FakeProvider yields Status="failed" with an explicit
 // orphan-model error message.
 func TestExecute_OrphanModelFails(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "agent",
 		Model:   "no-such-model",
@@ -763,22 +763,22 @@ func TestExecute_OrphanModelFails(t *testing.T) {
 // TestExecute_TimeoutWallClock verifies that a wall-clock Timeout fires
 // when the provider takes longer than the cap.
 func TestExecute_TimeoutWallClock(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			// Sleep longer than the wall-clock cap so the request must
 			// be cancelled; return an error to simulate the cancel
 			// surface.
 			time.Sleep(500 * time.Millisecond)
-			return agent.FakeResponse{}, errors.New("provider should have been cancelled")
+			return fizeau.FakeResponse{}, errors.New("provider should have been cancelled")
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
 		Harness:  "agent",
 		Provider: "fake",
@@ -806,14 +806,14 @@ func TestExecute_TimeoutWallClock(t *testing.T) {
 // TestExecute_MetadataEchoedOnEvents verifies that req.Metadata is
 // stamped onto every event the channel emits.
 func TestExecute_MetadataEchoedOnEvents(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
 			{Text: "ok"},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -821,7 +821,7 @@ func TestExecute_MetadataEchoedOnEvents(t *testing.T) {
 		"bead_id":    "agent-755fea77",
 		"attempt_id": "1",
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
 		Harness:  "agent",
 		Provider: "fake",
@@ -852,19 +852,19 @@ func TestExecute_MetadataEchoedOnEvents(t *testing.T) {
 // TestExecute_SessionLogDirOverride verifies that req.SessionLogDir
 // directs the per-request session log to the supplied path.
 func TestExecute_SessionLogDirOverride(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
 			{Text: "ok"},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	dir := t.TempDir()
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
 		Harness:       "agent",
 		Provider:      "fake",
@@ -899,19 +899,19 @@ func TestExecute_SessionLogDirOverride(t *testing.T) {
 // when applicable) to reconstruct what the loop did, so the runNative
 // callback forwards every internal agent event into the session log file.
 func TestExecute_NativeSessionLogPreservesFullTrace(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Static: []agent.FakeResponse{
+	fp := &fizeau.FakeProvider{
+		Static: []fizeau.FakeResponse{
 			{Text: "ok"},
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	dir := t.TempDir()
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
 		Harness:       "agent",
 		Provider:      "fake",
@@ -989,20 +989,20 @@ func TestExecute_NativeSessionLogPreservesFullTrace(t *testing.T) {
 // the loop is mid-flight terminates the stream cleanly with a
 // cancelled-status final.
 func TestExecute_OSCancelDuringStreaming(t *testing.T) {
-	fp := &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			time.Sleep(2 * time.Second)
-			return agent.FakeResponse{Text: "late"}, nil
+			return fizeau.FakeResponse{Text: "late"}, nil
 		},
 	}
-	opts := agent.ServiceOptions{}
+	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = fp
-	svc, err := agent.New(opts)
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
 		Harness:  "agent",
 		Provider: "fake",

@@ -4,7 +4,7 @@ package agentcli
 // standalone `ddx-agent` CLI to rank providers within an explicit route key.
 //
 // As of agent-1a486c2e, the canonical cross-harness routing engine lives in
-// `internal/routing` and is reachable via `agent.DdxAgent.ResolveRoute`. The
+// `internal/routing` and is reachable via `fizeau.DdxAgent.ResolveRoute`. The
 // engine ranks `(harness, provider, model)` tuples uniformly and replaces
 // what used to be a parallel implementation here.
 //
@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	rootagent "github.com/DocumentDrivenDX/fizeau"
+	rootfizeau "github.com/DocumentDrivenDX/fizeau"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/observations"
@@ -532,7 +532,7 @@ func evaluateProviderCandidate(pc agentConfig.ProviderConfig, requestedModel, co
 		// This handles e.g. "qwen3-coder-next" → "qwen/qwen3-coder-next"
 		// which is required for LM Studio JIT model loading.
 		if match != "" {
-			normalized, err := rootagent.NormalizeModelID(match, probe.models)
+			normalized, err := rootfizeau.NormalizeModelID(match, probe.models)
 			if err != nil {
 				return false, "", err.Error()
 			}
@@ -619,7 +619,7 @@ func probeProviderModels(pc agentConfig.ProviderConfig, timeout time.Duration) p
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	models, err := rootagent.DiscoverModels(ctx, pc.BaseURL, pc.APIKey)
+	models, err := rootfizeau.DiscoverModels(ctx, pc.BaseURL, pc.APIKey)
 	if err != nil {
 		return providerModelProbe{err: err}
 	}
@@ -651,15 +651,15 @@ func readSmartRoutingHistory(logDir, routeKey string, now time.Time, historyWind
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
 			continue
 		}
-		events, err := rootagent.ReadSessionEvents(filepath.Join(logDir, entry.Name()))
+		events, err := rootfizeau.ReadSessionEvents(filepath.Join(logDir, entry.Name()))
 		if err != nil {
 			continue
 		}
 		for _, event := range events {
-			if event.Type != rootagent.EventSessionEnd {
+			if event.Type != rootfizeau.EventSessionEnd {
 				continue
 			}
-			var end rootagent.SessionEndData
+			var end rootfizeau.SessionEndData
 			if err := json.Unmarshal(event.Data, &end); err != nil {
 				continue
 			}
@@ -690,7 +690,7 @@ func readSmartRoutingHistory(logDir, routeKey string, now time.Time, historyWind
 			if event.Timestamp.After(loadCutoff) {
 				acc.recentSelections++
 			}
-			if end.Status == rootagent.StatusSuccess {
+			if end.Status == rootfizeau.StatusSuccess {
 				acc.successes++
 				acc.durationMs += end.DurationMs
 				if end.DurationMs > 0 && end.Tokens.Output > 0 {
@@ -745,7 +745,7 @@ func abs(v float64) float64 {
 	return v
 }
 
-// routeStatusComponents mirrors agent.RouteCandidateComponents in the
+// routeStatusComponents mirrors fizeau.RouteCandidateComponents in the
 // route-status JSON envelope. Operators read these to answer "why did the
 // router pick X?" without parsing the free-form Reason string.
 type routeStatusComponents struct {
@@ -817,7 +817,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 	if *overrides {
 		return cmdRouteStatusOverrides(workDir, *since, *axis, *jsonOut)
 	}
-	if err := rootagent.ValidatePowerBounds(*minPower, *maxPower); err != nil {
+	if err := rootfizeau.ValidatePowerBounds(*minPower, *maxPower); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
@@ -828,7 +828,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 		return 1
 	}
 
-	svc, err := rootagent.New(rootagent.ServiceOptions{
+	svc, err := rootfizeau.New(rootfizeau.ServiceOptions{
 		ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir),
 		SessionLogDir: sessionLogDir(workDir, cfg),
 	})
@@ -839,7 +839,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	decision, resolveErr := svc.ResolveRoute(ctx, rootagent.RouteRequest{
+	decision, resolveErr := svc.ResolveRoute(ctx, rootfizeau.RouteRequest{
 		Profile:  *profile,
 		Model:    *model,
 		ModelRef: *modelRef,

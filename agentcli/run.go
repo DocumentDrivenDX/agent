@@ -147,9 +147,9 @@ func runWithOptions(opts Options) int {
 		wd, _ = os.Getwd()
 	}
 	if *listModels {
-		return cmdListModels(wd, *jsonOutput, agent.ModelFilter{Provider: *providerFlag})
+		return cmdListModels(wd, *jsonOutput, fizeau.ModelFilter{Provider: *providerFlag})
 	}
-	if err := agent.ValidatePowerBounds(*minPower, *maxPower); err != nil {
+	if err := fizeau.ValidatePowerBounds(*minPower, *maxPower); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
@@ -307,7 +307,7 @@ func runWithOptions(opts Options) int {
 	}
 
 	// Build compaction config from resolved context window.
-	compactionCfg := agent.DefaultCompactionConfig()
+	compactionCfg := fizeau.DefaultCompactionConfig()
 	if resolvedContextWindow > 0 {
 		compactionCfg.ContextWindow = resolvedContextWindow
 		if resolvedMaxTokens > 0 {
@@ -431,8 +431,8 @@ func runWithOptions(opts Options) int {
 	}
 }
 
-func executeViaService(ctx context.Context, req agent.ServiceExecuteRequest, selection providerSelection, logDir string, serviceConfig agent.ServiceConfig) (cliExecutionResult, error) {
-	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: serviceConfig})
+func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, selection providerSelection, logDir string, serviceConfig fizeau.ServiceConfig) (cliExecutionResult, error) {
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: serviceConfig})
 	if err != nil {
 		return cliExecutionResult{}, err
 	}
@@ -461,20 +461,20 @@ func executeViaService(ctx context.Context, req agent.ServiceExecuteRequest, sel
 	}
 	var sawFinal bool
 	for ev := range ch {
-		decoded, err := agent.DecodeServiceEvent(ev)
+		decoded, err := fizeau.DecodeServiceEvent(ev)
 		if err != nil {
 			return result, fmt.Errorf("decode service event: %w", err)
 		}
 		switch decoded.Type {
-		case agent.ServiceEventTypeRoutingDecision:
+		case fizeau.ServiceEventTypeRoutingDecision:
 			if decoded.RoutingDecision != nil {
 				result.SessionID = decoded.RoutingDecision.SessionID
 			}
-		case agent.ServiceEventTypeTextDelta:
+		case fizeau.ServiceEventTypeTextDelta:
 			if decoded.TextDelta != nil {
 				result.Output += decoded.TextDelta.Text
 			}
-		case agent.ServiceEventTypeFinal:
+		case fizeau.ServiceEventTypeFinal:
 			if decoded.Final == nil {
 				return result, fmt.Errorf("decode service final event: missing final payload")
 			}
@@ -522,7 +522,7 @@ type serviceExecuteRequestParams struct {
 	SystemPrompt            string
 	WorkDir                 string
 	Metadata                map[string]string
-	Tools                   []agent.Tool
+	Tools                   []fizeau.Tool
 	ToolPreset              string
 	SelectedProvider        string
 	SelectedRoute           string
@@ -530,7 +530,7 @@ type serviceExecuteRequestParams struct {
 	RequestedModelRef       string
 	ResolvedModelRef        string
 	ResolvedModel           string
-	Reasoning               agent.Reasoning
+	Reasoning               fizeau.Reasoning
 	NoStream                bool
 	MinPower                int
 	MaxPower                int
@@ -554,23 +554,23 @@ type serviceExecuteRequestParams struct {
 }
 
 type cliExecutionResult struct {
-	Status             string          `json:"status"`
-	Output             string          `json:"output"`
-	Tokens             cliTokenUsage   `json:"tokens"`
-	Duration           time.Duration   `json:"duration_ms"`
-	CostUSD            float64         `json:"cost_usd,omitempty"`
-	Model              string          `json:"model,omitempty"`
-	SelectedProvider   string          `json:"selected_provider,omitempty"`
-	SelectedRoute      string          `json:"selected_route,omitempty"`
-	RequestedModel     string          `json:"requested_model,omitempty"`
-	RequestedModelRef  string          `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef   string          `json:"resolved_model_ref,omitempty"`
-	ResolvedModel      string          `json:"resolved_model,omitempty"`
-	Reasoning          agent.Reasoning `json:"reasoning,omitempty"`
-	AttemptedProviders []string        `json:"attempted_providers,omitempty"`
-	FailoverCount      int             `json:"failover_count,omitempty"`
-	Error              string          `json:"error,omitempty"`
-	SessionID          string          `json:"session_id"`
+	Status             string           `json:"status"`
+	Output             string           `json:"output"`
+	Tokens             cliTokenUsage    `json:"tokens"`
+	Duration           time.Duration    `json:"duration_ms"`
+	CostUSD            float64          `json:"cost_usd,omitempty"`
+	Model              string           `json:"model,omitempty"`
+	SelectedProvider   string           `json:"selected_provider,omitempty"`
+	SelectedRoute      string           `json:"selected_route,omitempty"`
+	RequestedModel     string           `json:"requested_model,omitempty"`
+	RequestedModelRef  string           `json:"requested_model_ref,omitempty"`
+	ResolvedModelRef   string           `json:"resolved_model_ref,omitempty"`
+	ResolvedModel      string           `json:"resolved_model,omitempty"`
+	Reasoning          fizeau.Reasoning `json:"reasoning,omitempty"`
+	AttemptedProviders []string         `json:"attempted_providers,omitempty"`
+	FailoverCount      int              `json:"failover_count,omitempty"`
+	Error              string           `json:"error,omitempty"`
+	SessionID          string           `json:"session_id"`
 }
 
 type cliTokenUsage struct {
@@ -581,7 +581,7 @@ type cliTokenUsage struct {
 	Total      int `json:"total"`
 }
 
-func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.ServiceExecuteRequest {
+func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.ServiceExecuteRequest {
 	// Prefer the catalog-resolved concrete model when present so the
 	// service issues chat completions against the actual model id (not
 	// the user-facing alias / routeKey). Falls back to the requested
@@ -595,7 +595,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 	if params.SelectedProvider != "" {
 		harness = "agent"
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
 		SystemPrompt:            params.SystemPrompt,
 		Harness:                 harness,
@@ -698,11 +698,11 @@ type providerSelection struct {
 	RequestedModelRef string
 	ResolvedModelRef  string
 	ResolvedModel     string
-	ReasoningDefault  agent.Reasoning
+	ReasoningDefault  fizeau.Reasoning
 	NoStream          bool
 }
 
-func resolveRunReasoning(cfg *agentConfig.Config, selection providerSelection, flagValue string) (agent.Reasoning, error) {
+func resolveRunReasoning(cfg *agentConfig.Config, selection providerSelection, flagValue string) (fizeau.Reasoning, error) {
 	explicit := strings.TrimSpace(flagValue) != ""
 	if !explicit {
 		return selection.ReasoningDefault, nil
@@ -715,20 +715,20 @@ func resolveRunReasoning(cfg *agentConfig.Config, selection providerSelection, f
 		if selection.ReasoningDefault != "" {
 			return selection.ReasoningDefault, nil
 		}
-		return agent.ReasoningAuto, nil
+		return fizeau.ReasoningAuto, nil
 	}
 	if policy.Kind == reasoning.KindTokens || policy.Value == reasoning.ReasoningMax {
 		maxTokens := lookupReasoningMaxTokens(cfg, selection.ResolvedModel)
 		if maxTokens > 0 {
 			if policy.Value == reasoning.ReasoningMax {
-				return agent.ReasoningTokens(maxTokens), nil
+				return fizeau.ReasoningTokens(maxTokens), nil
 			}
 			if policy.Tokens > maxTokens {
 				return "", fmt.Errorf("reasoning: token budget %d exceeds maximum %d for model %q", policy.Tokens, maxTokens, selection.ResolvedModel)
 			}
 		}
 	}
-	return agent.Reasoning(policy.Value), nil
+	return fizeau.Reasoning(policy.Value), nil
 }
 
 func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
@@ -799,7 +799,7 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 		}
 		if resolved != nil {
 			selection.ResolvedModelRef = resolved.CanonicalID
-			selection.ReasoningDefault = agent.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
+			selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 			if resolved.ConcreteModel != "" {
 				selection.ResolvedModel = resolved.ConcreteModel
 			}
@@ -824,7 +824,7 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 	}
 	if resolved != nil {
 		selection.ResolvedModelRef = resolved.CanonicalID
-		selection.ReasoningDefault = agent.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
+		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 		if resolved.ConcreteModel != "" {
 			selection.ResolvedModel = resolved.ConcreteModel
 		}
@@ -917,7 +917,7 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	}
 	if resolved != nil {
 		selection.ResolvedModelRef = resolved.CanonicalID
-		selection.ReasoningDefault = agent.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
+		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 		if resolved.ConcreteModel != "" {
 			selection.ResolvedModel = resolved.ConcreteModel
 		}
@@ -926,7 +926,7 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	}
 	if selection.ReasoningDefault == "" && routeModelRef != "" {
 		if catalogResolved, err := resolveCanonicalModelRef(cfg, routeModelRef, allowDeprecated); err == nil {
-			selection.ReasoningDefault = agent.Reasoning(catalogResolved.SurfacePolicy.ReasoningDefault)
+			selection.ReasoningDefault = fizeau.Reasoning(catalogResolved.SurfacePolicy.ReasoningDefault)
 			if selection.ResolvedModelRef == "" || selection.ResolvedModelRef == routeKey {
 				selection.ResolvedModelRef = catalogResolved.CanonicalID
 			}
@@ -984,16 +984,16 @@ func resolvePreset(flagValue string, cfg *agentConfig.Config) (string, error) {
 	return prompt.ResolvePresetName(preset)
 }
 
-func buildToolsForPreset(workDir, preset string, bashFilter ...agent.BashOutputFilterConfig) []agent.Tool {
-	filter := agent.BashOutputFilterConfig{}
+func buildToolsForPreset(workDir, preset string, bashFilter ...fizeau.BashOutputFilterConfig) []fizeau.Tool {
+	filter := fizeau.BashOutputFilterConfig{}
 	if len(bashFilter) > 0 {
 		filter = bashFilter[0]
 	}
-	return agent.BuiltinToolsForPreset(workDir, preset, filter)
+	return fizeau.BuiltinToolsForPreset(workDir, preset, filter)
 }
 
-func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) agent.BashOutputFilterConfig {
-	return agent.BashOutputFilterConfig{
+func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) fizeau.BashOutputFilterConfig {
+	return fizeau.BashOutputFilterConfig{
 		Mode:         cfg.Mode,
 		RTKBinary:    cfg.RTKBinary,
 		MaxBytes:     cfg.MaxBytes,
@@ -1259,7 +1259,7 @@ func redactedProviders(providers map[string]agentConfig.ProviderConfig) map[stri
 }
 
 func cmdModels(workDir string, jsonOutput bool, providerName string, args []string) int {
-	filter := agent.ModelFilter{Provider: providerName}
+	filter := fizeau.ModelFilter{Provider: providerName}
 	for _, arg := range args {
 		switch arg {
 		case "--json":
@@ -1292,14 +1292,14 @@ type cliModelInventoryRow struct {
 	RankPosition      int     `json:"rank_position"`
 }
 
-func cmdListModels(workDir string, jsonOutput bool, filter agent.ModelFilter) int {
+func cmdListModels(workDir string, jsonOutput bool, filter fizeau.ModelFilter) int {
 	cfg, err := agentConfig.Load(workDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
 	}
 
-	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir)})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir)})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
@@ -1320,7 +1320,7 @@ func cmdListModels(workDir string, jsonOutput bool, filter agent.ModelFilter) in
 			if harness.Type != "subprocess" {
 				continue
 			}
-			harnessModels, err := svc.ListModels(context.Background(), agent.ModelFilter{Harness: harness.Name})
+			harnessModels, err := svc.ListModels(context.Background(), fizeau.ModelFilter{Harness: harness.Name})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %s\n", err)
 				return 1
@@ -1344,7 +1344,7 @@ func cmdListModels(workDir string, jsonOutput bool, filter agent.ModelFilter) in
 	return 0
 }
 
-func modelInventoryRows(models []agent.ModelInfo) []cliModelInventoryRow {
+func modelInventoryRows(models []fizeau.ModelInfo) []cliModelInventoryRow {
 	rows := make([]cliModelInventoryRow, 0, len(models))
 	for _, model := range models {
 		row := cliModelInventoryRow{
@@ -1400,7 +1400,7 @@ func modelInventoryProvider(row cliModelInventoryRow) string {
 	return row.Provider + "/" + row.ProviderType
 }
 
-func modelInventoryEndpoint(model agent.ModelInfo) string {
+func modelInventoryEndpoint(model fizeau.ModelInfo) string {
 	name := strings.TrimSpace(model.EndpointName)
 	host := ""
 	if model.EndpointBaseURL != "" {
@@ -1598,7 +1598,7 @@ func cmdUsage(workDir string, args []string) int {
 		return 2
 	}
 
-	if err := agent.ValidateUsageSince(*since); err != nil {
+	if err := fizeau.ValidateUsageSince(*since); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
@@ -1615,7 +1615,7 @@ func cmdUsage(workDir string, args []string) int {
 		return 1
 	}
 
-	report, err := svc.UsageReport(context.Background(), agent.UsageReportOptions{
+	report, err := svc.UsageReport(context.Background(), fizeau.UsageReportOptions{
 		Since: *since,
 		Now:   time.Now().UTC(),
 	})
@@ -1642,9 +1642,9 @@ func cmdUsage(workDir string, args []string) int {
 // session-log subcommands (log/replay/usage). The session-log directory is
 // resolved from cfg and handed to the service via ServiceOptions so that the
 // CLI never reads the on-disk session-log layout directly.
-func newSessionProjectionService(workDir string, cfg *agentConfig.Config) (agent.DdxAgent, error) {
+func newSessionProjectionService(workDir string, cfg *agentConfig.Config) (fizeau.DdxAgent, error) {
 	logDir := sessionLogDir(workDir, cfg)
-	return agent.New(agent.ServiceOptions{
+	return fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir),
 		SessionLogDir: logDir,
 	})
@@ -1660,7 +1660,7 @@ func sessionLogDir(workDir string, cfg *agentConfig.Config) string {
 	return filepath.Join(workDir, cfg.SessionLogDir)
 }
 
-func printUsageReport(report *agent.UsageReport, since string) {
+func printUsageReport(report *fizeau.UsageReport, since string) {
 	if report.Window != nil {
 		fmt.Printf("Window: %s .. %s\n", formatUsageWindowBound(report.Window.Start), formatUsageWindowBound(report.Window.End))
 	} else if since != "" {
@@ -1684,7 +1684,7 @@ func formatUsageWindowBound(ts time.Time) string {
 	return ts.UTC().Format("2006-01-02")
 }
 
-func printUsageRow(row agent.UsageReportRow) {
+func printUsageRow(row fizeau.UsageReportRow) {
 	cost := "unknown"
 	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
 		cost = fmt.Sprintf("$%.4f", *row.KnownCostUSD)
@@ -1718,7 +1718,7 @@ func printUsageRow(row agent.UsageReportRow) {
 	)
 }
 
-func printUsageCSV(report *agent.UsageReport) {
+func printUsageCSV(report *fizeau.UsageReport) {
 	fmt.Println("provider,model,sessions,success_sessions,failed_sessions,input_tokens,output_tokens,total_tokens,duration_ms,known_cost_usd,unknown_cost_sessions,success_rate,cost_per_success,input_tokens_per_second,output_tokens_per_second,cache_read_tokens,cache_write_tokens")
 	for _, row := range report.Rows {
 		printUsageCSVRow(row)
@@ -1728,7 +1728,7 @@ func printUsageCSV(report *agent.UsageReport) {
 	printUsageCSVRow(total)
 }
 
-func printUsageCSVRow(row agent.UsageReportRow) {
+func printUsageCSVRow(row fizeau.UsageReportRow) {
 	cost := ""
 	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
 		cost = fmt.Sprintf("%.4f", *row.KnownCostUSD)

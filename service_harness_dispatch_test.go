@@ -1,4 +1,4 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 func TestExecute_DispatchesAdditionalSubprocessHarnesses(t *testing.T) {
@@ -36,7 +36,7 @@ EOF
 `)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -44,18 +44,18 @@ EOF
 	for _, tc := range []struct {
 		harness string
 		model   string
-		reason  agent.Reasoning
+		reason  fizeau.Reasoning
 		text    string
 	}{
 		{harness: "gemini", model: "gemini-2.5-flash", text: "gemini service response"},
-		{harness: "opencode", model: "opencode/gpt-5.4", reason: agent.ReasoningLow, text: "opencode service response"},
-		{harness: "pi", model: "gemini-2.5-flash", reason: agent.ReasoningLow, text: "pi service response"},
+		{harness: "opencode", model: "opencode/gpt-5.4", reason: fizeau.ReasoningLow, text: "opencode service response"},
+		{harness: "pi", model: "gemini-2.5-flash", reason: fizeau.ReasoningLow, text: "pi service response"},
 	} {
 		t.Run(tc.harness, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			ch, err := svc.Execute(ctx, agent.ServiceExecuteRequest{
+			ch, err := svc.Execute(ctx, fizeau.ServiceExecuteRequest{
 				Prompt:      "hello",
 				Harness:     tc.harness,
 				Model:       tc.model,
@@ -67,7 +67,7 @@ EOF
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			result, err := agent.DrainExecute(ctx, ch)
+			result, err := fizeau.DrainExecute(ctx, ch)
 			if err != nil {
 				t.Fatalf("DrainExecute: %v", err)
 			}
@@ -85,7 +85,7 @@ EOF
 }
 
 func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -94,14 +94,14 @@ func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ch, err := svc.Execute(ctx, agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(ctx, fizeau.ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "gemini",
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	result, err := agent.DrainExecute(ctx, ch)
+	result, err := fizeau.DrainExecute(ctx, ch)
 	if err != nil {
 		t.Fatalf("DrainExecute: %v", err)
 	}
@@ -114,19 +114,19 @@ func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
 }
 
 func TestExecute_DispatchesVirtualAndScriptHarnesses(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
 	for _, tc := range []struct {
 		name     string
-		req      agent.ServiceExecuteRequest
+		req      fizeau.ServiceExecuteRequest
 		wantText string
 	}{
 		{
 			name: "virtual",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:  "hello virtual",
 				Harness: "virtual",
 				Model:   "recorded",
@@ -141,7 +141,7 @@ func TestExecute_DispatchesVirtualAndScriptHarnesses(t *testing.T) {
 		},
 		{
 			name: "script",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:  "hello script",
 				Harness: "script",
 				Model:   "deterministic",
@@ -160,7 +160,7 @@ func TestExecute_DispatchesVirtualAndScriptHarnesses(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			result, err := agent.DrainExecute(ctx, ch)
+			result, err := fizeau.DrainExecute(ctx, ch)
 			if err != nil {
 				t.Fatalf("DrainExecute: %v", err)
 			}

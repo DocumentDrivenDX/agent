@@ -3,22 +3,22 @@ package termbench
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 // ExecutionPlan is the ServiceExecuteRequest payload + ancillary metadata
 // for one TerminalBench task. The caller (cmd/bench) is responsible for
-// invoking agent.Service.Execute with Request and consuming the resulting
+// invoking fizeau.Service.Execute with Request and consuming the resulting
 // event channel; this package never spawns a goroutine of its own.
 type ExecutionPlan struct {
 	// Task is the source task (kept for downstream reporting).
 	Task *Task
 
 	// Request is the ServiceExecuteRequest the caller should hand to
-	// agent.New(...).Execute. WorkDir is left to the caller because a
+	// fizeau.New(...).Execute. WorkDir is left to the caller because a
 	// real Harbor run mounts the task workspace at a container path
 	// (/app), while a dry-run from cmd/bench may point at a temp dir.
-	Request agent.ServiceExecuteRequest
+	Request fizeau.ServiceExecuteRequest
 
 	// Timeout matches the task's MaxAgentTimeoutSec budget, suitable for
 	// a context.WithTimeout wrapping Execute.
@@ -58,7 +58,7 @@ type PlanOptions struct {
 
 // BuildPlan converts a Task into an ExecutionPlan. It does not execute
 // anything; callers are free to inspect or mutate Request before handing
-// it to agent.Service.Execute.
+// it to fizeau.Service.Execute.
 //
 // The instruction text is used verbatim as the prompt — TerminalBench
 // tasks are written to be agent-ready, so wrapping them in additional
@@ -76,7 +76,7 @@ func BuildPlan(task *Task, opts PlanOptions) *ExecutionPlan {
 		// not change that signal.
 		perms = "trusted"
 	}
-	req := agent.ServiceExecuteRequest{
+	req := fizeau.ServiceExecuteRequest{
 		Harness:     opts.Harness,
 		Model:       opts.Model,
 		Prompt:      task.Instruction,

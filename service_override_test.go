@@ -1,4 +1,4 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
@@ -18,9 +18,9 @@ func sessionScanRoutingQuality(dir string) (*session.RoutingQualityScan, error) 
 }
 
 // drainOverrideEvents collects events from ch until close or timeout.
-func drainOverrideEvents(t *testing.T, ch <-chan agent.ServiceEvent, timeout time.Duration) []agent.ServiceEvent {
+func drainOverrideEvents(t *testing.T, ch <-chan fizeau.ServiceEvent, timeout time.Duration) []fizeau.ServiceEvent {
 	t.Helper()
-	var events []agent.ServiceEvent
+	var events []fizeau.ServiceEvent
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
@@ -37,7 +37,7 @@ func drainOverrideEvents(t *testing.T, ch <-chan agent.ServiceEvent, timeout tim
 	}
 }
 
-func overrideEventTypes(events []agent.ServiceEvent) []string {
+func overrideEventTypes(events []fizeau.ServiceEvent) []string {
 	out := make([]string, len(events))
 	for i, ev := range events {
 		out[i] = string(ev.Type)
@@ -45,7 +45,7 @@ func overrideEventTypes(events []agent.ServiceEvent) []string {
 	return out
 }
 
-func overrideIndexEventType(events []agent.ServiceEvent, want string) int {
+func overrideIndexEventType(events []fizeau.ServiceEvent, want string) int {
 	for i, ev := range events {
 		if string(ev.Type) == want {
 			return i
@@ -54,19 +54,19 @@ func overrideIndexEventType(events []agent.ServiceEvent, want string) int {
 	return -1
 }
 
-func overrideFinalData(t *testing.T, ev *agent.ServiceEvent) agent.ServiceFinalData {
+func overrideFinalData(t *testing.T, ev *fizeau.ServiceEvent) fizeau.ServiceFinalData {
 	t.Helper()
 	if ev == nil {
 		t.Fatal("expected final event, got nil")
 	}
-	var payload agent.ServiceFinalData
+	var payload fizeau.ServiceFinalData
 	if err := json.Unmarshal(ev.Data, &payload); err != nil {
 		t.Fatalf("unmarshal final: %v", err)
 	}
 	return payload
 }
 
-func overrideFindFinal(events []agent.ServiceEvent) *agent.ServiceEvent {
+func overrideFindFinal(events []fizeau.ServiceEvent) *fizeau.ServiceEvent {
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Type == harnesses.EventTypeFinal {
 			ev := events[i]
@@ -77,9 +77,9 @@ func overrideFindFinal(events []agent.ServiceEvent) *agent.ServiceEvent {
 }
 
 // findOverride returns the override event from a drained slice, or nil.
-func findOverride(events []agent.ServiceEvent) *agent.ServiceEvent {
+func findOverride(events []fizeau.ServiceEvent) *fizeau.ServiceEvent {
 	for i := range events {
-		if string(events[i].Type) == agent.ServiceEventTypeOverride {
+		if string(events[i].Type) == fizeau.ServiceEventTypeOverride {
 			ev := events[i]
 			return &ev
 		}
@@ -87,12 +87,12 @@ func findOverride(events []agent.ServiceEvent) *agent.ServiceEvent {
 	return nil
 }
 
-func decodeOverride(t *testing.T, ev *agent.ServiceEvent) agent.ServiceOverrideData {
+func decodeOverride(t *testing.T, ev *fizeau.ServiceEvent) fizeau.ServiceOverrideData {
 	t.Helper()
 	if ev == nil {
 		t.Fatal("expected override event, got nil")
 	}
-	var payload agent.ServiceOverrideData
+	var payload fizeau.ServiceOverrideData
 	if err := json.Unmarshal(ev.Data, &payload); err != nil {
 		t.Fatalf("unmarshal override: %v", err)
 	}
@@ -107,11 +107,11 @@ func decodeOverride(t *testing.T, ev *agent.ServiceEvent) agent.ServiceOverrideD
 // override-event surface is silent (no ErrRejectedOverride wrapper, no
 // override events in any channel that may be returned).
 func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, execErr := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, execErr := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt: "hi",
 	})
 	// The Execute contract for the unpinned/under-specified path returns a
@@ -120,7 +120,7 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 	// shape is acceptable for AC #1; what is forbidden is any
 	// override/rejected_override event or wrapper.
 	if execErr != nil {
-		var rej *agent.ErrRejectedOverride
+		var rej *fizeau.ErrRejectedOverride
 		if errors.As(execErr, &rej) {
 			t.Fatalf("rejected_override fired for unpinned request: %+v", rej.Event)
 		}
@@ -134,7 +134,7 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 		t.Fatalf("unpinned request emitted override event: %+v", ov)
 	}
 	for _, ev := range events {
-		if string(ev.Type) == agent.ServiceEventTypeRejectedOverride {
+		if string(ev.Type) == fizeau.ServiceEventTypeRejectedOverride {
 			t.Fatalf("unpinned request emitted rejected_override event: %+v", ev)
 		}
 	}
@@ -151,12 +151,12 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 	cases := []struct {
 		name     string
-		req      agent.ServiceExecuteRequest
+		req      fizeau.ServiceExecuteRequest
 		wantAxes []string
 	}{
 		{
 			name: "harness_only_virtual",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:  "hi",
 				Harness: "virtual",
 				Metadata: map[string]string{
@@ -167,7 +167,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 		},
 		{
 			name: "harness_and_provider_virtual",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:   "hi",
 				Harness:  "virtual",
 				Provider: "synthetic",
@@ -179,7 +179,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 		},
 		{
 			name: "harness_and_model_virtual",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:  "hi",
 				Harness: "virtual",
 				Model:   "recorded",
@@ -191,7 +191,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 		},
 		{
 			name: "all_three_axes_virtual",
-			req: agent.ServiceExecuteRequest{
+			req: fizeau.ServiceExecuteRequest{
 				Prompt:   "hi",
 				Harness:  "virtual",
 				Provider: "synthetic",
@@ -205,7 +205,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc, err := agent.New(agent.ServiceOptions{})
+			svc, err := fizeau.New(fizeau.ServiceOptions{})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -214,8 +214,8 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 				t.Fatalf("Execute: %v", err)
 			}
 			events := drainOverrideEvents(t, ch, 15*time.Second)
-			ovIdx := overrideIndexEventType(events, agent.ServiceEventTypeOverride)
-			finIdx := overrideIndexEventType(events, agent.ServiceEventTypeFinal)
+			ovIdx := overrideIndexEventType(events, fizeau.ServiceEventTypeOverride)
+			finIdx := overrideIndexEventType(events, fizeau.ServiceEventTypeFinal)
 			if ovIdx < 0 {
 				t.Fatalf("expected override event, got types=%v", overrideEventTypes(events))
 			}
@@ -228,7 +228,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 			// Exactly one override event.
 			count := 0
 			for _, ev := range events {
-				if string(ev.Type) == agent.ServiceEventTypeOverride {
+				if string(ev.Type) == fizeau.ServiceEventTypeOverride {
 					count++
 				}
 			}
@@ -252,11 +252,11 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 // TestOverrideEventCoincidentalAgreement, where a real fakeServiceConfig
 // anchors the auto resolution to the same value the user pinned.
 func TestOverrideEventCoincidentalAgreementStillFiresViaPublicAPI(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "virtual",
 		Metadata: map[string]string{
@@ -281,12 +281,12 @@ func TestOverrideEventCoincidentalAgreementStillFiresViaPublicAPI(t *testing.T) 
 // TestOverrideEventAxesOverriddenIsExplicit covers AC #4: axes_overridden
 // lists exactly the axes the caller pinned.
 func TestOverrideEventAxesOverriddenIsExplicit(t *testing.T) {
-	opts := agent.ServiceOptions{}
-	svc, err := agent.New(opts)
+	opts := fizeau.ServiceOptions{}
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "virtual",
 		Model:   "recorded",
@@ -314,12 +314,12 @@ func TestOverrideEventAxesOverriddenIsExplicit(t *testing.T) {
 // TestOverrideEventOutcomePopulatedFromFinal covers AC #5: outcome fields
 // are populated post-execution from the final event.
 func TestOverrideEventOutcomePopulatedFromFinal(t *testing.T) {
-	opts := agent.ServiceOptions{}
-	svc, err := agent.New(opts)
+	opts := fizeau.ServiceOptions{}
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "virtual",
 		Metadata: map[string]string{
@@ -355,11 +355,11 @@ func TestOverrideEventOutcomePopulatedFromFinal(t *testing.T) {
 // override event. The wrapped typed error carries the payload so callers
 // can extract it via AsRejectedOverride.
 func TestRejectedOverrideEventOnOrphanModel(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, execErr := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, execErr := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "gemini",
 		Model:   "minimax/minimax-m2.7",
@@ -371,7 +371,7 @@ func TestRejectedOverrideEventOnOrphanModel(t *testing.T) {
 		t.Fatalf("expected nil channel for typed pin error, got %#v", ch)
 	}
 	// The rejected_override payload is reachable via the wrapper error.
-	rejected, ok := agent.AsRejectedOverride(execErr)
+	rejected, ok := fizeau.AsRejectedOverride(execErr)
 	if !ok {
 		t.Fatalf("AsRejectedOverride: expected wrapper carrying rejected_override payload, got %T %v", execErr, execErr)
 	}
@@ -388,7 +388,7 @@ func TestRejectedOverrideEventOnOrphanModel(t *testing.T) {
 		t.Fatalf("rejected.rejection_error must surface pin failure: got %q", rejected.RejectionError)
 	}
 	// The original typed error is still extractable via errors.As.
-	var typed *agent.ErrHarnessModelIncompatible
+	var typed *fizeau.ErrHarnessModelIncompatible
 	if !errors.As(execErr, &typed) {
 		t.Fatalf("errors.As must still find ErrHarnessModelIncompatible through the wrapper: %T %v", execErr, execErr)
 	}
@@ -398,17 +398,17 @@ func TestRejectedOverrideEventOnOrphanModel(t *testing.T) {
 // reflects ServiceExecuteRequest fields verbatim (estimated_tokens,
 // requires_tools, reasoning).
 func TestOverrideEventPromptFeaturesPopulation(t *testing.T) {
-	opts := agent.ServiceOptions{}
-	svc, err := agent.New(opts)
+	opts := fizeau.ServiceOptions{}
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:                "hi",
 		Harness:               "virtual",
 		EstimatedPromptTokens: 12500,
 		RequiresTools:         true,
-		Reasoning:             agent.ReasoningHigh,
+		Reasoning:             fizeau.ReasoningHigh,
 		Metadata: map[string]string{
 			"virtual.response": "ok",
 			"override.reason":  "needed for benchmark replay",
@@ -426,16 +426,16 @@ func TestOverrideEventPromptFeaturesPopulation(t *testing.T) {
 	if !payload.PromptFeatures.RequiresTools {
 		t.Fatalf("prompt_features.requires_tools: want true")
 	}
-	if payload.PromptFeatures.Reasoning != string(agent.ReasoningHigh) {
+	if payload.PromptFeatures.Reasoning != string(fizeau.ReasoningHigh) {
 		t.Fatalf("prompt_features.reasoning: got %q, want %q",
-			payload.PromptFeatures.Reasoning, agent.ReasoningHigh)
+			payload.PromptFeatures.Reasoning, fizeau.ReasoningHigh)
 	}
 	if payload.ReasonHint != "needed for benchmark replay" {
 		t.Fatalf("reason_hint: got %q", payload.ReasonHint)
 	}
 
 	// Without EstimatedPromptTokens, the field is nil.
-	ch2, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch2, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Harness: "virtual",
 		Metadata: map[string]string{
@@ -463,11 +463,11 @@ func TestOverrideEventPromptFeaturesPopulation(t *testing.T) {
 // is invisible to historical and cross-restart reporting.
 func TestRejectedOverrideEventPersistedToSessionLog(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, execErr := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+	ch, execErr := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
 		Harness:       "gemini",
 		Model:         "minimax/minimax-m2.7",
@@ -479,7 +479,7 @@ func TestRejectedOverrideEventPersistedToSessionLog(t *testing.T) {
 	if ch != nil {
 		t.Fatalf("expected nil channel for typed pin error, got %#v", ch)
 	}
-	if _, ok := agent.AsRejectedOverride(execErr); !ok {
+	if _, ok := fizeau.AsRejectedOverride(execErr); !ok {
 		t.Fatalf("expected ErrRejectedOverride wrapper, got %T %v", execErr, execErr)
 	}
 
@@ -495,10 +495,10 @@ func TestRejectedOverrideEventPersistedToSessionLog(t *testing.T) {
 		t.Fatalf("OverrideEvents = %d, want 1 (rejected_override persisted)", len(scan.OverrideEvents))
 	}
 	got := scan.OverrideEvents[0]
-	if string(got.Type) != agent.ServiceEventTypeRejectedOverride {
-		t.Fatalf("event type = %q, want %q", got.Type, agent.ServiceEventTypeRejectedOverride)
+	if string(got.Type) != fizeau.ServiceEventTypeRejectedOverride {
+		t.Fatalf("event type = %q, want %q", got.Type, fizeau.ServiceEventTypeRejectedOverride)
 	}
-	var payload agent.ServiceOverrideData
+	var payload fizeau.ServiceOverrideData
 	if err := json.Unmarshal(got.Data, &payload); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}

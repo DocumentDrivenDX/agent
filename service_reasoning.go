@@ -1,4 +1,4 @@
-package agent
+package fizeau
 
 import "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 

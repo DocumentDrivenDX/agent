@@ -1,6 +1,6 @@
 //go:build !testseam
 
-package agent
+package fizeau
 
 // seamOptions is empty in production builds. The testseam build tag is
 // required to construct any test injection seam. Embedding this struct into

@@ -66,13 +66,13 @@ func TestResolvePreset(t *testing.T) {
 
 func TestResolveRunReasoningNormalizesExplicitValues(t *testing.T) {
 	cfg := &agentConfig.Config{}
-	got, err := resolveRunReasoning(cfg, providerSelection{ReasoningDefault: agent.ReasoningHigh}, "x-high")
+	got, err := resolveRunReasoning(cfg, providerSelection{ReasoningDefault: fizeau.ReasoningHigh}, "x-high")
 	require.NoError(t, err)
-	assert.Equal(t, agent.ReasoningXHigh, got)
+	assert.Equal(t, fizeau.ReasoningXHigh, got)
 
-	got, err = resolveRunReasoning(cfg, providerSelection{ReasoningDefault: agent.ReasoningHigh}, "auto")
+	got, err = resolveRunReasoning(cfg, providerSelection{ReasoningDefault: fizeau.ReasoningHigh}, "auto")
 	require.NoError(t, err)
-	assert.Equal(t, agent.ReasoningHigh, got)
+	assert.Equal(t, fizeau.ReasoningHigh, got)
 }
 
 func TestResolveReasoningStallTimeoutCatalogOverride(t *testing.T) {
@@ -88,13 +88,13 @@ models:
     status: active
     reasoning_stall_timeout_ms: 600000
     surfaces:
-      agent.openai: thinker-1
+      fizeau.openai: thinker-1
   default-1:
     family: gpt
     tier: default-tier
     status: active
     surfaces:
-      agent.openai: default-1
+      fizeau.openai: default-1
 targets:
   thinker-tier:
     family: qwen
@@ -157,7 +157,7 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 		RequestedModel:          "test-model",
 		ResolvedModel:           "test-model",
 		ResolvedModelRef:        "code-smart",
-		Reasoning:               agent.ReasoningLow,
+		Reasoning:               fizeau.ReasoningLow,
 		MaxIterations:           7,
 		MaxTokens:               2048,
 		ReasoningByteLimit:      4096,
@@ -183,7 +183,7 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 	assert.Equal(t, 4096, serviceReq.CompactionReserveTokens)
 }
 
-func toolNames(tools []agent.Tool) []string {
+func toolNames(tools []fizeau.Tool) []string {
 	names := make([]string, len(tools))
 	for i, tool := range tools {
 		names[i] = tool.Name()

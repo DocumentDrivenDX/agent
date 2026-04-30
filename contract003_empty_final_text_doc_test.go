@@ -1,4 +1,4 @@
-package agent_test
+package fizeau_test
 
 import (
 	"os"

@@ -3,35 +3,35 @@ package main
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
-// configAdapter wraps *config.Config and satisfies agent.ServiceConfig.
+// configAdapter wraps *config.Config and satisfies fizeau.ServiceConfig.
 type configAdapter struct {
 	cfg     *agentConfig.Config
 	workDir string
 }
 
-var _ agent.ServiceConfig = (*configAdapter)(nil)
+var _ fizeau.ServiceConfig = (*configAdapter)(nil)
 
 func (a *configAdapter) ProviderNames() []string { return a.cfg.ProviderNames() }
 
 func (a *configAdapter) DefaultProviderName() string { return a.cfg.DefaultName() }
 
-func (a *configAdapter) Provider(name string) (agent.ServiceProviderEntry, bool) {
+func (a *configAdapter) Provider(name string) (fizeau.ServiceProviderEntry, bool) {
 	pc, ok := a.cfg.GetProvider(name)
 	if !ok {
-		return agent.ServiceProviderEntry{}, false
+		return fizeau.ServiceProviderEntry{}, false
 	}
-	endpoints := make([]agent.ServiceProviderEndpoint, 0, len(pc.Endpoints))
+	endpoints := make([]fizeau.ServiceProviderEndpoint, 0, len(pc.Endpoints))
 	for _, endpoint := range pc.Endpoints {
-		endpoints = append(endpoints, agent.ServiceProviderEndpoint{
+		endpoints = append(endpoints, fizeau.ServiceProviderEndpoint{
 			Name:    endpoint.Name,
 			BaseURL: endpoint.BaseURL,
 		})
 	}
-	return agent.ServiceProviderEntry{
+	return fizeau.ServiceProviderEntry{
 		Type:      pc.Type,
 		BaseURL:   pc.BaseURL,
 		Endpoints: endpoints,
@@ -54,20 +54,20 @@ func (a *configAdapter) ModelRouteCandidates(routeName string) []string {
 	return providers
 }
 
-func (a *configAdapter) ModelRouteConfig(routeName string) agent.ServiceModelRouteConfig {
+func (a *configAdapter) ModelRouteConfig(routeName string) fizeau.ServiceModelRouteConfig {
 	rc, ok := a.cfg.GetModelRoute(routeName)
 	if !ok {
-		return agent.ServiceModelRouteConfig{}
+		return fizeau.ServiceModelRouteConfig{}
 	}
-	entries := make([]agent.ServiceRouteCandidateEntry, 0, len(rc.Candidates))
+	entries := make([]fizeau.ServiceRouteCandidateEntry, 0, len(rc.Candidates))
 	for _, c := range rc.Candidates {
-		entries = append(entries, agent.ServiceRouteCandidateEntry{
+		entries = append(entries, fizeau.ServiceRouteCandidateEntry{
 			Provider: c.Provider,
 			Model:    c.Model,
 			Priority: c.Priority,
 		})
 	}
-	return agent.ServiceModelRouteConfig{
+	return fizeau.ServiceModelRouteConfig{
 		Strategy:   rc.Strategy,
 		Candidates: entries,
 	}

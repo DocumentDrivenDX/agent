@@ -1,4 +1,4 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -6,33 +6,33 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 func TestDrainExecute_DecodesTypedResult(t *testing.T) {
-	ch := make(chan agent.ServiceEvent, 7)
-	ch <- serviceEvent(t, agent.ServiceEventTypeRoutingDecision, 0, map[string]any{
+	ch := make(chan fizeau.ServiceEvent, 7)
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeRoutingDecision, 0, map[string]any{
 		"harness":    "agent",
 		"provider":   "fake",
 		"model":      "fake-model",
 		"reason":     "test route",
 		"session_id": "svc-test",
 	})
-	ch <- serviceEvent(t, agent.ServiceEventTypeTextDelta, 1, map[string]any{"text": "APPROVE\n"})
-	ch <- serviceEvent(t, agent.ServiceEventTypeToolCall, 2, map[string]any{
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeTextDelta, 1, map[string]any{"text": "APPROVE\n"})
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeToolCall, 2, map[string]any{
 		"id": "call-1", "name": "read", "input": map[string]any{"path": "README.md"},
 	})
-	ch <- serviceEvent(t, agent.ServiceEventTypeToolResult, 3, map[string]any{
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeToolResult, 3, map[string]any{
 		"id": "call-1", "output": "contents", "duration_ms": 12,
 	})
-	ch <- serviceEvent(t, agent.ServiceEventTypeCompaction, 4, map[string]any{
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeCompaction, 4, map[string]any{
 		"messages_before": 9, "messages_after": 4, "tokens_freed": 500,
 	})
-	ch <- serviceEvent(t, agent.ServiceEventTypeStall, 5, map[string]any{
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeStall, 5, map[string]any{
 		"reason": "read_only_tools_exceeded", "count": 25,
 	})
-	ch <- serviceEvent(t, agent.ServiceEventTypeFinal, 6, map[string]any{
+	ch <- serviceEvent(t, fizeau.ServiceEventTypeFinal, 6, map[string]any{
 		"status":      "success",
 		"exit_code":   0,
 		"final_text":  "APPROVE\nLooks good.",
@@ -51,7 +51,7 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	})
 	close(ch)
 
-	result, err := agent.DrainExecute(context.Background(), ch)
+	result, err := fizeau.DrainExecute(context.Background(), ch)
 	if err != nil {
 		t.Fatalf("DrainExecute: %v", err)
 	}
@@ -93,13 +93,13 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	}
 }
 
-func serviceEvent(t *testing.T, typ string, seq int64, payload any) agent.ServiceEvent {
+func serviceEvent(t *testing.T, typ string, seq int64, payload any) fizeau.ServiceEvent {
 	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	return agent.ServiceEvent{
+	return fizeau.ServiceEvent{
 		Type:     harnesses.EventType(typ),
 		Sequence: seq,
 		Time:     time.Unix(seq, 0).UTC(),

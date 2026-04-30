@@ -1,6 +1,6 @@
 //go:build testseam
 
-package agent
+package fizeau
 
 import (
 	"context"

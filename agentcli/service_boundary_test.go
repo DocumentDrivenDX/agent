@@ -80,8 +80,8 @@ func TestCLIServiceContractUsesTypedEventDecoder(t *testing.T) {
 		t.Fatalf("read main.go: %v", err)
 	}
 	src := string(data)
-	if !strings.Contains(src, "agent.DecodeServiceEvent(ev)") {
-		t.Fatal("CLI execute path must consume typed service events via agent.DecodeServiceEvent")
+	if !strings.Contains(src, "fizeau.DecodeServiceEvent(ev)") {
+		t.Fatal("CLI execute path must consume typed service events via fizeau.DecodeServiceEvent")
 	}
 	if strings.Contains(src, "json.Unmarshal(ev.Data") {
 		t.Fatal("CLI must not redefine private ServiceEvent payload shapes by unmarshalling ev.Data directly")

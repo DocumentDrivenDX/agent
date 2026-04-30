@@ -1,4 +1,4 @@
-package agent
+package fizeau
 
 // public_cli_api.go re-exports the minimal set of types and helpers that the
 // `cmd/agent` CLI binary needs. These exist so the binary can stay behind a

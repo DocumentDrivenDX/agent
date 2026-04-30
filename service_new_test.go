@@ -1,4 +1,4 @@
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/config" // registers config loader via init()
 )
 
@@ -25,7 +25,7 @@ default: test-provider
 // still works (existing behavior).
 func TestNew_AcceptsExplicitServiceConfig(t *testing.T) {
 	sc := &stubServiceConfig{defaultName: "injected"}
-	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: sc})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: sc})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestNew_LoadsFromConfigPathWhenServiceConfigNil(t *testing.T) {
 	// config.Load(filepath.Dir(ConfigPath)) = config.Load(workDir).
 	cfgPath := filepath.Join(workDir, "config.yaml")
 
-	svc, err := agent.New(agent.ServiceOptions{ConfigPath: cfgPath})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ConfigPath: cfgPath})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestNew_FallsBackToDefaultPath(t *testing.T) {
 	t.Setenv("AGENT_MODEL", "")
 
 	// New should not fail even when config is missing or empty.
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New with no config: %v", err)
 	}
@@ -138,7 +138,7 @@ default: wrong-provider
 	}
 
 	sc := &stubServiceConfig{defaultName: "explicit"}
-	svc, err := agent.New(agent.ServiceOptions{
+	svc, err := fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: sc,
 		ConfigPath:    cfgPath,
 	})
@@ -166,13 +166,13 @@ type stubServiceConfig struct {
 
 func (s *stubServiceConfig) ProviderNames() []string     { return nil }
 func (s *stubServiceConfig) DefaultProviderName() string { return s.defaultName }
-func (s *stubServiceConfig) Provider(string) (agent.ServiceProviderEntry, bool) {
-	return agent.ServiceProviderEntry{}, false
+func (s *stubServiceConfig) Provider(string) (fizeau.ServiceProviderEntry, bool) {
+	return fizeau.ServiceProviderEntry{}, false
 }
 func (s *stubServiceConfig) ModelRouteNames() []string            { return nil }
 func (s *stubServiceConfig) ModelRouteCandidates(string) []string { return nil }
-func (s *stubServiceConfig) ModelRouteConfig(string) agent.ServiceModelRouteConfig {
-	return agent.ServiceModelRouteConfig{}
+func (s *stubServiceConfig) ModelRouteConfig(string) fizeau.ServiceModelRouteConfig {
+	return fizeau.ServiceModelRouteConfig{}
 }
 func (s *stubServiceConfig) HealthCooldown() time.Duration { return 0 }
 func (s *stubServiceConfig) WorkDir() string               { return "" }

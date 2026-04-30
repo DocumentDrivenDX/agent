@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
@@ -20,7 +20,7 @@ type Candidate struct {
 }
 
 // discoverCandidates enumerates available harnesses and, for provider-backed
-// harnesses, the configured models. It creates a DdxAgent via agent.New with
+// harnesses, the configured models. It creates a DdxAgent via fizeau.New with
 // the loaded ServiceConfig and calls ListHarnesses + ListModels per
 // CONTRACT-003.
 func discoverCandidates(wd string) ([]Candidate, error) {
@@ -29,7 +29,7 @@ func discoverCandidates(wd string) ([]Candidate, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	svc, err := agent.New(agent.ServiceOptions{
+	svc, err := fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: &configAdapter{cfg: cfg, workDir: wd},
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func discoverCandidates(wd string) ([]Candidate, error) {
 			continue
 		}
 		// "native" harnesses are provider-backed; enumerate per-provider models.
-		models, err := svc.ListModels(ctx, agent.ModelFilter{
+		models, err := svc.ListModels(ctx, fizeau.ModelFilter{
 			Harness: h.Name,
 		})
 		if err != nil || len(models) == 0 {

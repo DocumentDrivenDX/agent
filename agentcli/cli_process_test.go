@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -438,11 +438,11 @@ session_log_dir: .agent/sessions
 	require.NoError(t, globErr)
 	require.Len(t, logs, 1, "expected one session log")
 
-	events, readErr := agent.ReadSessionEvents(logs[0])
+	events, readErr := fizeau.ReadSessionEvents(logs[0])
 	require.NoError(t, readErr)
 	require.NotEmpty(t, events)
 	last := events[len(events)-1]
-	assert.Equal(t, agent.EventSessionEnd, last.Type)
+	assert.Equal(t, fizeau.EventSessionEnd, last.Type)
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(last.Data, &payload))

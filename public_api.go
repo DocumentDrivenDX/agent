@@ -1,4 +1,4 @@
-package agent
+package fizeau
 
 import (
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"

@@ -1,6 +1,6 @@
 //go:build !testseam
 
-package agent
+package fizeau
 
 // Production builds have no test seams. Each helper returns nil so
 // service.Execute compiles identically to the testseam variant but the

@@ -1,6 +1,6 @@
 //go:build testseam
 
-package agent_test
+package fizeau_test
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
 // extractSessionID reads the session_id field from the routing_decision event.
-func extractSessionID(t *testing.T, events []agent.ServiceEvent) string {
+func extractSessionID(t *testing.T, events []fizeau.ServiceEvent) string {
 	t.Helper()
 	for _, ev := range events {
 		if ev.Type != "routing_decision" {
@@ -33,11 +33,11 @@ func extractSessionID(t *testing.T, events []agent.ServiceEvent) string {
 
 // newFakeSvc is a convenience helper that constructs a service with a
 // FakeProvider that returns a single static response.
-func newFakeSvc(t *testing.T, responses []agent.FakeResponse) agent.DdxAgent {
+func newFakeSvc(t *testing.T, responses []fizeau.FakeResponse) fizeau.DdxAgent {
 	t.Helper()
-	opts := agent.ServiceOptions{}
-	opts.FakeProvider = &agent.FakeProvider{Static: responses}
-	svc, err := agent.New(opts)
+	opts := fizeau.ServiceOptions{}
+	opts.FakeProvider = &fizeau.FakeProvider{Static: responses}
+	svc, err := fizeau.New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -46,8 +46,8 @@ func newFakeSvc(t *testing.T, responses []agent.FakeResponse) agent.DdxAgent {
 
 // stdReq returns a standard single-turn Execute request that uses the
 // FakeProvider path (native harness).
-func stdReq(prompt string) agent.ServiceExecuteRequest {
-	return agent.ServiceExecuteRequest{
+func stdReq(prompt string) fizeau.ServiceExecuteRequest {
+	return fizeau.ServiceExecuteRequest{
 		Prompt:   prompt,
 		Harness:  "agent",
 		Provider: "fake",
@@ -61,14 +61,14 @@ func stdReq(prompt string) agent.ServiceExecuteRequest {
 func TestTailSessionLog_streamsActiveSession(t *testing.T) {
 	// Dynamic provider that sleeps briefly so we can call TailSessionLog
 	// before the session ends.
-	svc := agent.ServiceOptions{}
-	svc.FakeProvider = &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	svc := fizeau.ServiceOptions{}
+	svc.FakeProvider = &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			time.Sleep(150 * time.Millisecond)
-			return agent.FakeResponse{Text: "done"}, nil
+			return fizeau.FakeResponse{Text: "done"}, nil
 		},
 	}
-	s, err := agent.New(svc)
+	s, err := fizeau.New(svc)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestTailSessionLog_streamsActiveSession(t *testing.T) {
 
 	// Collect the first event (routing_decision) to get the session ID.
 	// Give it a moment to arrive.
-	var firstEv agent.ServiceEvent
+	var firstEv fizeau.ServiceEvent
 	select {
 	case ev := <-execCh:
 		firstEv = ev
@@ -128,7 +128,7 @@ func TestTailSessionLog_streamsActiveSession(t *testing.T) {
 // calls TailSessionLog. The returned channel must yield the final event and
 // then close.
 func TestTailSessionLog_replaysCompletedSession(t *testing.T) {
-	svc := newFakeSvc(t, []agent.FakeResponse{{Text: "hello"}})
+	svc := newFakeSvc(t, []fizeau.FakeResponse{{Text: "hello"}})
 
 	execCh, err := svc.Execute(context.Background(), stdReq("go"))
 	if err != nil {
@@ -169,14 +169,14 @@ func TestTailSessionLog_replaysCompletedSession(t *testing.T) {
 // TailSessionLog callers to the same sessionID and asserts both receive the
 // final event.
 func TestTailSessionLog_multipleSubscribers(t *testing.T) {
-	svcOpts := agent.ServiceOptions{}
-	svcOpts.FakeProvider = &agent.FakeProvider{
-		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+	svcOpts := fizeau.ServiceOptions{}
+	svcOpts.FakeProvider = &fizeau.FakeProvider{
+		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
 			time.Sleep(100 * time.Millisecond)
-			return agent.FakeResponse{Text: "multi"}, nil
+			return fizeau.FakeResponse{Text: "multi"}, nil
 		},
 	}
-	s, err := agent.New(svcOpts)
+	s, err := fizeau.New(svcOpts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestTailSessionLog_multipleSubscribers(t *testing.T) {
 	}
 
 	// Read the routing_decision to get session_id.
-	var rdEv agent.ServiceEvent
+	var rdEv fizeau.ServiceEvent
 	select {
 	case ev := <-execCh:
 		rdEv = ev
@@ -215,14 +215,14 @@ func TestTailSessionLog_multipleSubscribers(t *testing.T) {
 
 	var wg sync.WaitGroup
 	type result struct {
-		events []agent.ServiceEvent
+		events []fizeau.ServiceEvent
 		label  string
 	}
 	results := make([]result, 2)
 
-	for i, ch := range []<-chan agent.ServiceEvent{tail1, tail2} {
+	for i, ch := range []<-chan fizeau.ServiceEvent{tail1, tail2} {
 		wg.Add(1)
-		go func(idx int, c <-chan agent.ServiceEvent, label string) {
+		go func(idx int, c <-chan fizeau.ServiceEvent, label string) {
 			defer wg.Done()
 			results[idx] = result{
 				events: drainEvents(t, c, 5*time.Second),
@@ -250,7 +250,7 @@ func TestTailSessionLog_multipleSubscribers(t *testing.T) {
 // TestTailSessionLog_unknownSessionReturnsError verifies that calling
 // TailSessionLog with a sessionID that was never registered returns an error.
 func TestTailSessionLog_unknownSessionReturnsError(t *testing.T) {
-	svc, err := agent.New(agent.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
