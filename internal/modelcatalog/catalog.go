@@ -99,6 +99,14 @@ type TierModel struct {
 	Entry ModelEntry
 }
 
+// ModelEligibility describes whether a catalog model can participate in
+// unpinned automatic routing or only explicit model pins.
+type ModelEligibility struct {
+	Power        int
+	ExactPinOnly bool
+	AutoRoutable bool
+}
+
 // Metadata returns the loaded manifest metadata for inspection surfaces.
 func (c *Catalog) Metadata() Metadata {
 	return Metadata{
@@ -339,6 +347,22 @@ func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 		}
 	}
 	return ModelEntry{}, false
+}
+
+// ModelEligibility returns power and automatic-routing eligibility for a
+// catalog model ID or any declared provider surface ID. Unknown models return
+// ok=false; known models with missing/zero power remain exact-pin-capable but
+// are not auto-routable.
+func (c *Catalog) ModelEligibility(id string) (ModelEligibility, bool) {
+	entry, ok := c.LookupModel(id)
+	if !ok {
+		return ModelEligibility{}, false
+	}
+	return ModelEligibility{
+		Power:        entry.Power,
+		ExactPinOnly: entry.ExactPinOnly,
+		AutoRoutable: entry.AutoRoutable(),
+	}, true
 }
 
 // AllModelsInTier returns the ordered model entries declared as candidates for
@@ -645,4 +669,11 @@ func (m ModelEntry) openRouterID() string {
 		return m.OpenRouterID
 	}
 	return m.OpenRouterRefID
+}
+
+// AutoRoutable reports whether a model is eligible for unpinned automatic
+// routing. Unknown-power and exact-pin-only entries remain usable by explicit
+// model pin when live discovery confirms availability.
+func (m ModelEntry) AutoRoutable() bool {
+	return normalizedStatus(m.Status) == statusActive && m.Power > 0 && !m.ExactPinOnly
 }

@@ -654,6 +654,88 @@ func TestLookupModel_UnknownModel(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestModelEligibility_AutoRoutableAndExactPinOnly(t *testing.T) {
+	catalog, err := Load(LoadOptions{
+		ManifestPath: writeFixtureManifest(t, `
+version: 4
+generated_at: 2026-04-30T00:00:00Z
+catalog_version: 2026-04-30.1
+models:
+  routable-model:
+    family: alpha
+    tier: route-tier
+    status: active
+    power: 7
+    surfaces:
+      agent.openai: provider/routable-model
+  missing-power-model:
+    family: alpha
+    tier: route-tier
+    status: active
+    surfaces:
+      agent.openai: provider/missing-power-model
+  exact-only-model:
+    family: alpha
+    tier: route-tier
+    status: active
+    power: 8
+    exact_pin_only: true
+    surfaces:
+      agent.openai: provider/exact-only-model
+  stale-model:
+    family: alpha
+    tier: route-tier
+    status: stale
+    power: 6
+    surfaces:
+      agent.openai: provider/stale-model
+profiles:
+  route:
+    target: route-tier
+targets:
+  route-tier:
+    family: alpha
+    candidates: [routable-model, missing-power-model, exact-only-model, stale-model]
+`),
+		RequireExternal: true,
+	})
+	require.NoError(t, err)
+
+	routable, ok := catalog.ModelEligibility("routable-model")
+	require.True(t, ok)
+	assert.Equal(t, 7, routable.Power)
+	assert.False(t, routable.ExactPinOnly)
+	assert.True(t, routable.AutoRoutable)
+
+	bySurface, ok := catalog.ModelEligibility("provider/routable-model")
+	require.True(t, ok)
+	assert.Equal(t, routable, bySurface)
+
+	missingPower, ok := catalog.ModelEligibility("missing-power-model")
+	require.True(t, ok)
+	assert.Equal(t, 0, missingPower.Power)
+	assert.False(t, missingPower.ExactPinOnly)
+	assert.False(t, missingPower.AutoRoutable)
+
+	exactOnly, ok := catalog.ModelEligibility("provider/exact-only-model")
+	require.True(t, ok)
+	assert.Equal(t, 8, exactOnly.Power)
+	assert.True(t, exactOnly.ExactPinOnly)
+	assert.False(t, exactOnly.AutoRoutable)
+
+	stale, ok := catalog.ModelEligibility("stale-model")
+	require.True(t, ok)
+	assert.Equal(t, 6, stale.Power)
+	assert.False(t, stale.ExactPinOnly)
+	assert.False(t, stale.AutoRoutable)
+
+	_, ok = catalog.LookupModel("missing-power-model")
+	assert.True(t, ok, "missing-power model remains findable for exact pins")
+
+	_, ok = catalog.ModelEligibility("does-not-exist")
+	assert.False(t, ok)
+}
+
 func TestContextWindowForModel_KnownModel(t *testing.T) {
 	catalog := loadV4FixtureCatalog(t)
 

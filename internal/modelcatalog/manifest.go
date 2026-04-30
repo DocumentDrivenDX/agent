@@ -54,6 +54,8 @@ type ModelEntry struct {
 	Surfaces           map[string]string `yaml:"surfaces,omitempty"`
 	SpeedTokensPerSec  float64           `yaml:"speed_tokens_per_sec,omitempty"`
 	ContextWindow      int               `yaml:"context_window,omitempty"`
+	Power              int               `yaml:"power,omitempty" json:"power,omitempty"`
+	ExactPinOnly       bool              `yaml:"exact_pin_only,omitempty" json:"exact_pin_only,omitempty"`
 	NoTools            bool              `yaml:"no_tools,omitempty"`
 	ReasoningMaxTokens int               `yaml:"reasoning_max_tokens,omitempty"`
 	// ReasoningStallTimeoutMS is the per-model maximum duration (in
@@ -389,6 +391,9 @@ func validateManifest(m manifest) error {
 		}
 		if model.ContextWindow < 0 {
 			return fmt.Errorf("model %q context_window must be >= 0", modelID)
+		}
+		if model.Power < 0 {
+			return fmt.Errorf("model %q power must be >= 0", modelID)
 		}
 		if model.ReasoningMaxTokens < 0 {
 			return fmt.Errorf("model %q reasoning_max_tokens must be >= 0", modelID)

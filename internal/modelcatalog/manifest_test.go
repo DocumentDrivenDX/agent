@@ -91,6 +91,71 @@ targets:
 	assert.Equal(t, none.ReasoningWire, roundTrip["no-reasoning"].ReasoningWire)
 }
 
+func TestManifestPreservesPowerEligibilityFields(t *testing.T) {
+	src := `
+version: 4
+generated_at: 2026-04-30T00:00:00Z
+models:
+  route-model:
+    family: example
+    status: active
+    power: 6
+    exact_pin_only: true
+    surfaces:
+      agent.openai: provider/route-model
+profiles:
+  default:
+    target: example-tier
+targets:
+  example-tier:
+    family: example
+    candidates: [route-model]
+`
+
+	path := writeFixtureManifest(t, src)
+	catalog, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.NoError(t, err)
+
+	models := catalog.AllModels()
+	entry, ok := models["route-model"]
+	require.True(t, ok)
+	assert.Equal(t, 6, entry.Power)
+	assert.True(t, entry.ExactPinOnly)
+
+	out, err := yaml.Marshal(map[string]ModelEntry{"route-model": entry})
+	require.NoError(t, err)
+
+	var roundTrip map[string]ModelEntry
+	require.NoError(t, yaml.Unmarshal(out, &roundTrip))
+	assert.Equal(t, 6, roundTrip["route-model"].Power)
+	assert.True(t, roundTrip["route-model"].ExactPinOnly)
+}
+
+func TestManifestRejectsNegativePower(t *testing.T) {
+	src := `
+version: 4
+generated_at: 2026-04-30T00:00:00Z
+models:
+  bad-power:
+    family: example
+    status: active
+    power: -1
+    surfaces:
+      agent.openai: bad-power
+profiles:
+  default:
+    target: example-tier
+targets:
+  example-tier:
+    family: example
+    candidates: [bad-power]
+`
+	path := writeFixtureManifest(t, src)
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "power")
+}
+
 func TestManifestRejectsInvalidReasoningControl(t *testing.T) {
 	src := `
 version: 4
