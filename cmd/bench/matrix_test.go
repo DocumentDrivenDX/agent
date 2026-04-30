@@ -153,6 +153,35 @@ func TestMatrixResumeAfterStaleLockMatchesCleanRun(t *testing.T) {
 	}
 }
 
+func TestMatrixOverBudgetRunBecomesBudgetHaltedAndContinues(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+
+	code := cmdMatrix([]string{
+		"--work-dir", repoRoot,
+		"--harnesses", "cost_probe",
+		"--profiles", "smoke",
+		"--reps", "2",
+		"--per-run-budget-usd", "0.000001",
+		"--out", outDir,
+	})
+	if code != 0 {
+		t.Fatalf("cmdMatrix exit = %d, want 0", code)
+	}
+	matrix := readMatrixOutput(t, filepath.Join(outDir, "matrix.json"))
+	if got, want := len(matrix.Runs), 6; got != want {
+		t.Fatalf("runs = %d, want %d", got, want)
+	}
+	for _, run := range matrix.Runs {
+		if run.FinalStatus != "budget_halted" {
+			t.Fatalf("run %s/%d final_status = %s, want budget_halted", run.TaskID, run.Rep, run.FinalStatus)
+		}
+		if run.CostUSD <= 0 {
+			t.Fatalf("run %s/%d cost = %f, want > 0", run.TaskID, run.Rep, run.CostUSD)
+		}
+	}
+}
+
 func benchRepoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

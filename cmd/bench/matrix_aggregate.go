@@ -13,6 +13,7 @@ import (
 type matrixCostsOutput struct {
 	Cells           []matrixCostCell `json:"cells"`
 	MatrixTotalUSD  float64          `json:"matrix_total_usd"`
+	PerRunCapUSD    *float64         `json:"per_run_cap_usd,omitempty"`
 	PerMatrixCapUSD *float64         `json:"per_matrix_cap_usd,omitempty"`
 	CapDerivation   string           `json:"cap_derivation,omitempty"`
 }
@@ -50,14 +51,15 @@ func cmdMatrixAggregate(args []string) int {
 	}
 	previous := readPreviousMatrixMetadata(outDir)
 	output := matrixOutput{
-		GeneratedAt: time.Now().UTC(),
-		SubsetPath:  previous.SubsetPath,
-		Profiles:    uniqueRunStrings(runs, func(r matrixRunReport) string { return r.ProfileID }),
-		Harnesses:   uniqueRunStrings(runs, func(r matrixRunReport) string { return r.Harness }),
-		Reps:        maxRep(runs),
-		BudgetUSD:   previous.BudgetUSD,
-		Runs:        runs,
-		Cells:       summarizeMatrixCells(runs),
+		GeneratedAt:     time.Now().UTC(),
+		SubsetPath:      previous.SubsetPath,
+		Profiles:        uniqueRunStrings(runs, func(r matrixRunReport) string { return r.ProfileID }),
+		Harnesses:       uniqueRunStrings(runs, func(r matrixRunReport) string { return r.Harness }),
+		Reps:            maxRep(runs),
+		BudgetUSD:       previous.BudgetUSD,
+		PerRunBudgetUSD: previous.PerRunBudgetUSD,
+		Runs:            runs,
+		Cells:           summarizeMatrixCells(runs),
 		Notes: []string{
 			"Generated from per-cell report.json files by matrix-aggregate.",
 			"Null rewards are excluded from mean reward denominators and reflected in n_reported.",
@@ -73,7 +75,7 @@ func cmdMatrixAggregate(args []string) int {
 		output.Reps = previous.Reps
 	}
 
-	costs := buildMatrixCosts(runs, output.BudgetUSD)
+	costs := buildMatrixCosts(runs, output.PerRunBudgetUSD, output.BudgetUSD)
 	if err := writeJSONAtomic(filepath.Join(outDir, "matrix.json"), output); err != nil {
 		fmt.Fprintf(os.Stderr, "%s matrix-aggregate: write matrix.json: %v\n", benchCommandName(), err)
 		return 1
@@ -130,7 +132,7 @@ func readPreviousMatrixMetadata(outDir string) matrixOutput {
 	return out
 }
 
-func buildMatrixCosts(runs []matrixRunReport, budgetUSD float64) matrixCostsOutput {
+func buildMatrixCosts(runs []matrixRunReport, perRunBudgetUSD, budgetUSD float64) matrixCostsOutput {
 	type acc struct {
 		cell matrixCostCell
 	}
@@ -155,9 +157,14 @@ func buildMatrixCosts(runs []matrixRunReport, budgetUSD float64) matrixCostsOutp
 		total += run.CostUSD
 	}
 	costs := matrixCostsOutput{MatrixTotalUSD: total}
+	if perRunBudgetUSD > 0 {
+		costs.PerRunCapUSD = &perRunBudgetUSD
+	}
 	if budgetUSD > 0 {
 		costs.PerMatrixCapUSD = &budgetUSD
-		costs.CapDerivation = "operator-supplied --budget-usd; observation-derived cap recorded by cost-guard procedure when available"
+	}
+	if perRunBudgetUSD > 0 || budgetUSD > 0 {
+		costs.CapDerivation = "operator-supplied caps; observation-derived values are recorded by scripts/benchmark/cost-guards when available"
 	}
 	for _, a := range byKey {
 		costs.Cells = append(costs.Cells, a.cell)

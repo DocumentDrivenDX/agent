@@ -63,15 +63,16 @@ type matrixRunReport struct {
 }
 
 type matrixOutput struct {
-	GeneratedAt time.Time         `json:"generated_at"`
-	SubsetPath  string            `json:"subset_path"`
-	Profiles    []string          `json:"profiles"`
-	Harnesses   []string          `json:"harnesses"`
-	Reps        int               `json:"reps"`
-	BudgetUSD   float64           `json:"budget_usd"`
-	Runs        []matrixRunReport `json:"runs"`
-	Cells       []matrixCell      `json:"cells"`
-	Notes       []string          `json:"notes,omitempty"`
+	GeneratedAt     time.Time         `json:"generated_at"`
+	SubsetPath      string            `json:"subset_path"`
+	Profiles        []string          `json:"profiles"`
+	Harnesses       []string          `json:"harnesses"`
+	Reps            int               `json:"reps"`
+	BudgetUSD       float64           `json:"budget_usd"`
+	PerRunBudgetUSD float64           `json:"per_run_budget_usd,omitempty"`
+	Runs            []matrixRunReport `json:"runs"`
+	Cells           []matrixCell      `json:"cells"`
+	Notes           []string          `json:"notes,omitempty"`
 }
 
 type matrixCell struct {
@@ -122,6 +123,7 @@ func cmdMatrix(args []string) int {
 	resume := fs.Bool("resume", false, "Skip terminal reports already present under --out")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
 	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
+	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -188,6 +190,7 @@ func cmdMatrix(args []string) int {
 						rep:               rep,
 						task:              task,
 						budgetUSD:         *budgetUSD,
+						perRunBudgetUSD:   *perRunBudgetUSD,
 						accumulatedCost:   accumulatedCost,
 						resume:            *resume,
 						forceRerun:        *forceRerun,
@@ -210,14 +213,15 @@ func cmdMatrix(args []string) int {
 		return matrixRunKey(runs[i]) < matrixRunKey(runs[j])
 	})
 	output := matrixOutput{
-		GeneratedAt: time.Now().UTC(),
-		SubsetPath:  subsetPath,
-		Profiles:    profileIDs,
-		Harnesses:   harnesses,
-		Reps:        *reps,
-		BudgetUSD:   *budgetUSD,
-		Runs:        runs,
-		Cells:       summarizeMatrixCells(runs),
+		GeneratedAt:     time.Now().UTC(),
+		SubsetPath:      subsetPath,
+		Profiles:        profileIDs,
+		Harnesses:       harnesses,
+		Reps:            *reps,
+		BudgetUSD:       *budgetUSD,
+		PerRunBudgetUSD: *perRunBudgetUSD,
+		Runs:            runs,
+		Cells:           summarizeMatrixCells(runs),
 		Notes: []string{
 			"v1 runs serially; no concurrency flag is exposed.",
 			"adapter_module records the Python adapter path passed by the runner for the harness cell.",
@@ -240,6 +244,7 @@ type matrixTupleOptions struct {
 	rep               int
 	task              termbenchSubsetEntry
 	budgetUSD         float64
+	perRunBudgetUSD   float64
 	accumulatedCost   float64
 	resume            bool
 	forceRerun        bool
@@ -325,6 +330,12 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		report.GradingOutcome = "graded"
 	}
 	report.CostUSD = matrixCostUSD(opts.profile, report)
+	if (opts.perRunBudgetUSD > 0 && report.CostUSD > opts.perRunBudgetUSD) ||
+		(opts.budgetUSD > 0 && opts.accumulatedCost+report.CostUSD > opts.budgetUSD) {
+		report.ProcessOutcome = "budget_halted"
+		report.GradingOutcome = "ungraded"
+		report.Reward = nil
+	}
 	report.FinalStatus = deriveMatrixFinalStatus(report.ProcessOutcome, report.GradingOutcome, report.Reward, report.Retriable)
 	report.FinishedAt = time.Now().UTC()
 	if err := writeJSONAtomic(reportPath, report); err != nil {
