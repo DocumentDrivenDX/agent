@@ -17,9 +17,8 @@ real users need three separate concerns:
 
 1. **Named providers** — concrete backend definitions for Anthropic,
    OpenRouter, LM Studio hosts, etc.
-2. **Shared model policy** — one agent-owned catalog for aliases,
-   tiers/profiles, canonical policy targets, per-surface projections, and
-   deprecations.
+2. **Shared model policy** — one agent-owned catalog for aliases, numeric
+   power scores, per-surface projections, and deprecations.
 3. **Simple routing across equivalent providers** — for example choose among
    several local inference servers that should all serve the same requested
    model.
@@ -34,13 +33,13 @@ DDX Agent keeps two layers above the runtime boundary:
 - **Providers** — transport/auth definitions and optional direct pinned models.
 - **Model catalog** — agent-owned reusable policy/data loaded from an embedded
   snapshot plus an optional external manifest override, with published manifest
-  bundles distributed outside binary releases. Owns tier membership, cost,
-  context window, capability score, and reasoning defaults per model.
+  bundles distributed outside binary releases. Owns model power, cost, context
+  window, capability metadata, and reasoning defaults per model.
 
 There is no third "routing config" layer. Per-request routing is **smart
 routing** (ADR-005): the service combines the catalog (policy), provider
-config (transport), and live signals (provider liveness, per-(provider,model)
-success/latency, subscription quota) to pick the best candidate per request.
+config (transport), and live signals (provider liveness, provider latency,
+subscription quota) to pick the best candidate per request.
 Users do not author per-tier candidate lists; they plug in providers, the
 service decides.
 
@@ -51,21 +50,21 @@ instances.
 Caller boundary (see CONTRACT-003):
 
 - Callers choose the harness and pass routing intent through public request
-  fields (`Provider`, `Model`, `ModelRef`, `Profile`) plus optional
+  fields (`Provider`, `Model`, `ModelRef`, `MinPower`, `MaxPower`) plus optional
   auto-selection inputs (`EstimatedPromptTokens`, `RequiresTools`). Explicit
   pins always win over auto-selection.
 - Embedded `ddx-agent` chooses the concrete provider candidate, constructs the
-  provider adapter, and owns passive failover inside the current request's
-  profile and hard constraints.
+  provider adapter, dispatches exactly one candidate, and reports the attempted
+  route outcome.
 - Callers receive attribution facts from the embedded run (the full ranked
   candidate trace, score components per candidate, and the actual provider
   fired), but do not build providers, inspect private candidate tables, or
   re-inject pre-resolved `RouteDecision` values. `ResolveRoute` results are
   informational only — `Execute` re-resolves on its own inputs.
-- Callers own task-level escalation. If a weak/cheap attempt fails, DDx or
-  another caller decides whether to issue a new request with a stronger
-  profile; the agent reports evidence and retry advice but does not silently
-  promote profiles during the same attempt.
+- Callers own all retry and task-level escalation. If a weak/cheap attempt
+  fails, DDx or another caller decides whether to issue a new request with a
+  higher power floor; the agent reports route evidence but
+  does not dispatch another candidate.
 
 ### Config Format
 
@@ -116,7 +115,7 @@ routing:
   default_model_ref: code-medium    # default catalog tier when caller pins nothing
   health_cooldown: 30s               # how long an unhealthy provider stays excluded
 
-default: vidar                        # fallback provider when no profile/model is requested
+default: vidar                        # fallback provider when no power/model intent is requested
 preset: default
 max_iterations: 20
 session_log_dir: .agent/sessions
@@ -174,7 +173,7 @@ Per-provider optional fields (in addition to `type`, `base_url`, `api_key`, `hea
 | Field | Type | Description |
 |---|---|---|
 | `reasoning` | scalar string/int | Single public reasoning control: `auto`, `off`, `low`, `medium`, `high`, supported extended values such as `minimal`, `xhigh` / `x-high`, and `max`, or numeric values such as `0`, `2048`, and `8192` |
-| `placement` | enum | Optional override for routing placement: `local`, `prepaid`, `metered`, or `test`. Defaults from provider/harness type. Used for profile filtering and cost policy. |
+| `placement` | enum | Optional override for routing placement: `local`, `prepaid`, `metered`, or `test`. Defaults from provider/harness type. Used for placement filtering and cost policy. |
 | `max_tokens` | int | Max output tokens per turn; `0` = use provider default |
 | `context_window` | int | Explicit context window override; `0` = attempt live discovery |
 
@@ -231,19 +230,21 @@ Per request, the service:
    1. Enumerates every configured harness, provider, endpoint, and discovered
       concrete model.
    2. Joins each concrete model to the model catalog. Matched entries provide
-      tier, family, status, context window, reasoning capability, tool support,
+      power, family, status, context window, reasoning capability, tool support,
       list price, and benchmark quality. Unknown models remain inspectable but
-      are not eligible for automatic profile routing unless explicitly pinned.
+      are not eligible for automatic routing unless explicitly pinned.
    3. Joins live operational signals: provider health, endpoint cooldown,
-      recent success rate, observed latency, prepaid quota remaining/reset
-      time, and known marginal cost.
+      observed latency, prepaid quota remaining/reset time, and known marginal
+      cost.
 3. Applies caller intent:
-   - `--profile` selects a policy bundle. It is not a hard pin. Built-ins:
-     `local`, `offline`, `air-gapped`, `cheap`, `fast`, `standard`, `smart`.
+   - `--min-power` and `--max-power` select the allowed catalog power range.
+     Higher power means stronger for agent tasks. If unset, `MinPower=0` and
+     `MaxPower=0` mean "no power bound"; score weights still prefer the best
+     available model under cost/availability policy.
    - `--model-ref` is interpreted by catalog kind. A ref to a concrete model
-     entry is an exact model constraint. A ref to a target/profile/alias such
-     as `cheap`, `standard`, `smart`, or `code-medium` expands to that target's
-     candidate models.
+     entry is an exact model constraint. A ref to a power-band alias expands to
+     that alias's power bounds; such aliases are human-facing macros, not the
+     routing contract.
    - `--model` is an exact concrete model constraint. If the caller asks for
      `qwen-3.6-27b`, the router may choose among providers/endpoints that serve
      that model, but it MUST NOT substitute GPT, Claude, Gemini, or any other
@@ -259,10 +260,11 @@ Per request, the service:
 4. Filters candidates:
    0. Hard constraints remove all candidates outside requested harness,
       provider, and exact-model axes. These constraints are never relaxed by
-      profile scoring or failover.
-   1. Profile catalog floor removes models below the profile minimum tier.
-   2. Placement policy removes disallowed placements. Local-only profiles never
-      try prepaid or metered providers.
+      power scoring.
+   1. Power bounds remove models outside `MinPower..MaxPower` when either bound
+      is set. Models without catalog power are removed unless exactly pinned.
+   2. Placement policy removes disallowed placements. Local-only placement
+      requests never try prepaid or metered providers.
    3. Liveness/model-discovery removes endpoints that are down or do not serve
       the candidate model.
    4. Capability removes candidates with too-small context windows, missing
@@ -271,58 +273,51 @@ Per request, the service:
 5. Scores survivors with explicit components:
 
    ```
-   score = profile_weighted_capability
-         + profile_weighted_reliability
-         + profile_weighted_latency
+   score = power_weighted_capability
+         + latency_weight
          + placement_bonus
          + quota_bonus
          - marginal_cost_penalty
-         - cooldown_penalty
+         - availability_penalty
          - stale_signal_penalty
    ```
 
-6. Dispatches the top candidate. On transient provider/harness failures, the
-   service records the attempt and tries the next eligible candidate in the
-   ranked trace, but only within the caller's requested profile and hard
-   constraints. It does not fail over deterministic caller/config errors and
-   it does not promote `cheap` to `standard` or `smart` inside the same
-   request.
+6. Dispatches the top candidate exactly once. On provider/harness failure, the
+   service records the attempted route outcome and returns the full ranked
+   trace. It does not try the next eligible candidate and it does not widen
+   power bounds inside the same request.
 7. Falls back to `default:` provider only when no routing intent was supplied
-   and the profile/catalog path cannot produce a candidate.
+   and the power/catalog path cannot produce a candidate.
 
 The full ranked candidate trace and per-candidate score components are
 emitted as part of the routing-decision event (CONTRACT-003) so operators can
 explain why candidate 2 lost via `route-status`, not by reading config.
 
-### Failure Evidence and Escalation Boundary
+### Failure Evidence and Retry Boundary
 
-The router has two different recovery mechanisms:
+The router does not recover by retrying. It has one selection mechanism and one
+reporting mechanism:
 
-1. **In-request failover** is service-owned. The service may try the next
-   eligible candidate only when that candidate satisfies the same profile,
-   model, provider, and harness constraints.
-2. **Cross-profile escalation** is caller-owned. A failed `cheap` attempt does
-   not automatically become a `standard` or `smart` attempt. The caller issues
-   a second request with the stronger profile when its task policy says the
-   extra cost/time is justified.
+1. **In-request selection** is service-owned. The service ranks candidates,
+   dispatches the top candidate once, and returns the ordered trace.
+2. **Retry and escalation** are caller-owned. The caller issues a second request
+   with a higher `MinPower`, a different `MaxPower`, or different hard pins when
+   its task policy says the extra cost/time is justified.
 
 Every failed routed `Execute` returns enough structured evidence for that
 caller decision:
 
-- requested profile, effective profile, hard constraints, and exact pins
-- winning candidate, attempted candidates, rejected candidates, and filter
-  reasons
+- requested power bounds, hard constraints, and exact pins
+- selected candidate, rejected candidates, and filter reasons
 - score components and the live/cost/quota facts used for ranking
 - final failure class: `setup/config`, `no-candidate`, `provider-transient`,
-  `capability`, `model-quality/task-failure`, `cancelled`, or `timeout`
-- retryability, whether the candidate scope was exhausted, and advisory
-  `suggested_next_profile` when applicable
+  `capability`, `cancelled`, or `timeout`
+- attempted route outcome for the single dispatched candidate
 
-The advisory escalation chain is `cheap -> standard -> smart`. Local-only
-profiles (`local`, `offline`, `air-gapped`) do not suggest cloud/prepaid
-escalation. Hard pins do not suggest broader alternatives; if
-`--model qwen-3.6-27b` cannot be satisfied, the error explains that exact
-constraint and the inspected providers rather than recommending GPT or Claude.
+The catalog may publish human aliases for common bands, but retry logic should
+use numeric power. Hard pins do not suggest broader alternatives; if `--model
+qwen-3.6-27b` cannot be satisfied, the error explains that exact constraint and
+the inspected providers rather than recommending GPT or Claude.
 
 ### Available Model Inventory
 
@@ -334,53 +329,67 @@ design is implemented. JSON output is the contract; text output is a rendering.
 Each row contains:
 
 - identity: harness, provider, endpoint name/base URL, model ID, catalog ID
-- policy: profile/tier eligibility, family, placement, deprecation status
+- policy: power, optional power-band aliases, family, placement, deprecation status
 - capability: context window, tool support, reasoning support, streaming and
   structured-output support when known
 - economics: placement (`local`, `prepaid`, `metered`, `test`), marginal cost,
   cost source, prepaid quota remaining/reset time
-- operations: health, cooldown, recent success rate, recent latency
-- routing: profile filter reasons and score components for a supplied profile
+- operations: health, cooldown, recent latency
+- routing: power filter reasons and score components for supplied power bounds
 
 This surface is the debugging contract for routing. If `route-status` says a
-candidate lost, `available-models --profile <name> --json` must show the raw
+candidate lost, `available-models --min-power <n> --json` must show the raw
 facts that caused the loss.
 
-### Built-In Profile Policies
+### Power Bands and Human Aliases
 
-| Profile | Minimum catalog tier | Placement policy | Selection intent |
+Power is the canonical routing strength axis. Higher values mean stronger
+models for agent tasks. Every catalog model must have `power` to be eligible for
+automatic routing; newly discovered models without power remain exact-pin only
+until the catalog assigns a value.
+
+The catalog may provide human aliases for common ranges, but those aliases are
+UI conveniences. The service contract is numeric power.
+
+Implementation prerequisite: the current embedded v4 manifest does not contain
+`power`, and the OpenRouter updater only refreshes pricing/context. Before
+power routing ships, add catalog schema support and populate power for every
+auto-routable model. Bootstrap power from normalized benchmark evidence
+(SWE-bench, terminal/TypeScript task benchmarks when available), model
+capabilities (context, tools, reasoning), recency, and cost. When benchmark
+coverage is missing, cost times recency is the first-order proxy: within a
+provider/model family, the newest and most expensive model is assumed strongest
+unless the catalog explicitly overrides power or marks an older model as a
+useful cost/power exception. Older family members are exact-pin-only for
+automatic routing without that override. Keep the raw benchmark inputs beside
+the derived power value so catalog updates can evolve scores quantitatively as
+new models and measurements arrive.
+
+| Alias | Power bounds | Placement policy | Human intent |
 |---|---:|---|---|
-| `local`, `offline`, `air-gapped` | `code-economy` | `local` only | Use free local models; never spend prepaid or metered quota. |
-| `cheap` | `code-economy` | `local` first, then prepaid/cheap metered fallback | Minimize marginal cost while preserving enough capability for coding tasks. |
-| `fast` | `code-medium` | local or prepaid | Minimize latency among capable models. |
-| `standard` | `code-medium` | local/free first, prepaid fallback | Balanced default for routine implementation and review work. |
-| `smart` | `code-high` | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or no better than local | Maximize result quality within available quota and reasonable latency. |
+| `cheap` | `10..39` | local/free first, then prepaid/cheap metered fallback | Minimize marginal cost for low-risk work. |
+| `fast` | `20..49` | local/free or prepaid | Minimize latency for low-risk work. |
+| `standard` | `50..79` | local/free first, prepaid fallback | Balanced routine work. |
+| `smart` | `80..100` | prepaid frontier first when quota is healthy | Maximize quality. |
 
-`smart` must prefer current frontier Opus/GPT-class models when the request is
-unconstrained and quota/cost signals make them practical. Example: if Claude
-Code reports usable Opus 4.7 quota and a reset in five minutes, the effective
-marginal cost is near zero and Opus should rank above weaker local models for
-`smart`. If that quota is exhausted, stale, or far from reset, prepaid bonus is
-removed and the router may choose a capable local or metered fallback. None of
-this overrides hard constraints: `--model qwen-3.6-27b --profile smart` still
-means "choose the best available Qwen 3.6 27B route," not "choose a frontier
-model."
-
-Custom profiles use catalog `profiles.<name>.target` as the minimum tier and
-may add placement/weight metadata in a future manifest extension. Until that
-extension lands, custom profiles inherit `standard` weights unless their
-provider preference is local-only or subscription-only.
+Ambiguous aliases are not used by agents for ordering. A caller that wants a
+stronger retry raises `MinPower`; a caller that wants to cap spend or latency
+sets `MaxPower`. If Claude Code reports usable Opus 4.7 quota and a reset in
+five minutes, the effective marginal cost is near zero and a high-power Opus
+candidate can rank above weaker local models. If that quota is exhausted, stale,
+or far from reset, prepaid bonus is removed and the router may choose a capable
+local or metered fallback inside the requested power range.
 
 ## Key Design Decisions
 
 **D1: Keep named providers as the concrete transport unit.** Providers hold
 endpoint URLs, credentials, and headers. They are not the canonical source of
-alias/profile policy.
+power or alias policy.
 
 **D2: Add an agent-owned model catalog as a first-class layer.** The catalog is
 loaded from an embedded manifest snapshot with an optional external override,
-and it owns aliases, tiers/profiles, canonical policy targets, deprecations,
-and per-surface projections.
+and it owns model power, optional aliases, deprecations, benchmark inputs, and
+per-surface projections.
 
 **D2A: Publish catalog bundles independently of binary releases.** The embedded
 snapshot remains the safe default, but operators and callers can install a newer
@@ -422,23 +431,24 @@ targets:
 
 **D3: Preserve prompt preset terminology for prompts only.** The top-level
 `preset` field and CLI `--preset` flag refer to system prompt presets defined in
-SD-003. Model policy uses `model_ref`, `alias`, `profile`, or `catalog`, never
-`preset`.
+SD-003. Model policy uses `model_ref`, numeric power bounds, alias, or catalog,
+never `preset`.
 
 **D4: Smart routing replaces `model_routes`.** Per ADR-005, the service
-combines catalog tier membership, provider/harness model inventory, placement,
-cost, context, capability, liveness, usage/quota, and recent reliability to
+combines catalog power, provider/harness model inventory, placement,
+cost, context, capability, liveness, and usage/quota to
 pick the best candidate per request. Users do not author per-tier candidate
 lists. `model_routes:` config is deprecated for one release (parsed with a
 warning), then rejected outright.
 
-**D5: Profiles are routing intent; model/provider/harness are constraints.**
-`--profile` selects the model-selection policy and minimum catalog floor.
-`--model-ref` expands only when it names a catalog target/profile; when it
-names a concrete model entry it is exact. `--model`, `--provider`, and
-`--harness` are hard constraints. Routing may optimize cost and availability
-inside those constraints but must fail with a detailed candidate trace when
-they cannot be met.
+**D5: Power is routing intent; model/provider/harness are constraints.**
+`--min-power` and `--max-power` select the model-strength range. Optional
+human aliases may expand to power ranges, but agents use numeric power for
+ordering and retry decisions. `--model-ref` expands only when it names a catalog
+alias; when it names a concrete model entry it is exact. `--model`,
+`--provider`, and `--harness` are hard constraints. Routing may optimize cost
+and availability inside those constraints but must fail with a detailed
+candidate trace when they cannot be met.
 
 **D6: Auto-selection inputs are deterministic.** Auto-selection signals are
 `EstimatedPromptTokens` (filter by context window), `RequiresTools` (filter by
@@ -446,13 +456,12 @@ tool support), and `Reasoning` (filter by reasoning support). No prose
 heuristic complexity classifier. `RequiresTools` is explicit caller intent, or
 derived only when a request surface has unambiguously enabled tool execution.
 
-**D7: Passive availability with same-profile rotation.** The routing engine
-ranks candidates with explicit components. On dispatch failure, the service
-rotates only within the same requested profile and hard constraints. It returns
-structured retry advice when the scope is exhausted; DDx or another caller
-owns any follow-up request with a stronger profile.
-Per-(provider,model,endpoint) success/latency replaces the per-tier adaptive
-min-tier window — one bad model no longer locks out its whole tier.
+**D7: No agent-owned retry.** The routing engine ranks candidates with explicit
+components. `Execute` dispatches the top candidate once and returns the ranked
+trace plus attempted-route outcome. DDx or another caller owns any follow-up
+request with a stronger `MinPower`, capped `MaxPower`, or different hard pins.
+Per-(provider,model,endpoint) availability/latency replaces the per-tier
+adaptive min-tier window — one bad endpoint no longer locks out its whole tier.
 
 **D7A: Placement is provider-candidate metadata.** `agent` as a native harness
 may front local, prepaid, and metered providers. Routing placement filters
@@ -602,9 +611,9 @@ reasoning flags.
 
 ```bash
 ddx-agent run --model qwen3.5-27b "prompt"            # pin a concrete model
-ddx-agent run --model-ref code-medium "prompt"        # pin a catalog tier; engine picks the provider
-ddx-agent run --profile smart "prompt"                # smart routing across all eligible candidates
-ddx-agent run "prompt"                                # default profile, fallback to default provider
+ddx-agent run --min-power 50 "prompt"                 # require at least medium-strength models
+ddx-agent run --min-power 80 "prompt"                 # request stronger models for retry
+ddx-agent run "prompt"                                # smart routing across all eligible candidates
 ```
 
 Compatibility:

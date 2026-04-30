@@ -32,13 +32,13 @@ The shape we want: providers are transport, the catalog is policy, the routing e
 
 Replace the `model_routes`-driven resolution surface with deterministic smart routing.
 
-### 2026-04-30 clarification: profile-driven candidate inventory
+### 2026-04-30 clarification: power-driven candidate inventory
 
 This ADR's original wording was too easy to implement as "profile resolves to
 one model, then score providers for that one model." That is not the intended
-router. A profile is a policy bundle that tells the service where to start in
-the model-selection tree, which placements are allowed, and which score weights
-matter most. It is not a concrete model alias.
+router. The primary routing strength input is numeric model `power`. Human
+labels such as `cheap`, `fast`, `standard`, or `smart` may exist as CLI aliases
+over power ranges, but the agent routing contract is numeric.
 
 The service MUST build a complete candidate inventory before choosing:
 
@@ -52,7 +52,10 @@ The service MUST build a complete candidate inventory before choosing:
    defaults are fallback hints, not the whole inventory.
 3. **Catalog join** — match discovered concrete models to catalog entries.
    Catalog metadata supplies tier, family, context window, reasoning support,
-   tool support, quality benchmarks, deprecation status, and list price.
+   tool support, quality benchmarks, deprecation status, list price, and a
+   required `power` integer. Discovered models without catalog power remain
+   inspectable and may be used when explicitly pinned, but they are not
+   eligible for automatic routing.
 4. **Usage/cost join** — attach live usage/quota signals where the surface can
    provide them. Prepaid harnesses expose quota remaining and reset time; paid
    metered providers expose static or live cost; local/free providers expose
@@ -61,36 +64,56 @@ The service MUST build a complete candidate inventory before choosing:
    surface (`ddx agent available-models --json`, or an equivalent
    `ddx agent models --available --json`) and the service `ListModels` API.
    Operators must be able to see the same candidate table the router scores:
-   harness, provider, endpoint, model, tier, family, placement, cost class,
+   harness, provider, endpoint, model, power, tier, family, placement, cost class,
    marginal cost, quota/reset, context, tool support, reasoning support,
-   health, recent latency, recent success rate, and filter reasons.
+   health, recent latency, availability status, and filter reasons.
 
-Profiles then filter and weight that inventory:
+Optional human aliases compile to power bounds, placement policy, and score
+weights:
 
-| Profile | Catalog floor | Placement policy | Primary weights |
+| Alias | Power bounds | Placement policy | Primary weights |
 |---|---:|---|---|
-| `local`, `offline`, `air-gapped` | `code-economy` | local/free only | cost, availability, latency |
-| `cheap` | `code-economy` | local/free first; prepaid/cheap metered fallback | cost, availability, reliability |
-| `fast` | `code-medium` | local/free or prepaid, whichever is low-latency and capable | latency, reliability, cost |
-| `standard` | `code-medium` | local/free first when capable; prepaid fallback | reliability, cost, latency |
-| `smart` | `code-high` | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or explicitly cheaper for equivalent quality | capability, reliability, quota, latency |
+| `local`, `offline`, `air-gapped` | `min=10`, no upper bound | local/free only | cost, availability, latency |
+| `cheap` | `10..39` | local/free first; prepaid/cheap metered fallback | cost, availability, latency |
+| `fast` | `20..49` | local/free or prepaid, whichever is low-latency and capable | latency, availability, cost |
+| `standard` | `50..79` | local/free first when capable; prepaid fallback | availability, cost, latency |
+| `smart` | `min=80`, no upper bound | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or explicitly cheaper for equivalent quality | power, availability, quota, latency |
 
-The "catalog floor" is a minimum quality tier, not a single target model. For
-example, `smart` filters out models below `code-high` and should normally rank
-current frontier Opus/GPT-class models above older or economy models. `cheap`
-starts at `code-economy` and may select a strong local model when it is live,
-tool-capable, and cheap to run.
+Power is a catalog-owned ordering where higher means more capable for the agent
+task domain. The service MUST expose power-band aliases and each available
+model's power through `ListPowerBands`, `ListModels`, and the CLI inventory
+surface so callers can choose their own retry policy. The primitive request
+fields are `MinPower` and `MaxPower` (`--min-power` / `--max-power` in CLI
+form). Power bounds never override hard `--model`, `--provider`, or `--harness`
+pins.
+
+Implementation status as of 2026-04-30: the embedded v4 catalog does not yet
+define `power`, and `UpdateManifestPricing` only imports OpenRouter pricing and
+context length. Adding catalog power schema and bootstrapping values for every
+auto-routable model is prerequisite work before this routing interface can
+ship.
+
+Initial power can be synthesized from normalized coding benchmarks (for
+example SWE-bench, terminal/TypeScript-oriented task benchmarks when present),
+context window, tool/reasoning support, recency, and cost. Cost times recency is
+the default proxy when benchmark data is sparse: within a provider/model family,
+the newest and most expensive model is assumed to be that provider's strongest
+model unless the catalog contains an explicit power/cost override. Older models
+in the same family are not eligible for automatic routing unless they are
+directly requested or the catalog records why their cost/power tradeoff is still
+useful. The catalog should keep the raw inputs and derived `power` together so
+new benchmark data can revise power quantitatively instead of relying on
+hand-guessed profile membership.
 
 Selection is a transparent utility calculation, not a hidden preference:
 
 ```
-score = profile_weighted_capability
-      + profile_weighted_reliability
-      + profile_weighted_latency
+score = power_weighted_capability
+      + latency_weight
       + placement_bonus
       + quota_bonus
       - marginal_cost_penalty
-      - cooldown_penalty
+      - availability_penalty
       - stale_signal_penalty
 ```
 
@@ -100,58 +123,47 @@ the effective marginal cost is near zero and the quality score is high. If the
 same quota is exhausted, stale, or near a long reset horizon, the quota bonus
 disappears and cost/availability penalties apply. Local LM Studio/oMLX/Ollama
 providers are treated as free marginal cost but still compete on capability,
-tool support, context, latency, and recent success.
+tool support, context, latency, and availability.
 
-When no hard axes are supplied, the requested profile controls the whole
-selection. With the default `smart` profile, the service should select the best
-available model it can use according to the score components above. If strong
-prepaid quota is available, "best" may be a current frontier model. If only
-local providers are live, "best" may be a local model that clears the smart
-floor and capability gates. If the caller requests `cheap`, the service stays
-within the cheap policy; it does not silently promote to `standard` or `smart`
-for the same task attempt.
+When no hard axes or power bounds are supplied, the service should select the
+best available model it can use according to the score components above. If
+strong prepaid quota is available, "best" may be a current frontier model. If
+only local providers are live, "best" may be a local model that clears
+capability gates.
 
 Provider placement is candidate-level. The native `agent` harness is not
 itself "local" or "subscription"; its child provider endpoints are. A single
 native harness may contain local oMLX, local LM Studio, and paid OpenRouter
-providers, and profile filtering must operate on those provider candidates.
+providers, and placement filtering must operate on those provider candidates.
 
-Failover uses the same ordered candidate trace and never escapes hard caller
-constraints. `Execute` tries the best candidate first, records the attempt,
-then tries the next eligible candidate on transient provider/harness failures
-only when that next candidate still satisfies the requested harness, provider,
-and exact-model constraints. It must not fail over deterministic request errors
-such as invalid prompt envelopes, malformed tool schemas, unsupported explicit
-pins, or configuration parse failures. Provider-specific authentication or
-quota failures are transient for that candidate and may fail over to another
-endpoint/provider only when the caller did not hard-constrain that axis; global
-missing configuration is not.
+Retry is not an agent responsibility. `Execute` selects the best candidate,
+dispatches that one candidate, and reports what happened. It does not try
+candidate 2 and it does not silently widen power bounds. Provider-specific
+authentication, quota, transport, timeout, stream,
+or protocol failures are reported as facts about the attempted
+`(harness, provider, endpoint, model)` tuple; callers decide whether to issue a
+new request using another power range or different hard pins.
 
-Task-level escalation across profiles is caller-owned. The agent service owns
-candidate selection and failover inside one request's constraints; it does not
-decide that a failed cheap attempt should be retried as standard or smart. A
-caller such as DDx owns that policy because it has task context, budget, retry
-limits, and knowledge of whether failure quality is likely to improve with a
-stronger model. The service must therefore return enough structured evidence
-for the caller to decide:
+Task-level escalation across power ranges is caller-owned. A caller such as DDx
+owns that policy because it has task context, budget, retry limits, and semantic
+evidence from tests/reviews. The service must therefore return enough structured
+evidence for the caller to decide:
 
-- requested profile, effective profile, and hard constraints
-- winning candidate and full candidate trace with filter reasons
-- final failure class: setup/config, no-candidate, provider-transient,
-  capability, model-quality/task-failure, cancelled/timeout
-- retryability and candidate scope exhausted
-- suggested next profile when applicable, e.g. `standard` after `cheap`,
-  `smart` after `standard`, and no suggestion for local-only profiles or
-  deterministic setup failures
+- requested/effective power bounds and hard constraints
+- selected candidate and full candidate trace with power and filter reasons
+- attempted candidate and availability/transport failure class when dispatch
+  failed
+- score components and live cost/quota/latency facts
 
-The suggestion is advisory. The caller applies budgets and policy before
-retrying.
+The service exposes stronger/weaker power bands as static metadata, but it must
+not present that metadata as a retry decision. The caller applies budgets, task
+policy, and semantic evidence before retrying.
 
 ### 1. Auto-selection rules
 
-`Execute` auto-fills only the axes the caller left unconstrained. A `Profile`
-is broad routing policy. `Harness`, `Provider`, and exact model identity are
-hard constraints:
+`Execute` auto-fills only the axes the caller left unconstrained. `MinPower`
+and `MaxPower` are broad routing policy. `Harness`, `Provider`, and exact model
+identity are hard constraints:
 
 - `Harness=claude` means only the Claude harness may be used.
 - `Provider=lmstudio` means only LM Studio providers/endpoints may be used.
@@ -161,12 +173,13 @@ hard constraints:
   a different model such as GPT-5 mini.
 
 A `ModelRef` is interpreted by catalog type: refs that resolve to a concrete
-model entry are exact model constraints; refs that resolve to a target/profile
-(`cheap`, `standard`, `smart`, `code-medium`, etc.) expand to that target's
-candidate models. If a constrained request cannot be satisfied, routing fails
-with a detailed candidate/error trace instead of broadening the constraint.
+model entry are exact model constraints; refs that resolve to a power-band alias
+expand to numeric `MinPower`/`MaxPower`. If a constrained request cannot be
+satisfied, routing fails with a detailed candidate/error trace instead of
+broadening the constraint.
 
-Default profile is `smart` when no profile/model intent is supplied.
+When no power/model intent is supplied, the router uses no power bound and
+scores all eligible catalog-powered candidates.
 
 Auto-selection signals are deterministic and already available:
 
@@ -187,31 +200,28 @@ Per request:
 
 1. **Build the candidate set** = every available `(harness, provider,
    endpoint, model)` joined with the catalog and live provider/harness signals,
-   then apply hard caller constraints before scoring. The requested profile's
-   catalog floor filters out models below the minimum tier; it does not
-   collapse the set to one primary model unless the caller supplied an exact
-   model constraint.
+   then apply hard caller constraints before scoring. The requested power
+   bounds filter models by catalog power; they do not collapse the set to
+   one primary model unless the caller supplied an exact model constraint.
 2. **Filter by liveness** via `HealthCheck` and live model discovery. Drop
    endpoints whose latest probe failed or which do not advertise the candidate
    model. If the filter empties the set, return a no-candidate decision with
-   the full rejected trace and caller escalation advice; do not silently change
-   profiles inside the same request.
+   the full rejected trace; do not silently change aliases or power bounds
+   inside the same request.
 3. **Filter by capability**: drop candidates whose context window <
    `EstimatedPromptTokens`, whose `SupportsTools()` is false when
    `RequiresTools` is true, whose reasoning support is below the request, or
-   whose catalog tier/family is below the profile floor.
+   whose catalog power/family is outside the requested power bounds.
 4. **Score each survivor** using explicit score components: catalog quality,
-   recent success rate, observed latency, marginal cost, quota/reset state,
-   placement preference, and cooldown/staleness penalties. Candidate trace
+   observed latency, marginal cost, quota/reset state, placement preference,
+   availability, and staleness penalties. Candidate trace
    output must expose these components.
-5. **Dispatch top-1**, return the full ranked candidate trace in the routing decision event so callers can see why candidates 2..N lost.
-6. **On failure rotate** within the same requested profile and hard
-   constraints. Do not auto-escalate `cheap` to `standard` or `smart` inside the
-   agent service. Record outcome to update per-(provider,model,endpoint)
-   stats and return structured retry advice to the caller. **Replaces the
-   per-tier trailing-window adaptive min-tier** (which was too coarse — locked
-   the cheap tier out forever after 17 failed attempts because no cheap
-   attempts could refresh the signal).
+5. **Dispatch top-1 once**, return the full ranked candidate trace in the
+   routing decision event so callers can see why candidates 2..N lost.
+6. **Report dispatch outcome** for the attempted candidate. Do not rotate to a
+   second candidate. Record only availability/transport/protocol outcome facts
+   for the attempted `(harness, provider, endpoint, model)` tuple and return
+   structured evidence to the caller.
 
 #### Pipeline order
 
@@ -220,62 +230,48 @@ Steps 1–6 above describe the user-visible flow. The implementation collapses t
 **In `routing.Resolve` (`internal/routing/engine.go`):** consume a fully joined
 candidate inventory → apply inline gates (liveness via provider/endpoint
 cooldown, capability via `EstimatedPromptTokens` / `RequiresTools` /
-`Reasoning`, placement policy, subscription quota, catalog tier floor, harness
-allowlist) → score eligible candidates with cost, latency, capability,
-reliability, placement, and quota signals → rank and tie-break by cost and
+`Reasoning`, placement policy, subscription quota, catalog power bounds, harness
+allowlist) → score eligible candidates with power, cost, latency, capability,
+availability, placement, and quota signals → rank and tie-break by cost and
 latency.
 
 **In `service.ResolveRoute` (`service_routing.go`):** call the engine once for
-the requested profile/constraints and preserve the candidate trace even on
-failure. Catalog tier filtering and profile ceiling enforcement happen in the
-engine's inline gates as part of candidate construction. Cross-profile retry is
-not performed here; the service returns retry advice for callers that own
-task-level escalation.
+the requested power bounds/constraints and preserve the candidate trace even on
+failure. Catalog power filtering happens in the engine's inline gates as part
+of candidate construction. Retry is not performed here; the service returns the
+ordered trace and attempted-route outcome for callers that own retry policy.
 
-#### Caller-owned profile escalation
+#### Caller-owned retry by power
 
-The built-in advisory chain is `cheap → standard → smart`. The service reports
-that chain in failure evidence, but the caller decides whether to issue a new
-request with the next profile. Profiles with local-only placement (`local`,
-`offline`, `air-gapped`) do not suggest subscription/cloud escalation. Custom
-profiles suggest a next profile only when their catalog profile or future policy
-block declares one; absence of that declaration means no suggestion.
+Power bands expose a machine-readable ordering. Callers retry by raising
+`MinPower` or otherwise changing the requested power range. The service exposes
+that ordering; it does not decide whether retry is warranted. Local-only
+placement constraints stay in force even when callers raise power.
 
-DDx execute-loop policy: first attempt may use `cheap` or `standard` depending
-on queue policy. If the attempt reaches the agent and fails in a retryable
-quality/capability/provider-transient way, DDx may retry the same task with the
-next profile while preserving first-attempt logs and budget accounting. DDx
-must not retry on deterministic setup/config failures.
+DDx execute-loop policy: first attempt may use a low or medium power floor
+depending on queue policy. If the attempt reaches the agent and DDx later
+determines from tests, review, or acceptance evidence that the model was too
+weak, DDx may retry the same task with a higher power floor while preserving
+first-attempt logs and budget accounting. DDx must not retry on deterministic
+setup/config failures.
 
-### 3. Per-(provider, model, endpoint) route feedback
+### 3. Provider availability feedback
 
-The agent service owns route feedback collection for candidate selection.
-Minimum signal key: `(harness, provider, endpoint, model)`. A single bad model
-or endpoint must not poison its whole tier or provider family.
+The agent service owns only provider availability feedback for candidate
+selection. Minimum signal key: `(harness, provider, endpoint, model)`. A single
+bad endpoint must not poison its whole tier or provider family.
 
-Two input paths feed the same signal:
+`Execute` records the attempted route's service-observed availability outcome:
+success, transport errors, auth/quota/rate limits, 5xx responses, stream loss,
+subprocess exit, timeout, malformed protocol output, capability mismatch,
+duration, usage, and cost when known. The scoring engine uses availability,
+latency, quota, and cooldown state from this store.
 
-1. `Execute` records the selected route outcome automatically: success,
-   failure class, duration, usage, and cost when known. This covers
-   service-observed provider/harness failures such as transport errors, quota,
-   timeouts, stream loss, subprocess exit, malformed protocol output, and
-   capability mismatches.
-2. `RecordRouteAttempt` lets callers report task outcomes the service cannot
-   infer from a successful model response: tests failed, review blocked,
-   acceptance criteria were missed, or the task succeeded. It also supports
-   routed work executed outside the service.
-
-The scoring engine uses recent success rate, failure class, latency, and
-cooldown state from this store. Initial implementation may keep a bounded
-in-process TTL ring plus service-owned session-log reconstruction; the public
-contract is that route feedback is agent-owned and inspectable, not that
-callers maintain private scoring tables.
-
-Setup/config/cancelled outcomes are evidence for the caller but do not lower
-model quality. Provider-transient and timeout outcomes demote the
-provider/endpoint/model tuple. Model-quality/task-failure outcomes affect
-future reliability scoring and are the main signal for DDx to retry with the
-next profile.
+Semantic task outcomes are not agent route feedback. If DDx learns that a model
+was too weak because tests failed, review blocked, or acceptance criteria were
+missed, that evidence belongs to DDx and may be contributed to the model catalog
+or catalog-derived power ratings. It does not directly demote a live provider in
+agent's transient routing state.
 
 ### 4. Subscription quota inputs
 
@@ -285,7 +281,11 @@ OpenRouter and native HTTP providers do not publish live quota. Treat their cost
 
 ### 5. `route-status` redesigned
 
-Today `route-status` enumerates configured `model_routes` keys. Post-deletion it must report **eligible candidates for a requested intent or profile**, with score components (quality, cost, latency, success-rate, filter reason) per candidate, and the per-(provider,model) success/latency stats. Operators read it to answer "why did the router pick X?" — not to inspect their own YAML.
+Today `route-status` enumerates configured `model_routes` keys. Post-deletion
+it must report **eligible candidates for requested power bounds**, with score
+components (power, cost, latency, availability, filter reason) per candidate and
+per-(provider,model,endpoint) availability/latency facts. Operators read it to
+answer "why did the router pick X?" — not to inspect their own YAML.
 
 ### 6. Delete
 
@@ -301,7 +301,7 @@ Today `route-status` enumerates configured `model_routes` keys. Post-deletion it
 - `internal/modelcatalog` — source of truth for tier policy, cost, context, capability.
 - `internal/routing` engine scoring — refactor input source, do not rewrite scoring.
 - Provider adapters, `internal/reasoning`, the three session-log refactors landed earlier in this stack (`agent-7faa0edf`, `agent-b9bd700f`, `agent-99549438`).
-- `--profile cheap|fast|smart`, `--model`, `--provider`, `--reasoning`, `--model-ref` CLI flags.
+- `--min-power`, `--max-power`, `--model`, `--provider`, `--reasoning`, `--model-ref` CLI flags.
 
 ### 8. Backward compatibility
 

@@ -71,19 +71,18 @@ type DdxAgent interface {
     // type, and endpoint identity when applicable).
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 
-    // ListProfiles returns catalog profile names and alias projections with
+    // ListPowerBands returns catalog power-band aliases with numeric bounds and
     // provenance metadata. Consumers use this instead of reading
     // ~/.config/agent/models.yaml.
-    ListProfiles(ctx context.Context) ([]ProfileInfo, error)
+    ListPowerBands(ctx context.Context) ([]PowerBandInfo, error)
 
-    // ResolveProfile projects one profile or alias into service-supported
-    // surfaces. Surface names are public service names, not internal catalog
-    // keys such as "agent.openai".
-    ResolveProfile(ctx context.Context, name string) (*ResolvedProfile, error)
+    // ResolvePowerBand projects one alias into numeric power bounds. Alias names
+    // are UI conveniences; routing decisions use MinPower/MaxPower.
+    ResolvePowerBand(ctx context.Context, name string) (*ResolvedPowerBand, error)
 
-    // ProfileAliases returns known alias -> canonical profile/target mappings,
+    // PowerAliases returns known alias -> canonical power-band mappings,
     // including deprecated aliases mapped to their replacement when available.
-    ProfileAliases(ctx context.Context) (map[string]string, error)
+    PowerAliases(ctx context.Context) (map[string]string, error)
 
     // HealthCheck triggers a fresh probe and updates internal state.
     // Target.Type is "harness" or "provider".
@@ -97,8 +96,8 @@ type DdxAgent interface {
     // the intended behavior).
     ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
 
-    // RecordRouteAttempt records caller feedback about a routed candidate.
-    // Non-success statuses create a same-process cooldown keyed by
+    // RecordRouteAttempt records availability feedback about externally routed
+    // work. Non-success statuses create a same-process cooldown keyed by
     // harness/provider/model/endpoint; success clears matching active failures.
     RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
 
@@ -139,8 +138,8 @@ func New(opts Options) (DdxAgent, error)
 ```
 
 **Sixteen methods total.** `Execute` is the primary verb; `TailSessionLog`,
-`ListHarnesses`, `ListProviders`, `ListModels`, `ListProfiles`,
-`ResolveProfile`, `ProfileAliases`, `HealthCheck`, `ResolveRoute`,
+`ListHarnesses`, `ListProviders`, `ListModels`, `ListPowerBands`,
+`ResolvePowerBand`, `PowerAliases`, `HealthCheck`, `ResolveRoute`,
 `RecordRouteAttempt`, and `RouteStatus` are the supporting routing/status
 surface; `UsageReport`, `ListSessionLogs`, `WriteSessionLog`, and
 `ReplaySession` are the historical session-log projection used by
@@ -204,20 +203,19 @@ type Tool interface {
     Parallel() bool
 }
 
-// Routing placement is profile-owned. Callers either choose a named Profile
-// (cheap, standard, smart, or a user-defined profile) or pin Provider+Model
-// directly. Profiles are catalog/config data bundles that can carry placement
-// order, cost ceilings, failure policy, and reasoning defaults; callers do not
-// pass a per-request local/subscription preference enum.
+// Routing strength is power-owned. Callers either set MinPower/MaxPower or pin
+// Provider+Model directly. Human names such as "cheap" or "smart" may exist as
+// CLI aliases for power bands, but agents use numeric power for ordering.
 
 type ExecuteRequest struct {
     Prompt       string  // required
     SystemPrompt string  // optional; agent supplies a sane default if empty
     Model        string  // optional; resolved via ResolveRoute if empty
-    Provider     string  // optional preference (soft); empty = router decides
+    Provider     string  // optional hard pin; empty = router decides
     Harness      string  // optional preference (hard); empty = router decides
-    Profile      string  // optional named routing policy bundle: cheap/standard/smart/custom
-    ModelRef     string  // optional alias from the catalog: cheap/standard/smart/<custom>
+    MinPower     int     // optional lower bound; 0 = no lower bound
+    MaxPower     int     // optional upper bound; 0 = no upper bound
+    ModelRef     string  // optional alias from the catalog; concrete refs are exact
     // Sampling controls. All five sampler fields use pointer types so that
     // nil means "unset — defer to lower layers / server defaults" and any
     // concrete value (including 0) means "send this on the wire". See ADR-007
@@ -237,11 +235,10 @@ type ExecuteRequest struct {
     Tools        []Tool  // optional native-agent override; nil = built-in tools
     ToolPreset   string  // optional native built-in selector; "benchmark" excludes task
 
-    // Auto-selection inputs. When the caller pins nothing (Profile, Model,
-    // ModelRef, Provider all empty), Execute uses these to filter candidates
-    // by capability before scoring. Explicit pins always win — these never
-    // override an explicit Provider/Model. Defaults: 0 / false skip the
-    // corresponding filter. See ADR-005.
+    // Auto-selection inputs. When the caller pins no concrete model/provider,
+    // Execute uses these to filter candidates by capability before scoring.
+    // Explicit pins always win. Defaults: 0 / false skip the corresponding
+    // filter. See ADR-005.
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
 
@@ -259,8 +256,8 @@ type ExecuteRequest struct {
     //                     duration of no events from the model. 0 = use harness
     //                     default (typically 60s).
     //   ProviderTimeout — per-HTTP-request cap to the provider; longer requests
-    //                     are retried per the harness's failover rules. 0 = use
-    //                     provider default.
+    //                     fail the attempted route. Agent does not retry another
+    //                     route. 0 = use provider default.
     Timeout         time.Duration
     IdleTimeout     time.Duration
     ProviderTimeout time.Duration
@@ -301,30 +298,21 @@ the following order, most-specific first. The list is also the precedence
 the routing engine enforces:
 
 1. **`Harness`** — hard pin. Routing never substitutes a different harness.
-2. **`Provider`** — *soft preference* when set alone; affects scoring affinity
-   but does not exclude other providers. *Hard pin* when paired with
-   `Harness` — routing never substitutes a different provider for that
-   `(Harness, Provider)` combination. A `Provider` value naming a provider
-   not in config fails pre-dispatch with a configuration error; no
-   auto-substitution happens.
+2. **`Provider`** — hard pin. Routing never substitutes a different provider.
+   A `Provider` value naming a provider not in config fails pre-dispatch with a
+   configuration error; no auto-substitution happens.
 3. **`Model`** — hard pin. The request's `Model` field overrides any default
    model declared in the matching provider's config.
-4. **`ModelRef`** — catalog tier alias that resolves to a concrete model on
-   the routing surface chosen by `Profile`. **When `Profile` is unset,
-   `ModelRef` may also act as a profile alias** (e.g. `ModelRef="cheap"`
-   resolves both the tier and the concrete model). **When both `Profile`
-   and `ModelRef` are set, `Profile` determines the tier and provider
-   preference; `ModelRef` is a hint for concrete model selection within that
-   tier.** A `ModelRef` value that does not resolve on the tier's surface
-   fails with `model ref %q not available on surface %q`.
-5. **`Profile`** — soft intent. Maps to a default tier and reasoning level.
-   Has no effect on tier choice when `Model` is set; with `Provider` set,
-   becomes a hint for selecting among that provider's models, never a
-   reason to override the pin.
+4. **`ModelRef`** — catalog alias. A ref to a concrete model is an exact model
+   constraint. A ref to a power-band alias expands to `MinPower`/`MaxPower`.
+   Ambiguous profile-like names are resolved before routing and are not part of
+   the core agent ordering contract.
+5. **`MinPower` / `MaxPower`** — routing strength bounds. Higher power means
+   stronger for agent tasks. These bounds filter candidate models before
+   scoring; they never override hard harness/provider/model pins.
 
 Auto-selection inputs (`EstimatedPromptTokens`, `RequiresTools`, `Reasoning`)
-apply only when **none** of `Harness`, `Provider`, `Model`, `ModelRef`, or
-`Profile` is set. They never override an explicit pin.
+apply after hard pins and power bounds. They never override an explicit pin.
 
 ### Prompt-caching opt-out (`CachePolicy`)
 
@@ -394,11 +382,12 @@ boundary:
   exists. Subprocess harnesses may still implement their own supervised modes.
 
 type RouteRequest struct {
-    Profile               string
     Model                 string
     Provider              string
     Harness               string
     ModelRef              string
+    MinPower              int
+    MaxPower              int
     Reasoning             Reasoning
     Permissions           string
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
@@ -419,6 +408,7 @@ type Candidate struct {
     Provider        string
     Endpoint        string
     Model           string
+    Power           int
     Score           float64
     ScoreComponents map[string]float64
     Eligible        bool
@@ -429,20 +419,16 @@ type Candidate struct {
 }
 
 type RouteAttempt struct {
-    Harness                 string
-    Provider                string
-    Model                   string
-    Endpoint                string
-    Status                  string // "success" clears active failures; other values record failure
-    FailureClass            string // setup/config|no-candidate|provider-transient|capability|model-quality/task-failure|cancelled|timeout
-    Reason                  string // machine-readable failure reason when available
-    Error                   string // human-readable failure detail
-    OutcomeSource           string // service-dispatch|caller-task-result|caller-review|caller-test
-    Retryable               bool
-    CandidateScopeExhausted bool
-    SuggestedNextProfile    string
-    Duration                time.Duration
-    Timestamp               time.Time // zero = service clock
+    Harness      string
+    Provider     string
+    Model        string
+    Endpoint     string
+    Status       string // "success" clears active availability failures; other values record availability failure
+    FailureClass string // setup/config|no-candidate|provider-transient|capability|cancelled|timeout
+    Reason       string // machine-readable failure reason when available
+    Error        string // human-readable failure detail
+    Duration     time.Duration
+    Timestamp    time.Time // zero = service clock
 }
 
 type HarnessInfo struct {
@@ -582,6 +568,7 @@ type ModelInfo struct {
     EndpointName  string  // configured endpoint name, "default", or host:port fallback
     EndpointBaseURL string // endpoint base URL used for discovery; empty when not applicable
     ContextLength int     // resolved (provider API > catalog > default)
+    Power         int     // catalog power; 0 when unknown/exact-pin-only
     Capabilities  []string
     Cost          CostInfo
     PerfSignal    PerfSignal
@@ -596,11 +583,14 @@ type ModelInfo struct {
 type ModelFilter struct {
     Harness  string  // empty = all harnesses
     Provider string  // empty = all providers
+    MinPower int     // 0 = no lower bound
+    MaxPower int     // 0 = no upper bound
 }
 
-type ProfileInfo struct {
-    Name            string  // profile or alias visible to callers
-    Target          string  // canonical catalog target/profile
+type PowerBandInfo struct {
+    Name            string  // optional human alias visible to callers
+    MinPower        int
+    MaxPower        int     // 0 = no upper bound
     AliasOf         string  // non-empty when Name is an alias
     Deprecated      bool
     Replacement     string
@@ -609,27 +599,16 @@ type ProfileInfo struct {
     ManifestVersion int
 }
 
-type ResolvedProfile struct {
+type ResolvedPowerBand struct {
     Name            string
-    Target          string
+    MinPower        int
+    MaxPower        int
     Deprecated      bool
     Replacement     string
     CatalogVersion  string
     ManifestSource  string
     ManifestVersion int
-    Surfaces        []ProfileSurface
-}
-
-type ProfileSurface struct {
-    Name                    string  // public service surface, e.g. "native-openai"
-    Harness                 string
-    ProviderSystem          string  // provider family, not a configured provider name
-    Model                   string
-    Candidates              []string
-    PlacementOrder          []string
-    CostCeilingInputPerMTok *float64
-    ReasoningDefault        Reasoning
-    FailurePolicy           string
+    ReasoningDefault Reasoning
 }
 
 type HealthTarget struct {
@@ -877,12 +856,12 @@ render public service results. The CLI boundary is strict:
   through `ListSessionLogs`, `WriteSessionLog`, `ReplaySession`, and
   `UsageReport`; CLI subcommands do not parse session-log JSONL records
   directly;
-- harness capabilities, profile projection, route feedback, quota/status, and
+- harness capabilities, power-band projection, route feedback, quota/status, and
   test-only harness dispatch are consumed through public service methods.
 
 The CLI must not:
 
-- construct native providers or provider failover wrappers;
+- construct native providers or retry/failover wrappers;
 - call `internal/core` loop entry points directly;
 - synthesize service session lifecycle records into the internal session-log
   schema;
@@ -898,29 +877,37 @@ public request/event/result types, the contract must grow first. Internal
 package reach-through from `cmd/ddx-agent` is architecture debt and must not be
 normalized as a permanent compatibility layer.
 
-## Catalog Profile Projection
+## Catalog Power Projection
 
-Catalog profiles are service data, not consumer configuration. Consumers that
-need to present, validate, or route by profile call:
+Catalog power is service data, not consumer configuration. Consumers that need
+to present, validate, or route by strength call:
 
-- `ListProfiles` for selectable profile names, alias relationships, and catalog
+- `ListPowerBands` for optional human aliases, numeric bounds, and catalog
   provenance.
-- `ResolveProfile` for the public service projection of one profile or alias:
-  placement order, supported surfaces, candidate model IDs, cost ceiling,
-  reasoning default, and failure policy.
-- `ProfileAliases` for lightweight alias migration and validation maps.
+- `ResolvePowerBand` to project one alias into `MinPower`/`MaxPower`.
+- `PowerAliases` for lightweight alias migration and validation maps.
+- `ListModels` for the actual available models and their catalog `Power`.
 
-Public `ProfileSurface.Name` values are stable service names:
-`native-openai`, `native-anthropic`, `codex`, and `claude`. Consumers must not
-depend on internal catalog surface strings such as `agent.openai`,
-`agent.anthropic`, or `claude-code`; those remain model-catalog implementation
-details.
+Aliases such as `cheap`, `fast`, `standard`, and `smart` are not the ordering
+contract. They are optional human labels over numeric power ranges. Agents and
+automated callers should compare numbers, not strings.
 
 Migration rule: any consumer currently reading `~/.config/agent/models.yaml`,
-model-catalog manifests, or hard-coded surface strings to discover `cheap`,
-`standard`, `smart`, aliases, or placement policy must switch to the service
-methods above. Direct YAML reads are allowed only inside the agent service and
+model-catalog manifests, or hard-coded surface strings to discover aliases,
+power ranges, or placement policy must switch to the service methods above.
+Direct YAML reads are allowed only inside the agent service and
 model-catalog implementation.
+
+Catalog power is required for automatic routing. The current embedded v4
+manifest does not yet expose a `power` field; adding it is prerequisite work
+for this contract. Initial catalog power is synthesized from normalized
+benchmarks such as SWE-bench and terminal/TypeScript task benchmarks when
+available, plus model capabilities, recency, and cost. In the absence of direct
+benchmark coverage, cost times recency is the default proxy within a
+provider/model family: the newest and most expensive model is presumed strongest
+unless the catalog contains an explicit override. Older family members are not
+auto-routable unless directly pinned or explicitly marked as useful
+cost/power exceptions.
 
 ## Harness Capability Matrix
 
@@ -985,8 +972,8 @@ Notes:
 
 ## Test-Only Execute Harnesses
 
-`virtual` and `script` are explicit test-only harnesses. The router and profile
-routing never choose them implicitly; callers must set `ExecuteRequest.Harness`
+`virtual` and `script` are explicit test-only harnesses. The router never
+chooses them implicitly; callers must set `ExecuteRequest.Harness`
 explicitly to opt in.
 
 `Harness="virtual"` accepts either:
@@ -1030,14 +1017,14 @@ Closed union of event types. Every harness backend emits these identically.
   "harness": "agent",
   "provider": "bragi",
   "model": "qwen/qwen3.6-35b-a3b",
-  "reason": "cheap-tier match; bragi reachable; 256K context",
-  "fallback_chain": ["openrouter:qwen/qwen3.6"],
+  "reason": "power 52 match; bragi reachable; 256K context",
   "candidates": [
     {
       "harness": "agent",
       "provider": "bragi",
       "endpoint": "http://bragi:1234/v1",
       "model": "qwen/qwen3.6-35b-a3b",
+      "power": 52,
       "eligible": true,
       "score": 0.82,
       "score_components": {"capability": 0.38, "cost": 0.24, "latency": 0.2}
@@ -1059,9 +1046,7 @@ Closed union of event types. Every harness backend emits these identically.
   // on routed failure:
   // "routing_failure": {
   //   "failure_class": "provider-transient",
-  //   "retryable": true,
-  //   "candidate_scope_exhausted": true,
-  //   "suggested_next_profile": "standard"
+  //   "attempted": {"harness": "agent", "provider": "bragi", "model": "qwen/qwen3.6-35b-a3b", "power": 52}
   // },
   "final_text": "user-facing final response text, stripped of harness stream envelopes",
   "duration_ms": 12345,
@@ -1294,36 +1279,30 @@ rules that govern future additions to this contract surface.
 
 ## Bead Execution Policy
 
-DDx bead implementation owns cross-profile retry policy. The agent service
-selects the best candidate inside one request's `Profile`, hard pins, and
-auto-selection inputs; it does not decide that a failed `cheap` attempt should
-become a `standard` or `smart` attempt. When DDx wants to escalate, it issues a
-new `Execute` request with a stronger `Profile`, preserving the same bead
-context, logs, and execution budget.
+DDx bead implementation owns retry policy. The agent service selects the best
+candidate inside one request's power bounds, hard pins, and auto-selection
+inputs; it does not decide that a failed low-power attempt should become a
+high-power attempt. When DDx wants to escalate, it issues a new `Execute`
+request with a higher `MinPower`, preserving the same bead context, logs, and
+execution budget.
 
-DDx should normally try `Profile=cheap` or `Profile=standard` with
-`reasoning=off` first, then escalate only when the first pass produced
-evidence that a stronger model is likely to help. The escalation chain is
-`cheap -> standard -> smart`; exact `Model`, `Provider`, or `Harness` pins
-remain hard constraints and are not widened by escalation.
+DDx should normally try a low or medium `MinPower` with `reasoning=off` first,
+then escalate only when caller-owned evidence shows that a stronger model is
+likely to help. Exact `Model`, `Provider`, or `Harness` pins remain hard
+constraints and are not widened by escalation.
 
-Smart retry is eligible when the first pass failed because of model capability,
-reasoning quality, a post-implementation test failure, or an explicit agent
-failure after the agent had a valid checkout and attempted the bead. DDx
-reports that first-pass outcome through `RecordRouteAttempt` with
-`OutcomeSource` set to `caller-task-result`, `caller-review`, or `caller-test`;
-this lets the service learn that the model/harness combination struggled with
-real task work. The retry uses `Profile=smart` and the smart-tier catalog
-default, currently
-`reasoning=high`, unless the caller supplies a tighter explicit value. The
-retry must preserve the same bead context and retain first-pass logs/evidence
-so reviewers can compare the cheap attempt with the smart attempt.
+Power retry is eligible when the first pass produced semantic evidence outside
+agent routing: model capability looked insufficient, reasoning quality was
+poor, post-implementation tests failed, or review blocked after the agent had a
+valid checkout and attempted the bead. This evidence belongs to DDx and may be
+submitted to the catalog/power-maintenance process, but it does not flow through
+agent route-health feedback and does not cause the agent to retry.
 
-Smart retry is not eligible for deterministic setup failures: dirty-worktree or
+Power retry is not eligible for deterministic setup failures: dirty-worktree or
 merge conflicts, missing repository checkout, invalid bead metadata, unresolved
 dependencies, config parse errors, missing harness binaries, authentication
 setup failures, or command-not-found/toolchain setup failures. These failures
-should stop with actionable evidence instead of spending a smart attempt.
+should stop with actionable evidence instead of spending a stronger attempt.
 
 Cost caps, timeout limits, permission policy, and determinism controls apply
 across both passes as one execution budget. The agent-side contract defines the
@@ -1332,26 +1311,18 @@ paired DDx repo bead `ddx-785d02f7`.
 
 ## Route Attempt Feedback
 
-The agent service owns route feedback for model selection. It learns from two
-sources:
+The agent service owns provider availability feedback for model selection.
+`Execute` records only the selected candidate's service-observed dispatch
+result: transport errors, auth/quota/rate limits, 5xx responses, stream loss,
+subprocess exit, timeout, malformed protocol output, and capability mismatch.
+These are direct signals about availability of the provider, endpoint, harness,
+or pinned model route.
 
-1. **Service dispatch outcomes.** `Execute` records the selected candidate's
-   provider/harness result automatically: transport errors, auth/quota/rate
-   limits, 5xx responses, stream loss, subprocess exit, timeout, malformed
-   protocol output, and capability mismatches. These are direct signals about
-   the provider, endpoint, harness, or candidate model.
-2. **Caller task outcomes.** `RecordRouteAttempt` lets DDx or another caller
-   report results the service cannot infer from a successful model response:
-   tests failed, review blocked, acceptance criteria were missed, or the task
-   succeeded after a candidate produced a usable implementation.
-
-`RecordRouteAttempt` is the public feedback API for the second source and for
-external routed work. The minimum implementation is deterministic,
+`RecordRouteAttempt` is the public feedback API for external routed work that
+needs to report the same availability outcomes. It is not the semantic task
+success/failure channel. The minimum implementation is deterministic,
 process-local routing feedback. The active TTL is `ServiceConfig`
-`HealthCooldown`; when that is unset the default is 30 seconds. Implementations
-may additionally reconstruct longer-lived feedback from agent-owned session
-logs, but callers must not maintain private routing-score tables as the
-canonical source of truth.
+`HealthCooldown`; when that is unset the default is 30 seconds.
 
 Candidate keying uses the tuple `(Harness, Provider, Model, Endpoint)`.
 Consumers should provide every field they know. A non-success `Status` with a
@@ -1365,12 +1336,9 @@ reports active route-attempt cooldowns on matching candidates with `Reason`,
 Failure classes control what gets penalized:
 
 - `provider-transient` and `timeout` demote the provider/endpoint/model tuple
-  and may trigger same-profile failover when another candidate is eligible.
+  for future selections.
 - `capability` marks the candidate ineligible for requests needing that missing
   context/tool/reasoning capability.
-- `model-quality/task-failure` contributes to model/harness reliability for
-  future ranking and is the main signal DDx uses to justify a stronger profile
-  retry.
 - `setup/config`, `no-candidate`, and `cancelled` are returned to the caller as
   actionable evidence but do not poison model quality. Auth/config failures may
   mark a provider unusable until configuration changes, but they are not proof
@@ -1410,26 +1378,26 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
   also pinned, only that provider's discovery is consulted; otherwise discovery
   runs across all configured discovery-capable providers. If any returns the
   model, the request proceeds with the catalog's no-entry cost
-  (`cost_source: "unknown"`) and the **provider's** default reasoning (no
-  `Profile` reasoning override applies to discovery-only models). If discovery
-  does not return it, the orphan-model rule above fires before any session log
-  is opened. Smart-routing scoring does not apply — discovery-only models
-  cannot be auto-selected by `--profile`.
+  (`cost_source: "unknown"`) and the **provider's** default reasoning. If
+  discovery does not return it, the orphan-model rule above fires before any
+  session log is opened. Smart-routing scoring does not apply — discovery-only
+  models cannot be auto-selected by power bounds.
 
 - **Provider request deadline wrapping.** Every HTTP call to a provider is
   wrapped with `ProviderTimeout`. Per-request failures classified as
-  transport/auth/upstream are eligible for failover within the route's
-  candidate list; prompt/tool-schema errors are not.
+  transport/auth/upstream are reported on the final event with the attempted
+  route; the agent does not retry another candidate.
 
 - **Service-owned native routing and provider construction.** For the embedded
   `agent` harness, `Execute` resolves configured provider candidates,
-  constructs the concrete provider adapter, and performs failover internally.
-  Callers express intent with `Harness`, `Provider`, `Model`, `ModelRef`, or
-  `Profile`, plus the optional `EstimatedPromptTokens`/`RequiresTools`
-  auto-selection inputs; they do not pass provider instances, private
-  candidate tables, or pre-resolved `RouteDecision` values. `ResolveRoute`
-  results are informational only — `Execute` always re-resolves on its own
-  inputs (idempotent for the same caller intent, modulo health changes).
+  constructs the concrete provider adapter, and dispatches one candidate.
+  Callers express intent with `Harness`, `Provider`, `Model`, `ModelRef`,
+  `MinPower`, or `MaxPower`, plus the optional `EstimatedPromptTokens`/
+  `RequiresTools` auto-selection inputs; they do not pass provider instances,
+  private candidate tables, or pre-resolved `RouteDecision` values.
+  `ResolveRoute` results are informational only — `Execute` always re-resolves
+  on its own inputs (idempotent for the same caller intent, modulo health
+  changes).
 
 - **Route-reason attribution.** The start-event `routing_decision` and
   final-event `routing_actual` together capture why each candidate was
