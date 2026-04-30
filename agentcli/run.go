@@ -272,8 +272,9 @@ func runWithOptions(opts Options) int {
 		sysPrompt.WithAppend(*sysPromptFlag)
 	}
 
-	// Parse reasoning stall timeout
-	reasoningStallTimeout, err := cfg.ParseReasoningStallTimeout()
+	// Resolve reasoning stall timeout. The global config value is the default;
+	// catalog metadata may extend it for specific reasoning-heavy models.
+	reasoningStallTimeout, err := resolveReasoningStallTimeout(cfg, selection.ResolvedModel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -742,6 +743,27 @@ func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
 		return entry.ReasoningMaxTokens
 	}
 	return 0
+}
+
+func resolveReasoningStallTimeout(cfg *agentConfig.Config, model string) (time.Duration, error) {
+	if cfg == nil {
+		return 0, nil
+	}
+	timeout, err := cfg.ParseReasoningStallTimeout()
+	if err != nil {
+		return 0, err
+	}
+	if model == "" {
+		return timeout, nil
+	}
+	catalog, err := cfg.LoadModelCatalog()
+	if err != nil || catalog == nil {
+		return timeout, nil
+	}
+	if modelTimeout, ok := catalog.ReasoningStallTimeoutForModel(model); ok {
+		return modelTimeout, nil
+	}
+	return timeout, nil
 }
 
 func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, any, agentConfig.ProviderConfig, error) {
