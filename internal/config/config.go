@@ -184,8 +184,8 @@ type ProviderOverrides struct {
 }
 
 const (
-	projectConfigDir    = ".agent"
-	globalConfigDirName = "agent"
+	projectConfigDir    = ".fizeau"
+	globalConfigDirName = "fizeau"
 )
 
 func ProjectConfigDirName() string {
@@ -329,8 +329,8 @@ func (c *Config) ParseReasoningStallTimeout() (time.Duration, error) {
 	return d, nil
 }
 
-// Load reads configuration from .agent/config.yaml (project) and
-// ~/.config/agent/config.yaml (global), with env var expansion.
+// Load reads configuration from .fizeau/config.yaml (project) and
+// ~/.config/fizeau/config.yaml (global), with env var expansion.
 // Project config overrides global config. If no config files exist,
 // returns defaults.
 func Load(workDir string) (*Config, error) {

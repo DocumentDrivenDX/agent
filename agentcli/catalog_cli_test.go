@@ -146,7 +146,7 @@ func (f *fakeCatalogServer) baseURL() string {
 
 func writeTempConfig(t *testing.T, workDir, configBody string) {
 	t.Helper()
-	cfgDir := filepath.Join(workDir, ".agent")
+	cfgDir := filepath.Join(workDir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(configBody), 0o644))
 }
@@ -586,7 +586,7 @@ func TestCLI_CatalogShow_ReportsAbsentSamplingProfiles(t *testing.T) {
 	home := t.TempDir()
 
 	// Install a v2 manifest predating ADR-007 (no sampling_profiles section).
-	configDir := filepath.Join(home, ".config", "agent")
+	configDir := filepath.Join(home, ".config", "fizeau")
 	require.NoError(t, os.MkdirAll(configDir, 0o755))
 	manifest := `version: 2
 generated_at: 2026-04-11T00:00:00Z
@@ -671,7 +671,7 @@ targets:
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "installed catalog 2026-04-11.1")
 
-	installedPath := filepath.Join(home, ".config", "agent", "models.yaml")
+	installedPath := filepath.Join(home, ".config", "fizeau", "models.yaml")
 	data, readErr := os.ReadFile(installedPath)
 	require.NoError(t, readErr)
 	assert.Contains(t, string(data), "catalog_version: 2026-04-11.1")
@@ -713,7 +713,7 @@ targets:
 	require.Error(t, err)
 	assert.Contains(t, string(out), "checksum mismatch")
 
-	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
+	_, statErr := os.Stat(filepath.Join(home, ".config", "fizeau", "models.yaml"))
 	assert.Error(t, statErr)
 }
 
@@ -739,7 +739,7 @@ targets:
 	require.Error(t, err)
 	assert.Contains(t, string(out), "unsupported schema version 5")
 
-	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
+	_, statErr := os.Stat(filepath.Join(home, ".config", "fizeau", "models.yaml"))
 	assert.Error(t, statErr)
 }
 

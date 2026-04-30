@@ -160,7 +160,7 @@ func eventDataByType(t *testing.T, events []fizeau.SessionEvent, eventType fizea
 
 func latestSessionLogPath(t *testing.T, workDir string) string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(workDir, ".agent", "sessions", "*.jsonl"))
+	paths, err := filepath.Glob(filepath.Join(workDir, ".fizeau", "sessions", "*.jsonl"))
 	require.NoError(t, err)
 	require.NotEmpty(t, paths, "expected at least one session log")
 
@@ -180,7 +180,7 @@ func latestSessionLogPath(t *testing.T, workDir string) string {
 
 func writeRoutingHistorySession(t *testing.T, workDir, sessionID string, ts time.Time, data fizeau.SessionEndData) {
 	t.Helper()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	require.NoError(t, os.MkdirAll(logDir, 0o755))
 	event := fizeau.SessionEvent{
 		SessionID: sessionID,

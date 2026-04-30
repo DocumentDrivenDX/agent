@@ -81,7 +81,7 @@ func testEnvWithHome(home string, extra map[string]string) []string {
 
 func writeGlobalConfig(t *testing.T, home, configBody string) {
 	t.Helper()
-	globalDir := filepath.Join(home, ".config", "agent")
+	globalDir := filepath.Join(home, ".config", "fizeau")
 	require.NoError(t, os.MkdirAll(globalDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(globalDir, "config.yaml"), []byte(configBody), 0o644))
 }
@@ -420,7 +420,7 @@ providers:
     api_key: test
     model: gpt-4o
 default: local
-session_log_dir: .agent/sessions
+session_log_dir: .fizeau/sessions
 `)
 
 	cmd, _, stderr := runBuiltCLIAsync(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "-p", "slow request")
@@ -434,7 +434,7 @@ session_log_dir: .agent/sessions
 	assert.NotEqual(t, 0, exitErr.ExitCode())
 	assert.Contains(t, stderr.String(), "[cancelled]")
 
-	logs, globErr := filepath.Glob(filepath.Join(workDir, ".agent", "sessions", "*.jsonl"))
+	logs, globErr := filepath.Glob(filepath.Join(workDir, ".fizeau", "sessions", "*.jsonl"))
 	require.NoError(t, globErr)
 	require.Len(t, logs, 1, "expected one session log")
 

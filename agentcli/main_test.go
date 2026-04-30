@@ -224,7 +224,7 @@ func TestCLI_ImportPi_WritesConfig_ObjectMapProviders(t *testing.T) {
 	assert.Contains(t, output, "imported: grendel")
 	assert.Contains(t, output, "imported: bragi")
 
-	configPath := filepath.Join(home, ".config", "agent", "config.yaml")
+	configPath := filepath.Join(home, ".config", "fizeau", "config.yaml")
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
 	config := string(data)

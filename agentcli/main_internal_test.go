@@ -194,7 +194,7 @@ func toolNames(tools []fizeau.Tool) []string {
 func TestResolveProviderForRun_ModelRef(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -220,7 +220,7 @@ func TestResolveProviderForRun_ModelRef(t *testing.T) {
 func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -240,7 +240,7 @@ func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T)
 func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -267,7 +267,7 @@ func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
 func TestResolveProviderForRun_ModelIntentWithoutRouteUsesSmartSelection(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -295,7 +295,7 @@ func TestResolveProviderForRun_ModelIntentWithoutRouteUsesSmartSelection(t *test
 func TestResolveProviderForRun_ExplicitProviderStillUsesExactModelPin(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -322,7 +322,7 @@ func TestResolveProviderForRun_ExplicitProviderStillUsesExactModelPin(t *testing
 
 func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"bragi": {
@@ -355,7 +355,7 @@ func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
 
 func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *testing.T) {
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"vidar": {
@@ -395,7 +395,7 @@ func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *test
 func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
@@ -429,7 +429,7 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"vidar": {

@@ -206,7 +206,7 @@ func runWithOptions(opts Options) int {
 	// `len(args) == 0` with no prompt flag is ambiguous — skip validation there to
 	// preserve the existing "no prompt" error precedence.
 	if len(cfg.Providers) == 0 && (*promptFlag != "" || runSubcommand) {
-		fmt.Fprintf(os.Stderr, "error: no providers configured — run '%s import pi' or '%s import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .agent/config.yaml\n", productinfo.BinaryName, productinfo.BinaryName)
+		fmt.Fprintf(os.Stderr, "error: no providers configured — run '%s import pi' or '%s import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .fizeau/config.yaml\n", productinfo.BinaryName, productinfo.BinaryName)
 		return 2
 	}
 
@@ -1808,8 +1808,8 @@ func cmdImport(workDir string, args []string) int {
 	// Determine output path
 	var configPath string
 	if project {
-		fmt.Fprintf(os.Stderr, "%s: warning: writing API keys to project config (.agent/config.yaml)\n", productinfo.BinaryName)
-		fmt.Fprintf(os.Stderr, "%s: ensure .agent/config.yaml is in .gitignore before committing\n", productinfo.BinaryName)
+		fmt.Fprintf(os.Stderr, "%s: warning: writing API keys to project config (.fizeau/config.yaml)\n", productinfo.BinaryName)
+		fmt.Fprintf(os.Stderr, "%s: ensure .fizeau/config.yaml is in .gitignore before committing\n", productinfo.BinaryName)
 		fmt.Fprint(os.Stderr, "Proceed? [y/N] ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
@@ -1820,7 +1820,7 @@ func cmdImport(workDir string, args []string) int {
 		}
 		configPath = agentConfig.ProjectConfigPath(workDir)
 		if err := safefs.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
-			fmt.Fprintf(os.Stderr, "error: cannot create .agent directory: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error: cannot create .fizeau directory: %v\n", err)
 			return 1
 		}
 	} else {

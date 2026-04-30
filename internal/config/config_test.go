@@ -19,24 +19,24 @@ func isolateHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 }
 
-func TestPathHelpersPreserveCurrentAgentPaths(t *testing.T) {
+func TestPathHelpersUseFizeauPaths(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	workDir := filepath.Join(t.TempDir(), "work")
 
-	assert.Equal(t, ".agent", ProjectConfigDirName())
-	assert.Equal(t, "agent", GlobalConfigDirName())
-	assert.Equal(t, ".agent/sessions", DefaultSessionLogDir())
-	assert.Equal(t, filepath.Join(workDir, ".agent", "config.yaml"), ProjectConfigPath(workDir))
-	assert.Equal(t, filepath.Join(home, ".config", "agent", "config.yaml"), GlobalConfigPath(home))
-	assert.Equal(t, filepath.Join(workDir, ".agent", "route-health-main.json"), ProjectRouteHealthPath(workDir, "main"))
-	assert.Equal(t, filepath.Join(workDir, ".agent", "route-state-main.counter"), ProjectRouteStateCounterPath(workDir, "main"))
-	assert.Equal(t, filepath.Join(".config", "agent", "models.yaml"), FallbackModelCatalogManifestPath())
+	assert.Equal(t, ".fizeau", ProjectConfigDirName())
+	assert.Equal(t, "fizeau", GlobalConfigDirName())
+	assert.Equal(t, ".fizeau/sessions", DefaultSessionLogDir())
+	assert.Equal(t, filepath.Join(workDir, ".fizeau", "config.yaml"), ProjectConfigPath(workDir))
+	assert.Equal(t, filepath.Join(home, ".config", "fizeau", "config.yaml"), GlobalConfigPath(home))
+	assert.Equal(t, filepath.Join(workDir, ".fizeau", "route-health-main.json"), ProjectRouteHealthPath(workDir, "main"))
+	assert.Equal(t, filepath.Join(workDir, ".fizeau", "route-state-main.counter"), ProjectRouteStateCounterPath(workDir, "main"))
+	assert.Equal(t, filepath.Join(".config", "fizeau", "models.yaml"), FallbackModelCatalogManifestPath())
 }
 
 func TestLoad_NewFormat(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -94,7 +94,7 @@ max_iterations: 30
 func TestLoad_LegacyMigration(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -120,7 +120,7 @@ max_iterations: 15
 func TestLoad_EndpointOnlyBlocksExpandToProviders(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -168,7 +168,7 @@ endpoints:
 func TestLoad_EnvExpansion(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	t.Setenv("TEST_AGENT_KEY", "secret-key-123")
@@ -192,7 +192,7 @@ providers:
 func TestLoad_EnvExpansion_Unset(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -216,14 +216,14 @@ func TestLoad_MissingFile(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 100, cfg.MaxIterations)
-	assert.Equal(t, ".agent/sessions", cfg.SessionLogDir)
+	assert.Equal(t, ".fizeau/sessions", cfg.SessionLogDir)
 }
 
 func TestLoadModelCatalog_UsesDefaultInstalledManifestPath(t *testing.T) {
 	isolateHome(t)
 	configDir, err := os.UserConfigDir()
 	require.NoError(t, err)
-	manifestPath := filepath.Join(configDir, "agent", "models.yaml")
+	manifestPath := filepath.Join(configDir, "fizeau", "models.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
 version: 2
@@ -546,7 +546,7 @@ func TestResolveProviderConfig_AllowDeprecated(t *testing.T) {
 func TestLoad_LegacySaveRoundTripDoesNotReemitLegacyFields(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -867,7 +867,7 @@ func TestSelectProviderIndex(t *testing.T) {
 func TestLoad_BackendPools(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -930,7 +930,7 @@ func TestBackendNames_Empty(t *testing.T) {
 func TestLoad_ModelRoutesAndRoutingDefaults(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -977,7 +977,7 @@ model_routes:
 func TestLoad_ModelRoutesRejectUnknownProvider(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1000,7 +1000,7 @@ model_routes:
 func TestLoad_ModelRoutesRejectEmptyCandidates(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1022,7 +1022,7 @@ model_routes:
 func TestLoad_RoutingDefaultModelAllowsAutoDiscoveredIntentRoute(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1047,7 +1047,7 @@ model_routes:
 func TestLoad_BackendPoolsRejectUnknownProviderDuringTranslation(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1107,7 +1107,7 @@ func TestBuildProvider_Reasoning_PropagatesConfig(t *testing.T) {
 func TestLoad_Reasoning_ParsedFromYAML(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1135,7 +1135,7 @@ default: vidar
 func TestLoad_LegacyProviderReasoningKeysRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1156,7 +1156,7 @@ default: vidar
 func TestLoad_OpenAICompatTypeRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1175,7 +1175,7 @@ default: local
 func TestLoad_EndpointPoolAcceptedAndBaseURLNormalized(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1202,7 +1202,7 @@ default: studio
 func TestLoad_InferProviderTypeFromBaseURL(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1228,7 +1228,7 @@ default: studio
 func TestLoad_MissingTypeUnknownBaseURLRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1247,7 +1247,7 @@ default: unknown
 func TestLoad_ReasoningThresholds(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1273,7 +1273,7 @@ reasoning_stall_timeout: "5m"
 func TestLoad_ReasoningThresholds_ZeroUnlimited(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1317,7 +1317,7 @@ func TestParseReasoningStallTimeout_Invalid(t *testing.T) {
 func TestCompactionPercent_Parsed(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1337,7 +1337,7 @@ compaction_percent: 80
 func TestCompactionPercent_AbsentUsesZero(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1356,7 +1356,7 @@ default: local
 func TestCompactionPercent_OutOfRangeRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1376,7 +1376,7 @@ compaction_percent: 101
 func TestLoad_FlavorRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1397,7 +1397,7 @@ default: vidar-omlx
 func TestLoad_ContextWindow_ParsedFromYAML(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1421,7 +1421,7 @@ default: local
 func TestLoad_BashOutputFilterParsedFromYAML(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1435,7 +1435,7 @@ tools:
       mode: rtk
       rtk_binary: /tmp/fake-rtk
       max_bytes: 51200
-      raw_output_dir: .agent/raw
+      raw_output_dir: .fizeau/raw
 default: local
 `), 0o644))
 
@@ -1445,13 +1445,13 @@ default: local
 	assert.Equal(t, "rtk", filter.Mode)
 	assert.Equal(t, "/tmp/fake-rtk", filter.RTKBinary)
 	assert.Equal(t, 51200, filter.MaxBytes)
-	assert.Equal(t, ".agent/raw", filter.RawOutputDir)
+	assert.Equal(t, ".fizeau/raw", filter.RawOutputDir)
 }
 
 func TestLoad_MaxTokens_ParsedFromYAML(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1475,7 +1475,7 @@ default: local
 func TestLoad_NewFields_AllTogether(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
@@ -1509,7 +1509,7 @@ default: vidar-omlx
 func TestLoad_NewFields_AbsentUseZeroDefaults(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".agent")
+	cfgDir := filepath.Join(dir, ".fizeau")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`

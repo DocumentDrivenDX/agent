@@ -81,7 +81,7 @@ func TestModelRoutesEmitsDeprecationWarning(t *testing.T) {
 	t.Run("warns_when_present", func(t *testing.T) {
 		isolateHome(t)
 		dir := t.TempDir()
-		cfgDir := filepath.Join(dir, ".agent")
+		cfgDir := filepath.Join(dir, ".fizeau")
 		require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 		cfgPath := filepath.Join(cfgDir, "config.yaml")
 		require.NoError(t, os.WriteFile(cfgPath, []byte(`
@@ -122,7 +122,7 @@ default: bragi
 	t.Run("silent_when_absent", func(t *testing.T) {
 		isolateHome(t)
 		dir := t.TempDir()
-		cfgDir := filepath.Join(dir, ".agent")
+		cfgDir := filepath.Join(dir, ".fizeau")
 		require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 		cfgPath := filepath.Join(cfgDir, "config.yaml")
 		require.NoError(t, os.WriteFile(cfgPath, []byte(`

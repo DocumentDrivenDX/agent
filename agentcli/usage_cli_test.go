@@ -87,7 +87,7 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 
 func TestCLI_Usage(t *testing.T) {
 	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	require.NoError(t, os.MkdirAll(logDir, 0o755))
 	seedMixedUsageLogs(t, logDir)
 
@@ -106,7 +106,7 @@ func TestCLI_Usage(t *testing.T) {
 
 func TestCLI_Usage_JSON_MixedCost(t *testing.T) {
 	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	require.NoError(t, os.MkdirAll(logDir, 0o755))
 	seedMixedUsageLogs(t, logDir)
 
@@ -138,7 +138,7 @@ func TestCLI_Usage_JSON_MixedCost(t *testing.T) {
 
 func TestCLI_Usage_CSV_MixedCost(t *testing.T) {
 	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	require.NoError(t, os.MkdirAll(logDir, 0o755))
 	seedMixedUsageLogs(t, logDir)
 

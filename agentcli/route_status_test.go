@@ -18,7 +18,7 @@ import (
 // (outside both).
 func TestRouteStatusOverridesSinceFilter(t *testing.T) {
 	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRouteStatusOverridesSinceFilter(t *testing.T) {
 // breakdown rows to overrides on the named axis only.
 func TestRouteStatusOverridesAxisFilter(t *testing.T) {
 	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
+	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
