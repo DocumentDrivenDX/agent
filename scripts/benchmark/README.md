@@ -57,8 +57,8 @@ You can point the same harness at a prebuilt ddx-agent binary instead of
 rebuilding the current checkout:
 
 ```bash
-DDX_AGENT_BINARY=/path/to/ddx-agent-linux-amd64 \
-DDX_AGENT_SHA=<commit-under-test> \
+FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 \
+FIZEAU_BENCH_SHA=<commit-under-test> \
 ./scripts/benchmark/run_benchmark.sh
 ```
 
@@ -72,7 +72,7 @@ without invoking Harbor:
 
 ```bash
 DDX_BENCH_DRY_RUN=1 \
-DDX_AGENT_BINARY=/path/to/ddx-agent-linux-amd64 \
+FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 \
 DDX_BENCH_PROVIDER_MODEL=qwen/qwen3.6-plus \
 ./scripts/benchmark/run_benchmark.sh
 ```
@@ -109,8 +109,8 @@ freezes the intended `before` and `after` SHAs for the original benchmark-change
 window plus the shared dataset, subset, runtime, preset, and provider/model route.
 The only per-run inputs that should change are:
 
-- `DDX_AGENT_BINARY`
-- `DDX_AGENT_SHA` (set to either `DDX_BENCH_BEFORE_SHA` or `DDX_BENCH_AFTER_SHA`)
+- `FIZEAU_BENCH_BINARY`
+- `FIZEAU_BENCH_SHA` (set to either `DDX_BENCH_BEFORE_SHA` or `DDX_BENCH_AFTER_SHA`)
 
 ---
 

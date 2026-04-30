@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
 DEFAULT_BINARY="${DIST_DIR}/ddx-agent-linux-amd64"
-INPUT_BINARY="${DDX_AGENT_BINARY:-${DEFAULT_BINARY}}"
+INPUT_BINARY="${FIZEAU_BENCH_BINARY:-${DEFAULT_BINARY}}"
 SMOKE_TASK="${DDX_BENCH_SMOKE_TASK:-break-filter-js-from-html}"
 DATASET="${DDX_BENCH_DATASET:-terminal-bench@2.0}"
 RUNTIME="${DDX_BENCH_RUNTIME:-docker}"
@@ -116,13 +116,13 @@ echo ""
 
 # Step 1: Prepare binary under test
 echo "[1/4] Preparing binary under test..."
-if [[ -z "${DDX_AGENT_BINARY:-}" ]]; then
+if [[ -z "${FIZEAU_BENCH_BINARY:-}" ]]; then
     mkdir -p "${DIST_DIR}"
     GOOS=linux GOARCH=amd64 go build -o "${DEFAULT_BINARY}" "${REPO_ROOT}/cmd/fiz"
     echo "      Built current checkout binary: ${DEFAULT_BINARY}"
 else
     if [[ ! -f "${INPUT_BINARY}" ]]; then
-        echo "ERROR: DDX_AGENT_BINARY does not exist: ${INPUT_BINARY}"
+        echo "ERROR: FIZEAU_BENCH_BINARY does not exist: ${INPUT_BINARY}"
         exit 1
     fi
     echo "      Using supplied binary: ${INPUT_BINARY}"

@@ -4,7 +4,7 @@
 # Usage:
 #   ANTHROPIC_API_KEY=sk-... ./scripts/benchmark/run_benchmark.sh
 #   OPENROUTER_API_KEY=sk-or-... ./scripts/benchmark/run_benchmark.sh
-#   DDX_AGENT_BINARY=/path/to/ddx-agent-linux-amd64 ./scripts/benchmark/run_benchmark.sh
+#   FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 ./scripts/benchmark/run_benchmark.sh
 #
 # Output:
 #   benchmark-results/report-<TIMESTAMP>.json
@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
 DEFAULT_BINARY="${DIST_DIR}/ddx-agent-linux-amd64"
-INPUT_BINARY="${DDX_AGENT_BINARY:-${DEFAULT_BINARY}}"
+INPUT_BINARY="${FIZEAU_BENCH_BINARY:-${DEFAULT_BINARY}}"
 SUBSET_FILE="${DDX_BENCH_SUBSET_FILE:-${SCRIPT_DIR}/task-subset-v2.yaml}"
 RESULTS_DIR="${DDX_BENCH_RESULTS_DIR:-${REPO_ROOT}/benchmark-results}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -45,7 +45,7 @@ PROVIDER_REASONING="${DDX_BENCH_PROVIDER_REASONING:-}"
 SYSTEM_APPEND="${DDX_BENCH_SYSTEM_APPEND:-}"
 AGENT_TIMEOUT_MULTIPLIER="${DDX_BENCH_AGENT_TIMEOUT_MULTIPLIER:-1.0}"
 DRY_RUN="${DDX_BENCH_DRY_RUN:-0}"
-AGENT_SHA_OVERRIDE="${DDX_AGENT_SHA:-}"
+AGENT_SHA_OVERRIDE="${FIZEAU_BENCH_SHA:-}"
 HARBOR_BIN=""
 
 BUNDLE_DIR="$(mktemp -d /tmp/ddx-bench-agent-XXXXXX)"
@@ -156,7 +156,7 @@ echo ""
 # Step 1: Prepare the binary-under-test bundle
 # ---------------------------------------------------------------------------- #
 echo "[1/5] Preparing benchmark harness bundle..."
-if [[ -z "${DDX_AGENT_BINARY:-}" ]]; then
+if [[ -z "${FIZEAU_BENCH_BINARY:-}" ]]; then
     mkdir -p "${DIST_DIR}"
     GOOS=linux GOARCH=amd64 go build \
         -ldflags "-X main.GitCommit=$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo dev)" \
@@ -164,7 +164,7 @@ if [[ -z "${DDX_AGENT_BINARY:-}" ]]; then
     echo "      Built current checkout binary: ${DEFAULT_BINARY}"
 else
     if [[ ! -f "${INPUT_BINARY}" ]]; then
-        echo "ERROR: DDX_AGENT_BINARY does not exist: ${INPUT_BINARY}"
+        echo "ERROR: FIZEAU_BENCH_BINARY does not exist: ${INPUT_BINARY}"
         exit 1
     fi
     echo "      Using supplied binary: ${INPUT_BINARY}"
@@ -215,7 +215,7 @@ fi
 
 if [[ -n "${AGENT_SHA_OVERRIDE}" ]]; then
     AGENT_GIT_SHA="${AGENT_SHA_OVERRIDE}"
-elif [[ -z "${DDX_AGENT_BINARY:-}" ]]; then
+elif [[ -z "${FIZEAU_BENCH_BINARY:-}" ]]; then
     AGENT_GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 else
     AGENT_GIT_SHA="unknown"
