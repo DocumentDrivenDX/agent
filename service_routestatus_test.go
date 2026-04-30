@@ -219,7 +219,7 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 // surfaces a non-nil Cooldown on its RouteCandidateStatus and Healthy=false.
 func TestRouteStatus_cooldownStateSurfaces(t *testing.T) {
 	dir := t.TempDir()
-	agentDir := filepath.Join(dir, ".agent")
+	agentDir := filepath.Join(dir, ".fizeau")
 	if err := os.MkdirAll(agentDir, 0o750); err != nil {
 		t.Fatal(err)
 	}

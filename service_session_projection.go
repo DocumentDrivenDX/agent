@@ -298,7 +298,7 @@ func (s *service) ReplaySession(ctx context.Context, sessionID string, w io.Writ
 // publicSessionLogDir resolves the directory used by the public session-log
 // projection methods. Resolution order:
 //  1. ServiceOptions.SessionLogDir override.
-//  2. ServiceConfig.WorkDir() + "/.agent/sessions" default.
+//  2. ServiceConfig.SessionLogDir() default.
 //
 // Returns "" when neither source supplies a directory.
 func (s *service) publicSessionLogDir() string {

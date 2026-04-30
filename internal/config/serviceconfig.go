@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"time"
 
 	fizeau "github.com/DocumentDrivenDX/fizeau"
@@ -125,4 +126,20 @@ func (c *configServiceConfig) HealthCooldown() time.Duration {
 
 func (c *configServiceConfig) WorkDir() string {
 	return c.baseDir
+}
+
+func (c *configServiceConfig) SessionLogDir() string {
+	workDir := c.WorkDir()
+	if workDir == "" {
+		return ""
+	}
+	return filepath.Join(workDir, ProjectConfigDirName(), "sessions")
+}
+
+func (c *configServiceConfig) RouteHealthPath(routeKey string) string {
+	workDir := c.WorkDir()
+	if workDir == "" {
+		return ""
+	}
+	return filepath.Join(workDir, ProjectConfigDirName(), "route-health-"+routeKey+".json")
 }

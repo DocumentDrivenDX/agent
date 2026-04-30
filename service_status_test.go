@@ -72,7 +72,7 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 
 func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".agent", "sessions")
+	logDir := filepath.Join(dir, ".fizeau", "sessions")
 	t.Setenv("CODEX_HOME", filepath.Join(dir, "private-codex"))
 	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
@@ -151,7 +151,7 @@ func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 
 func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".agent", "sessions")
+	logDir := filepath.Join(dir, ".fizeau", "sessions")
 	t.Setenv("GOOGLE_GENAI_USE_GCA", "")
 	t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "")
 	t.Setenv("GOOGLE_API_KEY", "test-key")
@@ -232,7 +232,7 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 
 func TestBuildRoutingInputs_IgnoresCodexUsageWindows(t *testing.T) {
 	dir := t.TempDir()
-	logDir := filepath.Join(dir, ".agent", "sessions")
+	logDir := filepath.Join(dir, ".fizeau", "sessions")
 	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	writeServiceUsageSession(t, logDir, "codex-usage", time.Now().UTC().Add(-time.Hour), sessionlog.SessionStartData{

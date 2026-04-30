@@ -61,6 +61,10 @@ type ServiceConfig interface {
 	HealthCooldown() time.Duration
 	// WorkDir is the base directory for file-backed health state.
 	WorkDir() string
+	// SessionLogDir returns the configured sessions directory.
+	SessionLogDir() string
+	// RouteHealthPath returns the path to the route health file for a given route key.
+	RouteHealthPath(routeKey string) string
 }
 
 // ServiceModelRouteConfig carries the routing strategy and candidates for one route.
@@ -133,8 +137,8 @@ type ServiceOptions struct {
 
 	// SessionLogDir overrides the directory used by historical session-log
 	// projections (UsageReport, ListSessionLogs, WriteSessionLog,
-	// ReplaySession). Empty falls back to ServiceConfig.WorkDir() +
-	// "/.agent/sessions". Per-Execute requests still set their own
+	// ReplaySession). Empty falls back to ServiceConfig.SessionLogDir().
+	// Per-Execute requests still set their own
 	// ServiceExecuteRequest.SessionLogDir.
 	SessionLogDir string
 }
@@ -1018,11 +1022,7 @@ func (s *service) serviceSessionLogDir() string {
 	if s == nil || s.opts.ServiceConfig == nil {
 		return ""
 	}
-	workDir := s.opts.ServiceConfig.WorkDir()
-	if workDir == "" {
-		return ""
-	}
-	return filepath.Join(workDir, ".agent", "sessions")
+	return s.opts.ServiceConfig.SessionLogDir()
 }
 
 func unavailableQuotaState(source, detail string) *QuotaState {

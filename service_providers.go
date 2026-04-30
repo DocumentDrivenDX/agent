@@ -15,7 +15,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -506,8 +505,7 @@ func discoverOpenAIModels(ctx context.Context, baseURL, apiKey string) (int, err
 // serviceProviderCooldown scans all model routes for any candidate matching
 // providerName and returns the first active CooldownState, or nil.
 func serviceProviderCooldown(sc ServiceConfig, providerName string, cooldown time.Duration) *CooldownState {
-	workDir := sc.WorkDir()
-	if workDir == "" {
+	if sc == nil {
 		return nil
 	}
 	now := time.Now().UTC()
@@ -516,7 +514,7 @@ func serviceProviderCooldown(sc ServiceConfig, providerName string, cooldown tim
 			if candidate != providerName {
 				continue
 			}
-			failures := serviceLoadRouteFailures(workDir, routeName)
+			failures := serviceLoadRouteFailures(sc, routeName)
 			failedAt, hasFail := failures[providerName]
 			if !hasFail {
 				continue
@@ -537,12 +535,12 @@ func serviceProviderCooldown(sc ServiceConfig, providerName string, cooldown tim
 
 // serviceLoadRouteFailures reads the file-backed route health state and returns
 // the Failures map (provider name → failure timestamp).
-func serviceLoadRouteFailures(workDir, routeName string) map[string]time.Time {
+func serviceLoadRouteFailures(sc ServiceConfig, routeName string) map[string]time.Time {
 	type routeHealthState struct {
 		Failures map[string]time.Time `json:"failures,omitempty"`
 	}
 	key := serviceRouteStateKey(routeName)
-	path := filepath.Join(workDir, ".agent", "route-health-"+key+".json")
+	path := sc.RouteHealthPath(key)
 	// #nosec G304 -- operator-managed path under workDir
 	data, err := os.ReadFile(path)
 	if err != nil {

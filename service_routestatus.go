@@ -94,12 +94,11 @@ func routeAttemptCandidateCooldown(records []routeAttemptRecord, providerName, m
 // routeCandidateCooldown returns the active CooldownState for a specific
 // (route, provider) pair, or nil if not in cooldown.
 func routeCandidateCooldown(sc ServiceConfig, routeName, providerName string, cooldown time.Duration) *CooldownState {
-	workDir := sc.WorkDir()
-	if workDir == "" {
+	if sc == nil {
 		return nil
 	}
 	now := time.Now().UTC()
-	failures := serviceLoadRouteFailures(workDir, routeName)
+	failures := serviceLoadRouteFailures(sc, routeName)
 	failedAt, hasFail := failures[providerName]
 	if !hasFail {
 		return nil

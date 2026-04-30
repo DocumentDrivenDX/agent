@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"time"
 
 	fizeau "github.com/DocumentDrivenDX/fizeau"
@@ -76,3 +77,17 @@ func (a *configAdapter) ModelRouteConfig(routeName string) fizeau.ServiceModelRo
 func (a *configAdapter) HealthCooldown() time.Duration { return 0 }
 
 func (a *configAdapter) WorkDir() string { return a.workDir }
+
+func (a *configAdapter) SessionLogDir() string {
+	if a.workDir == "" {
+		return ""
+	}
+	return filepath.Join(a.workDir, agentConfig.ProjectConfigDirName(), "sessions")
+}
+
+func (a *configAdapter) RouteHealthPath(routeKey string) string {
+	if a.workDir == "" {
+		return ""
+	}
+	return filepath.Join(a.workDir, agentConfig.ProjectConfigDirName(), "route-health-"+routeKey+".json")
+}

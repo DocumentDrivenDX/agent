@@ -7,7 +7,7 @@ import (
 )
 
 // TestMain isolates the agent_test package from the developer's live
-// $HOME/.config/agent/config.yaml. Without this, calls like
+// $HOME/.config/fizeau/config.yaml. Without this, calls like
 // agent.New(agent.ServiceOptions{}) auto-load the user's real config —
 // which has caused verify-worktree gates at older base revisions to fail
 // when the live config contains provider types that revision didn't yet

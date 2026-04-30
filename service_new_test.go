@@ -176,3 +176,5 @@ func (s *stubServiceConfig) ModelRouteConfig(string) fizeau.ServiceModelRouteCon
 }
 func (s *stubServiceConfig) HealthCooldown() time.Duration { return 0 }
 func (s *stubServiceConfig) WorkDir() string               { return "" }
+func (s *stubServiceConfig) SessionLogDir() string         { return "" }
+func (s *stubServiceConfig) RouteHealthPath(string) string { return "" }

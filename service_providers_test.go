@@ -62,6 +62,18 @@ func (f *fakeServiceConfig) ModelRouteConfig(routeName string) ServiceModelRoute
 }
 func (f *fakeServiceConfig) HealthCooldown() time.Duration { return f.healthCooldown }
 func (f *fakeServiceConfig) WorkDir() string               { return f.workDir }
+func (f *fakeServiceConfig) SessionLogDir() string {
+	if f.workDir == "" {
+		return ""
+	}
+	return filepath.Join(f.workDir, ".fizeau", "sessions")
+}
+func (f *fakeServiceConfig) RouteHealthPath(routeKey string) string {
+	if f.workDir == "" {
+		return ""
+	}
+	return filepath.Join(f.workDir, ".fizeau", "route-health-"+routeKey+".json")
+}
 
 func TestListProviders_NoServiceConfig(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
@@ -310,7 +322,7 @@ func TestListProviders_AnthropicNoKey(t *testing.T) {
 
 func TestListProviders_CooldownState(t *testing.T) {
 	dir := t.TempDir()
-	agentDir := filepath.Join(dir, ".agent")
+	agentDir := filepath.Join(dir, ".fizeau")
 	if err := os.MkdirAll(agentDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
