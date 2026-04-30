@@ -422,19 +422,19 @@ func (c *Config) applyEnvOverrides() {
 	p := c.Providers[defName]
 	changed := false
 
-	if v := os.Getenv("AGENT_PROVIDER"); v != "" {
+	if v := os.Getenv("FIZEAU_PROVIDER"); v != "" {
 		p.Type = v
 		changed = true
 	}
-	if v := os.Getenv("AGENT_BASE_URL"); v != "" {
+	if v := os.Getenv("FIZEAU_BASE_URL"); v != "" {
 		p.BaseURL = v
 		changed = true
 	}
-	if v := os.Getenv("AGENT_API_KEY"); v != "" {
+	if v := os.Getenv("FIZEAU_API_KEY"); v != "" {
 		p.APIKey = v
 		changed = true
 	}
-	if v := os.Getenv("AGENT_MODEL"); v != "" {
+	if v := os.Getenv("FIZEAU_MODEL"); v != "" {
 		p.Model = v
 		changed = true
 	}

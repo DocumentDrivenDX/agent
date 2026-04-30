@@ -71,8 +71,8 @@ ddx-agent usage --since=7d         # with time window
 1. Built-in defaults (localhost:1234, openai-compat, 20 iterations)
 2. Global config: `~/.config/agent/config.yaml`
 3. Project config: `.agent/config.yaml`
-4. Environment variables: `AGENT_PROVIDER`, `AGENT_BASE_URL`, `AGENT_API_KEY`,
-   `AGENT_MODEL`
+4. Environment variables: `FIZEAU_PROVIDER`, `FIZEAU_BASE_URL`, `FIZEAU_API_KEY`,
+   `FIZEAU_MODEL`
 5. CLI flags: `--provider`, `--model`, `--model-ref`, `--max-iter`,
    `--work-dir`
 

@@ -100,7 +100,7 @@ default: anthropic
 
 **What gets skipped with warnings:**
 - `!command` API key values → warning: "provider X uses shell-resolved key,
-  set AGENT_API_KEY or add api_key manually"
+  set FIZEAU_API_KEY or add api_key manually"
 - Providers with `api` field that doesn't map to `openai-compat` or `anthropic`
 - `headers` values that use `!command` resolution
 
@@ -205,7 +205,7 @@ type is configured):
 
 These implicit providers have lower precedence than any explicit config.
 They don't create a `default:` — the user must specify `--provider` or set
-`AGENT_PROVIDER` to use them.
+`FIZEAU_PROVIDER` to use them.
 
 ### Config Schema Additions to SD-005
 

@@ -24,9 +24,9 @@ DDX Agent connects to LM Studio at `localhost:1234` by default.
 ## Quick Start with Anthropic
 
 ```bash
-export AGENT_PROVIDER=anthropic
-export AGENT_API_KEY=sk-ant-...
-export AGENT_MODEL=claude-sonnet-4-20250514
+export FIZEAU_PROVIDER=anthropic
+export FIZEAU_API_KEY=sk-ant-...
+export FIZEAU_MODEL=claude-sonnet-4-20250514
 
 ddx-agent -p "Read main.go and tell me the package name"
 ```
@@ -44,10 +44,10 @@ session_log_dir: .agent/sessions
 ```
 
 Environment variables override the config file:
-- `AGENT_PROVIDER` — `openai-compat` or `anthropic`
-- `AGENT_BASE_URL` — provider base URL
-- `AGENT_API_KEY` — API key
-- `AGENT_MODEL` — model name
+- `FIZEAU_PROVIDER` — `openai-compat` or `anthropic`
+- `FIZEAU_BASE_URL` — provider base URL
+- `FIZEAU_API_KEY` — API key
+- `FIZEAU_MODEL` — model name
 
 ## As a Library
 

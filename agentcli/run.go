@@ -206,7 +206,7 @@ func runWithOptions(opts Options) int {
 	// `len(args) == 0` with no prompt flag is ambiguous — skip validation there to
 	// preserve the existing "no prompt" error precedence.
 	if len(cfg.Providers) == 0 && (*promptFlag != "" || runSubcommand) {
-		fmt.Fprintf(os.Stderr, "error: no providers configured — run '%s import pi' or '%s import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .fizeau/config.yaml\n", productinfo.BinaryName, productinfo.BinaryName)
+		fmt.Fprintf(os.Stderr, "error: no providers configured — run '%s import pi' or '%s import opencode', set FIZEAU_PROVIDER/FIZEAU_BASE_URL, or create .fizeau/config.yaml\n", productinfo.BinaryName, productinfo.BinaryName)
 		return 2
 	}
 

@@ -102,7 +102,7 @@ func Translate(piDir string) (*TranslationResult, error) {
 		// Check for !command API key
 		resolvedKey := cred.ResolvedKey()
 		if len(resolvedKey) > 0 && resolvedKey[0] == '!' {
-			result.Warnings.Add("provider %q uses shell-resolved key, set AGENT_API_KEY or add api_key manually", name)
+			result.Warnings.Add("provider %q uses shell-resolved key, set FIZEAU_API_KEY or add api_key manually", name)
 			continue
 		}
 

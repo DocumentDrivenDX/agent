@@ -256,9 +256,9 @@ targets:
 
 func TestLoad_EnvOverrides(t *testing.T) {
 	isolateHome(t)
-	t.Setenv("AGENT_PROVIDER", "anthropic")
-	t.Setenv("AGENT_API_KEY", "env-key")
-	t.Setenv("AGENT_MODEL", "env-model")
+	t.Setenv("FIZEAU_PROVIDER", "anthropic")
+	t.Setenv("FIZEAU_API_KEY", "env-key")
+	t.Setenv("FIZEAU_MODEL", "env-model")
 
 	cfg, err := Load(t.TempDir())
 	require.NoError(t, err)
@@ -570,7 +570,7 @@ model: qwen3.5-7b
 
 func TestLoad_EnvOverridesCreateDeterministicDefaultProvider(t *testing.T) {
 	isolateHome(t)
-	t.Setenv("AGENT_MODEL", "env-model")
+	t.Setenv("FIZEAU_MODEL", "env-model")
 
 	cfg := Defaults()
 	cfg.Providers = map[string]ProviderConfig{

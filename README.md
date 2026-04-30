@@ -39,9 +39,9 @@ DDX Agent connects to `localhost:1234` by default.
 ### With Anthropic
 
 ```bash
-export AGENT_PROVIDER=anthropic
-export AGENT_API_KEY=sk-ant-...
-export AGENT_MODEL=claude-sonnet-4-20250514
+export FIZEAU_PROVIDER=anthropic
+export FIZEAU_API_KEY=sk-ant-...
+export FIZEAU_MODEL=claude-sonnet-4-20250514
 ddx-agent -p "Read main.go and tell me the package name"
 ```
 
@@ -144,7 +144,7 @@ tools:
       max_bytes: 51200
 ```
 
-Environment overrides: `AGENT_PROVIDER`, `AGENT_BASE_URL`, `AGENT_API_KEY`, `AGENT_MODEL`
+Environment overrides: `FIZEAU_PROVIDER`, `FIZEAU_BASE_URL`, `FIZEAU_API_KEY`, `FIZEAU_MODEL`
 
 `tools.bash.output_filter.mode: rtk` proxies allowlisted noisy commands such as
 `git status` and `go test` through an installed `rtk` binary. If `rtk` is not

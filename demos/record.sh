@@ -2,7 +2,7 @@
 # Record all demo reels. Requires ddx-agent binary and asciinema.
 # Usage: ./demos/record.sh [--lmstudio URL]
 #
-# By default uses AGENT_BASE_URL from env or http://localhost:1234/v1.
+# By default uses FIZEAU_BASE_URL from env or http://localhost:1234/v1.
 # Session logs are saved to demos/sessions/ for CI replay.
 set -euo pipefail
 
@@ -11,11 +11,11 @@ cd "$(dirname "$0")/.."
 # Ensure ddx-agent is built
 make build
 
-LMSTUDIO_URL="${AGENT_BASE_URL:-http://localhost:1234/v1}"
-MODEL="${AGENT_MODEL:-qwen/qwen3-coder-next}"
+LMSTUDIO_URL="${FIZEAU_BASE_URL:-http://localhost:1234/v1}"
+MODEL="${FIZEAU_MODEL:-qwen/qwen3-coder-next}"
 
-export AGENT_BASE_URL="$LMSTUDIO_URL"
-export AGENT_MODEL="$MODEL"
+export FIZEAU_BASE_URL="$LMSTUDIO_URL"
+export FIZEAU_MODEL="$MODEL"
 
 echo "Recording demos against $LMSTUDIO_URL with model $MODEL"
 

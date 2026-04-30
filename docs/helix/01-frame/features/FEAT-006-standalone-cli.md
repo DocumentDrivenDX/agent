@@ -61,8 +61,8 @@ Patterned on pi's CLI interface (`pi -p "prompt"`) and DDx's config conventions
    max_iterations: 20
    session_log_dir: .agent/sessions
    ```
-10. Environment variable overrides: `AGENT_BASE_URL`, `AGENT_API_KEY`,
-   `AGENT_MODEL`, `AGENT_PROVIDER`
+10. Environment variable overrides: `FIZEAU_BASE_URL`, `FIZEAU_API_KEY`,
+   `FIZEAU_MODEL`, `FIZEAU_PROVIDER`
 11. CLI flags override config file and env vars
 12. Model-first routing flags (`--model`, `--model-ref`) are the preferred
     selection surface; `--provider` remains the explicit override path.

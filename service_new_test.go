@@ -99,10 +99,10 @@ func TestNew_FallsBackToDefaultPath(t *testing.T) {
 	// Unset any env vars that could inject a real provider so we get a
 	// predictable empty config from the global path (which likely doesn't
 	// exist in CI).
-	t.Setenv("AGENT_PROVIDER", "")
-	t.Setenv("AGENT_BASE_URL", "")
-	t.Setenv("AGENT_API_KEY", "")
-	t.Setenv("AGENT_MODEL", "")
+	t.Setenv("FIZEAU_PROVIDER", "")
+	t.Setenv("FIZEAU_BASE_URL", "")
+	t.Setenv("FIZEAU_API_KEY", "")
+	t.Setenv("FIZEAU_MODEL", "")
 
 	// New should not fail even when config is missing or empty.
 	svc, err := fizeau.New(fizeau.ServiceOptions{})

@@ -316,8 +316,8 @@ default: local
 `)
 
 	env := testEnvWithHome(home, map[string]string{
-		"AGENT_BASE_URL": envFake.baseURL(),
-		"AGENT_MODEL":    "env-model",
+		"FIZEAU_BASE_URL": envFake.baseURL(),
+		"FIZEAU_MODEL":    "env-model",
 	})
 
 	first := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "-p", "first")

@@ -22,7 +22,7 @@ five different naming surfaces:
   `github.com/DocumentDrivenDX/agent`)
 - CLI identity (`ddx-agent`, `cmd/ddx-agent`, installer, updater, release asset names)
 - config and filesystem identity (`.agent`, `~/.config/agent`, `~/.cache/agent`)
-- environment variable identity (`AGENT_PROVIDER`, `AGENT_MODEL`, etc.)
+- environment variable identity (`FIZEAU_PROVIDER`, `FIZEAU_MODEL`, etc.)
 - consumer-specific model-catalog surfaces (`agent.openai`, `agent.anthropic`)
 
 The rename must be staged so runtime breakage is easy to attribute and public
@@ -66,7 +66,7 @@ surface decisions are made explicitly rather than via accidental search/replace.
    - `~/.config/agent/config.yaml`
    - `.agent/sessions`
    - `~/.cache/agent/latest-version.json`
-   - `AGENT_PROVIDER`, `AGENT_BASE_URL`, `AGENT_API_KEY`, `AGENT_MODEL`
+   - `FIZEAU_PROVIDER`, `FIZEAU_BASE_URL`, `FIZEAU_API_KEY`, `FIZEAU_MODEL`
 
 4. Distribution and update flow
    - `install.sh`
