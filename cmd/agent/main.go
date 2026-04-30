@@ -78,6 +78,8 @@ func run() int {
 	model := fs.String("model", "", "Model route key or explicit concrete model override")
 	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
 	listModels := fs.Bool("list-models", false, "List available models with routing metadata")
+	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
+	maxPower := fs.Int("max-power", 0, "Maximum catalog model power for automatic routing")
 	reasoningFlag := fs.String("reasoning", "", "Reasoning control: auto, off, low, medium, high, xhigh, max, or token budget")
 	allowDeprecatedModel := fs.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
 	maxIter := fs.Int("max-iter", 0, "Max iterations")
@@ -102,6 +104,10 @@ func run() int {
 	}
 	if *listModels {
 		return cmdListModels(wd, *jsonOutput, agent.ModelFilter{Provider: *providerFlag})
+	}
+	if err := agent.ValidatePowerBounds(*minPower, *maxPower); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 2
 	}
 
 	// Handle subcommands
@@ -327,6 +333,8 @@ func run() int {
 		ResolvedModel:           selection.ResolvedModel,
 		Reasoning:               resolvedReasoning,
 		NoStream:                selection.NoStream,
+		MinPower:                *minPower,
+		MaxPower:                *maxPower,
 		MaxIterations:           iterations,
 		MaxTokens:               resolvedMaxTokens,
 		ReasoningByteLimit:      cfg.ReasoningByteLimit,
@@ -479,6 +487,8 @@ type serviceExecuteRequestParams struct {
 	ResolvedModel           string
 	Reasoning               agent.Reasoning
 	NoStream                bool
+	MinPower                int
+	MaxPower                int
 	MaxIterations           int
 	MaxTokens               int
 	ReasoningByteLimit      int
@@ -550,6 +560,8 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		WorkDir:                 params.WorkDir,
 		Reasoning:               params.Reasoning,
 		NoStream:                params.NoStream,
+		MinPower:                params.MinPower,
+		MaxPower:                params.MaxPower,
 		Metadata:                params.Metadata,
 		Tools:                   params.Tools,
 		ToolPreset:              params.ToolPreset,
@@ -586,11 +598,14 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 	boolFlags := map[string]bool{
 		"allow-deprecated-model": true,
 		"json":                   true,
+		"list-models":            true,
 		"version":                true,
 	}
 	valueFlags := map[string]bool{
 		"backend":   true,
+		"max-power": true,
 		"max-iter":  true,
+		"min-power": true,
 		"model":     true,
 		"model-ref": true,
 		"p":         true,

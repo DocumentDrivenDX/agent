@@ -24,6 +24,9 @@ var loadRoutingCatalog = modelcatalog.Default
 // routing engine that consolidates DDx-side harness-tier ranking and
 // agent-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
+	if err := ValidatePowerBounds(req.MinPower, req.MaxPower); err != nil {
+		return nil, err
+	}
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
@@ -48,6 +51,8 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		ProviderPreference:    providerPreference,
 		EstimatedPromptTokens: req.EstimatedPromptTokens,
 		RequiresTools:         req.RequiresTools,
+		MinPower:              req.MinPower,
+		MaxPower:              req.MaxPower,
 	}
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
@@ -866,6 +871,8 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 		Reasoning:   req.Reasoning,
 		Permissions: req.Permissions,
 		CachePolicy: req.CachePolicy,
+		MinPower:    req.MinPower,
+		MaxPower:    req.MaxPower,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {

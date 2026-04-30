@@ -792,6 +792,8 @@ func cmdRouteStatus(workDir string, args []string) int {
 	modelRef := fs.String("model-ref", "", "Model catalog reference")
 	provider := fs.String("provider", "", "Pin a specific provider")
 	harness := fs.String("harness", "", "Pin a specific harness")
+	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
+	maxPower := fs.Int("max-power", 0, "Maximum catalog model power for automatic routing")
 	jsonOut := fs.Bool("json", false, "Output JSON")
 	overrides := fs.Bool("overrides", false, "Print override_class_breakdown over a time window (ADR-006). "+
 		"Operator-driven feedback loop; automatic learning is a future ADR. "+
@@ -806,6 +808,10 @@ func cmdRouteStatus(workDir string, args []string) int {
 
 	if *overrides {
 		return cmdRouteStatusOverrides(workDir, *since, *axis, *jsonOut)
+	}
+	if err := rootagent.ValidatePowerBounds(*minPower, *maxPower); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 2
 	}
 
 	cfg, err := agentConfig.Load(workDir)
@@ -831,6 +837,8 @@ func cmdRouteStatus(workDir string, args []string) int {
 		ModelRef: *modelRef,
 		Provider: *provider,
 		Harness:  *harness,
+		MinPower: *minPower,
+		MaxPower: *maxPower,
 	})
 
 	out := routeStatusOutput{

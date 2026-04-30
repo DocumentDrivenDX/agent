@@ -27,6 +27,8 @@ type Request struct {
 
 	// RequiresTools, when true, requires the candidate to support tool calling.
 	RequiresTools bool
+	MinPower      int
+	MaxPower      int
 }
 
 const (

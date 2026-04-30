@@ -357,6 +357,8 @@ type RouteRequest struct {
 	ModelRef    string
 	Reasoning   Reasoning
 	Permissions string
+	MinPower    int
+	MaxPower    int
 
 	// EstimatedPromptTokens, when > 0, filters out candidates whose context
 	// window cannot accommodate the prompt (with a safety margin).
@@ -389,6 +391,22 @@ func ValidateCachePolicy(v string) error {
 	default:
 		return fmt.Errorf("invalid CachePolicy %q: want \"\", %q, or %q", v, CachePolicyDefault, CachePolicyOff)
 	}
+}
+
+// ValidatePowerBounds returns nil when the optional numeric routing power
+// bounds are unset or coherent. Zero means "unset"; positive values are on
+// the catalog's 1-10 power scale.
+func ValidatePowerBounds(minPower, maxPower int) error {
+	if minPower < 0 {
+		return fmt.Errorf("invalid MinPower %d: must be >= 0", minPower)
+	}
+	if maxPower < 0 {
+		return fmt.Errorf("invalid MaxPower %d: must be >= 0", maxPower)
+	}
+	if minPower > 0 && maxPower > 0 && maxPower < minPower {
+		return fmt.Errorf("invalid power bounds: MaxPower %d must be >= MinPower %d", maxPower, minPower)
+	}
+	return nil
 }
 
 // RouteDecision is the result of ResolveRoute.
@@ -575,6 +593,8 @@ type ServiceExecuteRequest struct {
 	// RequiresTools, when true, drives auto-selection's tool-support gate
 	// (filter out candidates that cannot invoke tools).
 	RequiresTools bool
+	MinPower      int
+	MaxPower      int
 
 	// CachePolicy is the public opt-out for prompt caching. Empty (the zero
 	// value) and "default" both request the per-provider default caching

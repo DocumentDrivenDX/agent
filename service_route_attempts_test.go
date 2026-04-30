@@ -228,8 +228,8 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
-	if dec.Harness != "codex" || dec.Model != "gpt-5.4" {
-		t.Fatalf("ResolveRoute: got harness=%q model=%q, want codex gpt-5.4", dec.Harness, dec.Model)
+	if dec.Harness != "codex" || dec.Model != "gpt-5.5" {
+		t.Fatalf("ResolveRoute: got harness=%q model=%q, want codex gpt-5.5", dec.Harness, dec.Model)
 	}
 }
 

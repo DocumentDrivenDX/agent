@@ -93,6 +93,9 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	if err := ValidateCachePolicy(req.CachePolicy); err != nil {
 		return nil, err
 	}
+	if err := ValidatePowerBounds(req.MinPower, req.MaxPower); err != nil {
+		return nil, err
+	}
 
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
