@@ -43,22 +43,22 @@ longer provides the behavior DDX needs.
 Run the preflight:
 
 ```sh
-AGENT_HARNESS_RECORD=1 go test -tags=integration -run TestHarnessGoldenRecordModePreflight .
+FIZEAU_HARNESS_RECORD=1 go test -tags=integration -run TestHarnessGoldenRecordModePreflight .
 ```
 
 Run live record mode and write sanitized version-1 cassette directories:
 
 ```sh
-AGENT_HARNESS_RECORD=1 \
-AGENT_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
+FIZEAU_HARNESS_RECORD=1 \
+FIZEAU_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
 go test -tags=integration -run TestHarnessGoldenRecordModeLive .
 ```
 
 Run authenticated usage-specific record mode:
 
 ```sh
-AGENT_HARNESS_RECORD=1 \
-AGENT_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
+FIZEAU_HARNESS_RECORD=1 \
+FIZEAU_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
 go test -tags=integration -run usage .
 ```
 

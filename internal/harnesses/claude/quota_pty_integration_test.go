@@ -14,8 +14,8 @@ import (
 )
 
 func Test_quotaRecordClaudePTY(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated claude quota cassette")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated claude quota cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "claude", "quota")
 	windows, account, err := ReadClaudeQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
@@ -33,8 +33,8 @@ func Test_quotaRecordClaudePTY(t *testing.T) {
 }
 
 func Test_modelDiscoveryRecordClaudePTY(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated claude model cassette")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated claude model cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "claude", "models")
 	snapshot, err := ReadClaudeModelDiscoveryViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
@@ -51,10 +51,10 @@ func Test_modelDiscoveryRecordClaudePTY(t *testing.T) {
 
 func recordBaseDir(t *testing.T) string {
 	t.Helper()
-	if dir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR"); dir != "" {
+	if dir := os.Getenv("FIZEAU_HARNESS_CASSETTE_DIR"); dir != "" {
 		return dir
 	}
-	if dir := os.Getenv("AGENT_HARNESS_RECORD_DIR"); dir != "" {
+	if dir := os.Getenv("FIZEAU_HARNESS_RECORD_DIR"); dir != "" {
 		return dir
 	}
 	return t.TempDir()

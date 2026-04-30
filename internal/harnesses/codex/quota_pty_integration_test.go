@@ -14,8 +14,8 @@ import (
 )
 
 func Test_quotaRecordCodexPTY(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated codex quota cassette")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated codex quota cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "codex", "quota")
 	windows, err := ReadCodexQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
@@ -30,8 +30,8 @@ func Test_quotaRecordCodexPTY(t *testing.T) {
 }
 
 func Test_modelDiscoveryRecordCodexPTY(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated codex model cassette")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated codex model cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "codex", "models")
 	snapshot, err := ReadCodexModelDiscoveryViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
@@ -48,10 +48,10 @@ func Test_modelDiscoveryRecordCodexPTY(t *testing.T) {
 
 func recordBaseDir(t *testing.T) string {
 	t.Helper()
-	if dir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR"); dir != "" {
+	if dir := os.Getenv("FIZEAU_HARNESS_CASSETTE_DIR"); dir != "" {
 		return dir
 	}
-	if dir := os.Getenv("AGENT_HARNESS_RECORD_DIR"); dir != "" {
+	if dir := os.Getenv("FIZEAU_HARNESS_RECORD_DIR"); dir != "" {
 		return dir
 	}
 	return t.TempDir()

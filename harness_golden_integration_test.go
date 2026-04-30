@@ -266,19 +266,19 @@ func TestHarnessGoldenCassetteReplay_ServiceEvents(t *testing.T) {
 }
 
 func TestHarnessGoldenRecordModePreflight(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to run live harness record-mode preflight")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to run live harness record-mode preflight")
 	}
 	preflightLiveHarnessRecordMode(t)
 }
 
 func TestHarnessGoldenRecordModeLive(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to run live harness record mode")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to run live harness record mode")
 	}
 	preflightLiveHarnessRecordMode(t)
 
-	cassetteDir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR")
+	cassetteDir := os.Getenv("FIZEAU_HARNESS_CASSETTE_DIR")
 	if cassetteDir == "" {
 		cassetteDir = t.TempDir()
 	}
@@ -339,12 +339,12 @@ func TestHarnessGoldenRecordModeLive(t *testing.T) {
 }
 
 func Test_usageRecordMode(t *testing.T) {
-	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
-		t.Skip("set AGENT_HARNESS_RECORD=1 to run authenticated usage cassette record mode")
+	if os.Getenv("FIZEAU_HARNESS_RECORD") != "1" {
+		t.Skip("set FIZEAU_HARNESS_RECORD=1 to run authenticated usage cassette record mode")
 	}
 	preflightLiveHarnessRecordMode(t)
 
-	cassetteDir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR")
+	cassetteDir := os.Getenv("FIZEAU_HARNESS_CASSETTE_DIR")
 	if cassetteDir == "" {
 		cassetteDir = t.TempDir()
 	}
@@ -357,7 +357,7 @@ func Test_usageRecordMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	account := os.Getenv("AGENT_HARNESS_ACCOUNT")
+	account := os.Getenv("FIZEAU_HARNESS_ACCOUNT")
 	for _, harness := range harnessGoldenRecordHarnesses() {
 		t.Run(harness, func(t *testing.T) {
 			lock, err := cassette.AcquireRecordLock(usageCassetteDir, harness+":"+account)
@@ -425,7 +425,7 @@ func Test_usageRecordMode(t *testing.T) {
 }
 
 func harnessGoldenRecordHarnesses() []string {
-	raw := strings.TrimSpace(os.Getenv("AGENT_HARNESS_RECORD_HARNESSES"))
+	raw := strings.TrimSpace(os.Getenv("FIZEAU_HARNESS_RECORD_HARNESSES"))
 	if raw == "" {
 		return []string{"claude", "codex"}
 	}
