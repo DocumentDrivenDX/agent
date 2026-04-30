@@ -1,5 +1,5 @@
 // Package main provides the agent CLI.
-package main
+package agentcli
 
 import (
 	"encoding/json"

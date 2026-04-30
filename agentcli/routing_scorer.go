@@ -1,4 +1,4 @@
-package main
+package agentcli
 
 // CandidateScorer allows external callers to overlay scores on top of the
 // smart routing composite score. DDx uses this to factor in quota availability

@@ -1,4 +1,4 @@
-package main
+package agentcli
 
 // routing_provider.go retains only the route-health and ordering helpers
 // consumed by routing_smart.go and the route-status command.

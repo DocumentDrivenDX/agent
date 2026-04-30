@@ -1,4 +1,4 @@
-package main
+package agentcli
 
 // routing_smart.go implements the legacy per-route smart routing used by the
 // standalone `ddx-agent` CLI to rank providers within an explicit route key.

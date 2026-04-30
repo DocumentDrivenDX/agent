@@ -1,4 +1,4 @@
-package main_test
+package agentcli_test
 
 import (
 	"encoding/json"

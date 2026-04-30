@@ -1,4 +1,4 @@
-package main_test
+package agentcli_test
 
 import (
 	"os"
@@ -21,7 +21,7 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 
 	exe := buildAgentCLI(t)
 	cmd := exec.Command(exe, args...)
-	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 	home := t.TempDir()
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
@@ -40,7 +40,7 @@ func runAgentCLIWithHome(t *testing.T, home string, args ...string) ([]byte, err
 
 	exe := buildAgentCLI(t)
 	cmd := exec.Command(exe, args...)
-	cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),

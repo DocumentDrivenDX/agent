@@ -1,4 +1,4 @@
-package main_test
+package agentcli_test
 
 import (
 	"encoding/csv"
@@ -232,7 +232,7 @@ func buildAgentCLI(t *testing.T) string {
 			return
 		}
 		cmd := exec.Command("go", "build", "-o", exe, "./cmd/agent")
-		cmd.Dir = filepath.Clean(filepath.Join(wd, "..", ".."))
+		cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()
 		if err != nil {

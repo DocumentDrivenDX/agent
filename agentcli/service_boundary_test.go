@@ -1,4 +1,4 @@
-package main
+package agentcli
 
 import (
 	"go/ast"
@@ -19,13 +19,13 @@ import (
 const modelRoutesParserDeprecationCycleEnded = false
 
 // TestCLIRoutingProviderHasNoCoreProviderImpl asserts that
-// cmd/agent/routing_provider.go contains no type that implements the
+// agentcli/routing_provider.go contains no type that implements the
 // agent core Provider surface (Chat / ChatStream methods). After
 // ADR-005 step 3 the CLI's per-Chat failover wrapper was deleted; only
 // route-status display helpers remain in that file.
 func TestCLIRoutingProviderHasNoCoreProviderImpl(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	path := filepath.Join(root, "cmd", "agent", "routing_provider.go")
+	path := filepath.Join(root, "agentcli", "routing_provider.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
@@ -38,7 +38,7 @@ func TestCLIRoutingProviderHasNoCoreProviderImpl(t *testing.T) {
 		}
 		switch fd.Name.Name {
 		case "Chat", "ChatStream":
-			t.Fatalf("cmd/agent/routing_provider.go must not define a Chat/ChatStream method (ADR-005 removed the per-Chat failover wrapper); found method %q", fd.Name.Name)
+			t.Fatalf("agentcli/routing_provider.go must not define a Chat/ChatStream method (ADR-005 removed the per-Chat failover wrapper); found method %q", fd.Name.Name)
 		}
 	}
 	// Also reject the `routeProvider` type and `newRouteProvider`
@@ -50,7 +50,7 @@ func TestCLIRoutingProviderHasNoCoreProviderImpl(t *testing.T) {
 	src := string(data)
 	for _, banned := range []string{"type routeProvider struct", "func newRouteProvider("} {
 		if strings.Contains(src, banned) {
-			t.Fatalf("cmd/agent/routing_provider.go must not contain %q (ADR-005 step 3)", banned)
+			t.Fatalf("agentcli/routing_provider.go must not contain %q (ADR-005 step 3)", banned)
 		}
 	}
 }
@@ -75,7 +75,7 @@ func TestNoModelRoutesParserAfterDeprecation(t *testing.T) {
 
 func TestCLIServiceContractUsesTypedEventDecoder(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	data, err := os.ReadFile(filepath.Join(root, "cmd", "agent", "main.go"))
+	data, err := os.ReadFile(filepath.Join(root, "agentcli", "run.go"))
 	if err != nil {
 		t.Fatalf("read main.go: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCLIMainDoesNotImportOrCallInternalCoreRun(t *testing.T) {
 }
 
 // approvedProductionInternalImports is the strict allowlist of internal
-// packages that production cmd/agent files (non-test .go files) may import.
+// packages that production agentcli files (non-test .go files) may import.
 // These are packages with no public replacement on the agent root surface;
 // every other internal package must be reached through the public agent
 // API. Adding to this list is a deliberate boundary widening — first prove
@@ -122,7 +122,7 @@ var approvedProductionInternalImports = []string{
 }
 
 // forbiddenCLIInternalImports lists internal packages that must NEVER be
-// imported by any cmd/agent .go file (production or test). Routing,
+// imported by any agentcli .go file (production or test). Routing,
 // per-provider drivers, harness wiring, the agent core loop, the
 // session/tool/compaction subsystems — all of those belong behind the
 // service boundary and can only be reached through the public agent API
@@ -157,12 +157,12 @@ var forbiddenCLISymbols = []string{
 }
 
 // TestCLIInternalImportBoundaryAllowlist enforces the strict production
-// allowlist: production cmd/agent files may only import internal packages
+// allowlist: production agentcli files may only import internal packages
 // from approvedProductionInternalImports, and may never import packages
 // from forbiddenCLIInternalImports.
 func TestCLIInternalImportBoundaryAllowlist(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	entries, err := filepath.Glob(filepath.Join(root, "cmd", "agent", "*.go"))
+	entries, err := filepath.Glob(filepath.Join(root, "agentcli", "*.go"))
 	if err != nil {
 		t.Fatalf("glob cmd files: %v", err)
 	}
@@ -201,15 +201,15 @@ func TestCLIInternalImportBoundaryAllowlist(t *testing.T) {
 }
 
 // TestCLIBoundaryForbiddenInternalImports rejects forbidden internal
-// imports in every cmd/agent .go file (production AND test). Test files
+// imports in every agentcli .go file (production AND test). Test files
 // are slightly more permissive about the allowlist above (they may
 // integration-test against unlisted packages such as session for log
-// fixtures), but the forbidden list is absolute: nothing in cmd/agent
+// fixtures), but the forbidden list is absolute: nothing in agentcli
 // should reach into routing, the agent core loop, or per-provider
 // drivers.
 func TestCLIBoundaryForbiddenInternalImports(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	entries, err := filepath.Glob(filepath.Join(root, "cmd", "agent", "*.go"))
+	entries, err := filepath.Glob(filepath.Join(root, "agentcli", "*.go"))
 	if err != nil {
 		t.Fatalf("glob cmd files: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestCLIBoundaryForbiddenInternalImports(t *testing.T) {
 // the public agent API is the path forward, not a new entry here.
 func TestCLIBoundaryForbiddenSymbols(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	entries, err := filepath.Glob(filepath.Join(root, "cmd", "agent", "*.go"))
+	entries, err := filepath.Glob(filepath.Join(root, "agentcli", "*.go"))
 	if err != nil {
 		t.Fatalf("glob cmd files: %v", err)
 	}
@@ -298,5 +298,5 @@ func repoRootForBoundaryTest(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	return filepath.Clean(filepath.Join(filepath.Dir(file), ".."))
 }
