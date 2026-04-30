@@ -197,10 +197,16 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 			Eligible:           true,
 			Reason:             "profile=cheap; score=80.0",
 			Components: RouteCandidateComponents{
-				Cost:        0.002,
-				LatencyMS:   120,
-				SuccessRate: 0.9,
-				Capability:  1,
+				Power:            7,
+				Cost:             0.002,
+				CostClass:        "local",
+				LatencyMS:        120,
+				SpeedTPS:         40,
+				SuccessRate:      0.9,
+				QuotaOK:          true,
+				QuotaPercentUsed: 20,
+				QuotaTrend:       routing.QuotaTrendHealthy,
+				Capability:       1,
 			},
 		},
 		{
@@ -221,6 +227,9 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	}
 	if out[0].Components.SuccessRate != 0.9 {
 		t.Errorf("first candidate SuccessRate=%v, want 0.9", out[0].Components.SuccessRate)
+	}
+	if out[0].Components.Power != 7 || out[0].Components.SpeedTPS != 40 || out[0].Components.QuotaTrend != routing.QuotaTrendHealthy {
+		t.Errorf("first candidate Components=%#v, want power/speed/quota carried through", out[0].Components)
 	}
 	if out[0].FilterReason != "" {
 		t.Errorf("eligible candidate event FilterReason=%q, want empty", out[0].FilterReason)

@@ -23,8 +23,16 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 		Score:              42.5,
 		CostUSDPer1kTokens: 0.012,
 		CostSource:         routing.CostSourceCatalog,
+		Power:              7,
 		Eligible:           true,
 		Reason:             "profile=cheap; score=42.5",
+		LatencyMS:          123,
+		SpeedTPS:           55,
+		SuccessRate:        0.8,
+		CostClass:          "local",
+		QuotaOK:            true,
+		QuotaPercentUsed:   25,
+		QuotaTrend:         routing.QuotaTrendHealthy,
 	}
 
 	got := routeCandidateFromInternal(candidate)
@@ -40,6 +48,9 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	}
 	if got.Reason != candidate.Reason {
 		t.Fatalf("eligible Reason=%q, want %q", got.Reason, candidate.Reason)
+	}
+	if got.Components.Power != 7 || got.Components.SpeedTPS != 55 || got.Components.QuotaPercentUsed != 25 || got.Components.QuotaTrend != routing.QuotaTrendHealthy {
+		t.Fatalf("components=%#v, want power/speed/quota inputs from candidate", got.Components)
 	}
 
 	rejected := candidate

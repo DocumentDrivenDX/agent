@@ -34,10 +34,16 @@ type ServiceOverridePin struct {
 // candidate the unconstrained auto pipeline would have picked. Zero fields
 // mean "unknown / not contributing".
 type ServiceOverrideAutoComponents struct {
-	Cost        float64 `json:"cost"`
-	LatencyMS   float64 `json:"latency_ms"`
-	SuccessRate float64 `json:"success_rate"`
-	Capability  float64 `json:"capability"`
+	Power            int     `json:"power"`
+	Cost             float64 `json:"cost"`
+	CostClass        string  `json:"cost_class,omitempty"`
+	LatencyMS        float64 `json:"latency_ms"`
+	SpeedTPS         float64 `json:"speed_tps"`
+	SuccessRate      float64 `json:"success_rate"`
+	QuotaOK          bool    `json:"quota_ok"`
+	QuotaPercentUsed int     `json:"quota_percent_used"`
+	QuotaTrend       string  `json:"quota_trend,omitempty"`
+	Capability       float64 `json:"capability"`
 }
 
 // ServiceOverridePromptFeatures captures prompt-classification inputs that
@@ -117,10 +123,16 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 			Reason:             c.Reason,
 			FilterReason:       c.FilterReason,
 			Components: ServiceRoutingDecisionComponents{
-				Cost:        c.Components.Cost,
-				LatencyMS:   c.Components.LatencyMS,
-				SuccessRate: c.Components.SuccessRate,
-				Capability:  c.Components.Capability,
+				Power:            c.Components.Power,
+				Cost:             c.Components.Cost,
+				CostClass:        c.Components.CostClass,
+				LatencyMS:        c.Components.LatencyMS,
+				SpeedTPS:         c.Components.SpeedTPS,
+				SuccessRate:      c.Components.SuccessRate,
+				QuotaOK:          c.Components.QuotaOK,
+				QuotaPercentUsed: c.Components.QuotaPercentUsed,
+				QuotaTrend:       c.Components.QuotaTrend,
+				Capability:       c.Components.Capability,
 			},
 		}
 	}
@@ -161,10 +173,16 @@ type ServiceRoutingDecisionCandidate struct {
 
 // ServiceRoutingDecisionComponents exposes the per-axis score inputs.
 type ServiceRoutingDecisionComponents struct {
-	Cost        float64 `json:"cost"`
-	LatencyMS   float64 `json:"latency_ms"`
-	SuccessRate float64 `json:"success_rate"`
-	Capability  float64 `json:"capability"`
+	Power            int     `json:"power"`
+	Cost             float64 `json:"cost"`
+	CostClass        string  `json:"cost_class,omitempty"`
+	LatencyMS        float64 `json:"latency_ms"`
+	SpeedTPS         float64 `json:"speed_tps"`
+	SuccessRate      float64 `json:"success_rate"`
+	QuotaOK          bool    `json:"quota_ok"`
+	QuotaPercentUsed int     `json:"quota_percent_used"`
+	QuotaTrend       string  `json:"quota_trend,omitempty"`
+	Capability       float64 `json:"capability"`
 }
 
 type ServiceStallData struct {

@@ -452,8 +452,8 @@ type RouteCandidate struct {
 	// FilterReason names the gate that disqualified an ineligible candidate.
 	// Empty when Eligible. See the FilterReason* constants.
 	FilterReason string
-	// Components carries the per-axis score inputs (cost, latency, success
-	// rate, capability) that fed the final Score. Consumers use these to
+	// Components carries the per-axis score inputs (power, cost, latency,
+	// success rate, quota, capability) that fed the final Score. Consumers use these to
 	// explain rankings without parsing the free-form Reason.
 	Components RouteCandidateComponents
 }
@@ -472,16 +472,29 @@ const (
 // final Score so consumers can explain rankings without parsing the
 // free-form Reason. Zero fields mean "unknown / not contributing".
 type RouteCandidateComponents struct {
+	// Power is the catalog model power used by automatic routing. Zero means
+	// unknown or not contributing.
+	Power int
 	// Cost is the per-1k-token cost expressed as a numeric component (USD).
 	// Mirrors RouteCandidate.CostUSDPer1kTokens; surfaced here so the event
 	// payload carries a single component bundle.
 	Cost float64
+	// CostClass is the candidate cost class used by the router.
+	CostClass string
 	// LatencyMS is the observed median latency for this candidate, in
 	// milliseconds. Zero when no observations are available.
 	LatencyMS float64
+	// SpeedTPS is the observed output speed in tokens per second. Zero when
+	// no observations are available.
+	SpeedTPS float64
 	// SuccessRate is the observed success rate (0–1) for this candidate.
 	// Negative means insufficient data; zero means unknown.
 	SuccessRate float64
+	// QuotaOK/QuotaPercentUsed/QuotaTrend are subscription quota inputs used
+	// by routing. They are zero values for non-subscription candidates.
+	QuotaOK          bool
+	QuotaPercentUsed int
+	QuotaTrend       string
 	// Capability is a coarse capability score derived from the candidate's
 	// cost class / surface (higher = more capable).
 	Capability float64

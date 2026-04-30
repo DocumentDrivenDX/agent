@@ -125,6 +125,28 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 		base += 15
 	}
 
+	if cand.Power > 0 {
+		base += float64(cand.Power) * 12
+	}
+	if cand.Power > 0 && cand.CostUSDPer1kTokens > 0 {
+		costPenalty := cand.CostUSDPer1kTokens * 500
+		if costPenalty > 60 {
+			costPenalty = 60
+		}
+		base -= costPenalty
+	}
+	if cand.Power > 0 && cand.CostUSDPer1kTokens == 0 {
+		switch {
+		case cand.CostClass == "local":
+			base += 15
+		case cand.IsSubscription && cand.QuotaOK && !cand.QuotaStale && cand.QuotaPercentUsed < 80:
+			base += 15
+		}
+	}
+	if cand.Power >= 9 && cand.IsSubscription && cand.QuotaOK && !cand.QuotaStale && cand.QuotaPercentUsed < 80 {
+		base += 20
+	}
+
 	// Observation-derived perf bias.
 	if cand.ObservedTokensPerSec > 0 {
 		// Small additive bonus, scaled.

@@ -749,10 +749,16 @@ func abs(v float64) float64 {
 // route-status JSON envelope. Operators read these to answer "why did the
 // router pick X?" without parsing the free-form Reason string.
 type routeStatusComponents struct {
-	Cost        float64 `json:"cost"`
-	LatencyMS   float64 `json:"latency_ms"`
-	SuccessRate float64 `json:"success_rate"`
-	Capability  float64 `json:"capability"`
+	Power            int     `json:"power"`
+	Cost             float64 `json:"cost"`
+	CostClass        string  `json:"cost_class,omitempty"`
+	LatencyMS        float64 `json:"latency_ms"`
+	SpeedTPS         float64 `json:"speed_tps"`
+	SuccessRate      float64 `json:"success_rate"`
+	QuotaOK          bool    `json:"quota_ok"`
+	QuotaPercentUsed int     `json:"quota_percent_used"`
+	QuotaTrend       string  `json:"quota_trend,omitempty"`
+	Capability       float64 `json:"capability"`
 }
 
 type routeStatusCandidate struct {
@@ -866,10 +872,16 @@ func cmdRouteStatus(workDir string, args []string) int {
 				Reason:       c.Reason,
 				CostSource:   c.CostSource,
 				Components: routeStatusComponents{
-					Cost:        c.Components.Cost,
-					LatencyMS:   c.Components.LatencyMS,
-					SuccessRate: c.Components.SuccessRate,
-					Capability:  c.Components.Capability,
+					Power:            c.Components.Power,
+					Cost:             c.Components.Cost,
+					CostClass:        c.Components.CostClass,
+					LatencyMS:        c.Components.LatencyMS,
+					SpeedTPS:         c.Components.SpeedTPS,
+					SuccessRate:      c.Components.SuccessRate,
+					QuotaOK:          c.Components.QuotaOK,
+					QuotaPercentUsed: c.Components.QuotaPercentUsed,
+					QuotaTrend:       c.Components.QuotaTrend,
+					Capability:       c.Components.Capability,
 				},
 			}
 			if winnerSet && out.Winner == nil &&
@@ -908,18 +920,19 @@ func cmdRouteStatus(workDir string, args []string) int {
 	if resolveErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resolveErr)
 	}
-	fmt.Printf("%-10s %-12s %-32s %-5s %-9s %-10s %-10s %-9s %s\n",
-		"HARNESS", "PROVIDER", "MODEL", "ELIG", "SCORE", "COST", "LATENCY", "SUCCESS", "FILTER_REASON")
+	fmt.Printf("%-10s %-12s %-32s %-5s %-5s %-9s %-10s %-10s %-9s %s\n",
+		"HARNESS", "PROVIDER", "MODEL", "ELIG", "POWER", "SCORE", "COST", "LATENCY", "SUCCESS", "FILTER_REASON")
 	for _, c := range out.Candidates {
 		elig := "no"
 		if c.Eligible {
 			elig = "yes"
 		}
-		fmt.Printf("%-10s %-12s %-32s %-5s %-9.2f %-10.4f %-10.0f %-9.2f %s\n",
+		fmt.Printf("%-10s %-12s %-32s %-5s %-5d %-9.2f %-10.4f %-10.0f %-9.2f %s\n",
 			c.Harness,
 			c.Provider,
 			truncate(c.Model, 32),
 			elig,
+			c.Components.Power,
 			c.Score,
 			c.Components.Cost,
 			c.Components.LatencyMS,

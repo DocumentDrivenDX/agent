@@ -115,10 +115,16 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 		Reason:             candidate.Reason,
 		FilterReason:       publicFilterReason(candidate),
 		Components: RouteCandidateComponents{
-			Cost:        candidate.CostUSDPer1kTokens,
-			LatencyMS:   candidate.LatencyMS,
-			SuccessRate: candidate.SuccessRate,
-			Capability:  capabilityScoreForCostClass(candidate.CostClass),
+			Power:            candidate.Power,
+			Cost:             candidate.CostUSDPer1kTokens,
+			CostClass:        candidate.CostClass,
+			LatencyMS:        candidate.LatencyMS,
+			SpeedTPS:         candidate.SpeedTPS,
+			SuccessRate:      candidate.SuccessRate,
+			QuotaOK:          candidate.QuotaOK,
+			QuotaPercentUsed: candidate.QuotaPercentUsed,
+			QuotaTrend:       candidate.QuotaTrend,
+			Capability:       capabilityScoreForCostClass(candidate.CostClass),
 		},
 	}
 }

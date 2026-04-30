@@ -155,6 +155,7 @@ type Candidate struct {
 	Score              float64
 	CostUSDPer1kTokens float64
 	CostSource         string
+	Power              int
 	Eligible           bool
 	Reason             string
 
@@ -171,6 +172,11 @@ type Candidate struct {
 	LatencyMS   float64
 	SuccessRate float64
 	CostClass   string
+	SpeedTPS    float64
+
+	QuotaOK          bool
+	QuotaPercentUsed int
+	QuotaTrend       string
 }
 
 // FilterReason categorizes why a routing candidate was disqualified.
@@ -308,6 +314,7 @@ type candidateInternal struct {
 	CostClass             string
 	CostUSDPer1kTokens    float64
 	CostSource            string
+	Power                 int
 	IsSubscription        bool
 	QuotaOK               bool
 	QuotaPercentUsed      int
@@ -705,6 +712,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		if latencyMS == 0 && p.EndpointName != "" {
 			latencyMS = in.ObservedLatencyMS[ProviderModelKey(p.Name, "", model)]
 		}
+		power := candidatePower(in.ModelEligibility, model)
 
 		gateReq := resolveRequestReasoning(req, h.Surface, in.ReasoningResolver)
 
@@ -782,6 +790,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			CostClass:             h.CostClass,
 			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
 			CostSource:            normalizeCostSource(p.CostSource),
+			Power:                 power,
 			IsSubscription:        h.IsSubscription,
 			QuotaOK:               h.QuotaOK,
 			QuotaPercentUsed:      h.QuotaPercentUsed,
@@ -804,17 +813,33 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				Model:              model,
 				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
 				CostSource:         normalizeCostSource(p.CostSource),
+				Power:              power,
 				Eligible:           eligible,
 				Reason:             reason,
 				FilterReason:       filterReason,
 				LatencyMS:          latencyMS,
 				SuccessRate:        providerSuccessRate,
 				CostClass:          h.CostClass,
+				SpeedTPS:           obs,
+				QuotaOK:            h.QuotaOK,
+				QuotaPercentUsed:   h.QuotaPercentUsed,
+				QuotaTrend:         h.QuotaTrend,
 			},
 			internal: ci,
 		})
 	}
 	return out
+}
+
+func candidatePower(lookup func(string) (ModelEligibility, bool), model string) int {
+	if lookup == nil || model == "" {
+		return 0
+	}
+	eligibility, ok := lookup(model)
+	if !ok {
+		return 0
+	}
+	return eligibility.Power
 }
 
 func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
