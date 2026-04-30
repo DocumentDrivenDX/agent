@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // sessionHub is a concurrent-safe broadcast store for in-flight and completed

@@ -1,4 +1,4 @@
-module github.com/DocumentDrivenDX/agent/website
+module github.com/DocumentDrivenDX/fizeau/website
 
 go 1.26.2
 

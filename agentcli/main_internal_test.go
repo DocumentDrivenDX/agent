@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	"github.com/DocumentDrivenDX/fizeau"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

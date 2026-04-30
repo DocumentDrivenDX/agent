@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // ATIFSchemaVersion pins the trajectory schema to the version Harbor's

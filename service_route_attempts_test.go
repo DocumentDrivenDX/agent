@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
-	"github.com/DocumentDrivenDX/agent/internal/routing"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.T) {

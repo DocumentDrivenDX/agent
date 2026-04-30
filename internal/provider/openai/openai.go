@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	reasoningpolicy "github.com/DocumentDrivenDX/agent/internal/reasoning"
-	"github.com/DocumentDrivenDX/agent/internal/sdk/openaicompat"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	reasoningpolicy "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"
 )
 

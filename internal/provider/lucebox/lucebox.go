@@ -28,10 +28,10 @@
 package lucebox
 
 import (
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
 
 const DefaultBaseURL = "http://localhost:1236/v1"

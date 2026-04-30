@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/fizeau"
 )
 
 // TestRouteStatusOverridesJSONStable snapshots the JSON envelope shape so

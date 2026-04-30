@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/routing"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 func TestRouteCandidateFromInternalMapsFields(t *testing.T) {

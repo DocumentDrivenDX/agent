@@ -42,12 +42,18 @@ var rules = []rule{
 }
 
 var skippedDirs = map[string]bool{
-	".git":          true,
-	".ddx":          true,
-	".agents":       true,
-	".claude":       true,
-	"docs/helix":    true,
-	"docs/research": true,
+	".git":                 true,
+	".ddx":                 true,
+	".agents":              true,
+	".claude":              true,
+	".helix-ratchets":      true,
+	"docs/helix":           true,
+	"docs/research":        true,
+	"internal/renamecheck": true,
+}
+
+var skippedFiles = map[string]bool{
+	"CHANGELOG.md": true,
 }
 
 func Scan(opts Options) ([]Finding, error) {
@@ -73,6 +79,9 @@ func Scan(opts Options) ([]Finding, error) {
 			if shouldSkipDir(rel) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if skippedFiles[rel] {
 			return nil
 		}
 		if !isTextCandidate(rel) {

@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/benchmark/profile"
+	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
 )
 
 const (

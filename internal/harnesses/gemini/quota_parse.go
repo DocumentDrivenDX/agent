@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // Gemini CLI's /model manage TUI surfaces per-tier usage as rows such as:

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/DocumentDrivenDX/agent/benchscore"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/benchscore"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 )
 
 func main() {

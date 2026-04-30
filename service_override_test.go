@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/session"
+	agent "github.com/DocumentDrivenDX/fizeau"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
 func sessionScanRoutingQuality(dir string) (*session.RoutingQualityScan, error) {

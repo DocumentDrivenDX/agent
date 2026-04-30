@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // AuthEntry represents a credential entry in opencode auth.json.

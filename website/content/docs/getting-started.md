@@ -6,7 +6,7 @@ weight: 1
 ## Install
 
 ```bash
-go install github.com/DocumentDrivenDX/agent/cmd/agent@latest
+go install github.com/DocumentDrivenDX/fizeau/cmd/agent@latest
 ```
 
 ## Quick Start with LM Studio
@@ -54,8 +54,8 @@ Environment variables override the config file:
 ```go
 import (
     "context"
-    "github.com/DocumentDrivenDX/agent"
-    _ "github.com/DocumentDrivenDX/agent/configinit"
+    "github.com/DocumentDrivenDX/fizeau"
+    _ "github.com/DocumentDrivenDX/fizeau/configinit"
 )
 
 func main() {

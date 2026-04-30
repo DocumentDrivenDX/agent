@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/sessionlog"
 )
 
 const defaultEventBuffer = 64

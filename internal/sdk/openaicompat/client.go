@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"

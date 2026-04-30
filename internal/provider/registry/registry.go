@@ -25,8 +25,8 @@ import (
 	"sort"
 	"sync"
 
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
 
 // Inputs is the canonical factory input shape. Both the config-time

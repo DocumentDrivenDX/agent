@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/DocumentDrivenDX/agent/internal/harnesses"
+import "github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 
 // HarnessCapabilityStatus classifies one harness capability in the public
 // ListHarnesses capability matrix.

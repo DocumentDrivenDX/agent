@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // FloorConfig represents the coverage floor configuration.
@@ -222,8 +222,8 @@ func measureCoverage(projectRoot string) ([]PackageCoverage, error) {
 	var results []PackageCoverage
 	lines := strings.Split(string(output), "\n")
 
-	// Parse lines like: ok  	github.com/DocumentDrivenDX/agent	0.002s	coverage: 82.1% of statements
-	// Or: 	github.com/DocumentDrivenDX/agent/cmd/agent		coverage: 0.0% of statements
+	// Parse lines like: ok  	github.com/DocumentDrivenDX/fizeau	0.002s	coverage: 82.1% of statements
+	// Or: 	github.com/DocumentDrivenDX/fizeau/cmd/agent		coverage: 0.0% of statements
 	re := regexp.MustCompile(`(?:ok|FAIL|\?)\s+([^\s]+).*?coverage:\s*([0-9.]+)%`)
 
 	for _, line := range lines {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // OpenCodeConfig represents the opencode.json configuration file.

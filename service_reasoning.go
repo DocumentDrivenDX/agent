@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/DocumentDrivenDX/agent/internal/reasoning"
+import "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 
 func effectiveReasoning(value Reasoning) Reasoning {
 	if value != "" {

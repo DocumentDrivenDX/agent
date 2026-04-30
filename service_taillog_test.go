@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/fizeau"
 )
 
 // extractSessionID reads the session_id field from the routing_decision event.

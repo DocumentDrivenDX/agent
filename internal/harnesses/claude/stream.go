@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // claudeStreamEvent is a minimal, lenient view of a claude CLI stream-json

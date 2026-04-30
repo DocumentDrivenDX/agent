@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 const (

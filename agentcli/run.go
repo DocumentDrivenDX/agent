@@ -18,16 +18,16 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
-	"github.com/DocumentDrivenDX/agent/internal/prompt"
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
-	"github.com/DocumentDrivenDX/agent/internal/sampling"
-	"github.com/DocumentDrivenDX/agent/occompat"
-	"github.com/DocumentDrivenDX/agent/picompat"
+	"github.com/DocumentDrivenDX/fizeau"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/prompt"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
+	"github.com/DocumentDrivenDX/fizeau/occompat"
+	"github.com/DocumentDrivenDX/fizeau/picompat"
 )
 
 // samplingProfileNudgeOnce gates the ADR-007 §7 first-use catalog-stale

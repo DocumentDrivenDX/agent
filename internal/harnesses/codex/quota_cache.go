@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // CodexQuotaSnapshot captures Codex subscription quota windows in a durable

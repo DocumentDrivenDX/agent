@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
 
 // Capabilities describes what a (harness, provider, model) tuple can do.

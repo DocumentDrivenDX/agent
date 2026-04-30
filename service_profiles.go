@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 )
 
 func (s *service) ListProfiles(_ context.Context) ([]ProfileInfo, error) {

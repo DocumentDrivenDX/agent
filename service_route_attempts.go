@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/routing"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 const defaultRouteAttemptCooldown = 30 * time.Second

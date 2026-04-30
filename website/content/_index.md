@@ -3,7 +3,7 @@ title: DDX Agent
 layout: hextra-home
 ---
 
-{{< hextra/hero-badge link="https://github.com/DocumentDrivenDX/agent" >}}
+{{< hextra/hero-badge link="https://github.com/DocumentDrivenDX/fizeau" >}}
   {{< icon name="github" attributes="height=14" >}}
   GitHub
 {{< /hextra/hero-badge >}}

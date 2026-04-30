@@ -1,6 +1,6 @@
 package tool
 
-import agent "github.com/DocumentDrivenDX/agent/internal/core"
+import agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 
 // BuiltinToolsForPreset returns the built-in tool set used by the native
 // agent harness for a prompt preset.

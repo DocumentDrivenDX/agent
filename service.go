@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
-	sessionusage "github.com/DocumentDrivenDX/agent/internal/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
+	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
+	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
 // DdxAgent is the entire public Go surface of the ddx-agent module.

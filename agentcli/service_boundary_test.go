@@ -110,15 +110,15 @@ func TestCLIMainDoesNotImportOrCallInternalCoreRun(t *testing.T) {
 // API. Adding to this list is a deliberate boundary widening — first prove
 // there is no public re-export that would do.
 var approvedProductionInternalImports = []string{
-	"github.com/DocumentDrivenDX/agent/internal/config",
-	"github.com/DocumentDrivenDX/agent/internal/corpus",
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog",
-	"github.com/DocumentDrivenDX/agent/internal/observations",
-	"github.com/DocumentDrivenDX/agent/internal/productinfo",
-	"github.com/DocumentDrivenDX/agent/internal/prompt",
-	"github.com/DocumentDrivenDX/agent/internal/reasoning",
-	"github.com/DocumentDrivenDX/agent/internal/safefs",
-	"github.com/DocumentDrivenDX/agent/internal/sampling",
+	"github.com/DocumentDrivenDX/fizeau/internal/config",
+	"github.com/DocumentDrivenDX/fizeau/internal/corpus",
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog",
+	"github.com/DocumentDrivenDX/fizeau/internal/observations",
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo",
+	"github.com/DocumentDrivenDX/fizeau/internal/prompt",
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning",
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs",
+	"github.com/DocumentDrivenDX/fizeau/internal/sampling",
 }
 
 // forbiddenCLIInternalImports lists internal packages that must NEVER be
@@ -128,13 +128,13 @@ var approvedProductionInternalImports = []string{
 // service boundary and can only be reached through the public agent API
 // (for tests, through the public surface or via service Execute events).
 var forbiddenCLIInternalImports = []string{
-	"github.com/DocumentDrivenDX/agent/internal/core",
-	"github.com/DocumentDrivenDX/agent/internal/provider",
-	"github.com/DocumentDrivenDX/agent/internal/session",
-	"github.com/DocumentDrivenDX/agent/internal/tool",
-	"github.com/DocumentDrivenDX/agent/internal/compaction",
-	"github.com/DocumentDrivenDX/agent/internal/harnesses",
-	"github.com/DocumentDrivenDX/agent/internal/routing",
+	"github.com/DocumentDrivenDX/fizeau/internal/core",
+	"github.com/DocumentDrivenDX/fizeau/internal/provider",
+	"github.com/DocumentDrivenDX/fizeau/internal/session",
+	"github.com/DocumentDrivenDX/fizeau/internal/tool",
+	"github.com/DocumentDrivenDX/fizeau/internal/compaction",
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses",
+	"github.com/DocumentDrivenDX/fizeau/internal/routing",
 }
 
 // forbiddenCLISymbols rejects callers that re-grow the boundary by
@@ -183,7 +183,7 @@ func TestCLIInternalImportBoundaryAllowlist(t *testing.T) {
 			continue
 		}
 		for _, line := range strings.Split(src, "\n") {
-			if !strings.Contains(line, "github.com/DocumentDrivenDX/agent/internal/") {
+			if !strings.Contains(line, "github.com/DocumentDrivenDX/fizeau/internal/") {
 				continue
 			}
 			ok := false

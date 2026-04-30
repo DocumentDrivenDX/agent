@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/catalogdist"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/catalogdist"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 )
 
 func main() {

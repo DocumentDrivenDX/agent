@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 )
 
 // Factory builds a fresh provider subject for one conformance scenario.

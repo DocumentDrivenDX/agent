@@ -1,4 +1,4 @@
-module github.com/DocumentDrivenDX/agent
+module github.com/DocumentDrivenDX/fizeau
 
 go 1.26.2
 

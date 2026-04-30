@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/routing"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 // TestServiceExecuteRequestNoPreResolved is an AST guard against the

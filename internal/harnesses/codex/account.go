@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 const codexAuthPathEnv = "DDX_AGENT_CODEX_AUTH"

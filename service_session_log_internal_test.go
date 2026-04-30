@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 )
 
 func TestServiceSessionLogPersistsReasoningStallEvent(t *testing.T) {

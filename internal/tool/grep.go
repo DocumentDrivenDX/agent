@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 const (

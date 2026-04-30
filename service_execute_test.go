@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/fizeau"
 )
 
 // drainEvents collects everything from ch until it closes or the deadline

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // TestHarnessFinalEventPreservesUsageProvenance asserts that the opencode

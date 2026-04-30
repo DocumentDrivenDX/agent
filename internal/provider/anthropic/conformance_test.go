@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/provider/conformance"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/conformance"
 )
 
 func TestConformance_AnthropicShapedDouble(t *testing.T) {

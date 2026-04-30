@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // GeminiQuotaSnapshot captures parsed Gemini CLI /model manage quota evidence

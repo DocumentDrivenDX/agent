@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/fizeau"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

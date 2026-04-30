@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 // Default size for the per-Execute event channel buffer. Large enough that

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/pty/session"
-	"github.com/DocumentDrivenDX/agent/internal/pty/terminal"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/terminal"
 	"github.com/stretchr/testify/require"
 )
 

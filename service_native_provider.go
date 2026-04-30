@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"strings"
 
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	// Provider packages are imported for their init() side-effects so
 	// they self-register into the registry. The factory below uses
 	// registry.Lookup; the per-package import paths used to live in
 	// the case branches and stayed even after agent-8e4eb44c collapsed
 	// them — they're load-bearing for the init() registration.
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/ollama"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/omlx"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
-	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/vllm"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lucebox"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/ollama"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
 )
 
 type nativeProviderResolution struct {

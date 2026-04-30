@@ -3,7 +3,7 @@ package termbench
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/fizeau"
 )
 
 // ExecutionPlan is the ServiceExecuteRequest payload + ancillary metadata

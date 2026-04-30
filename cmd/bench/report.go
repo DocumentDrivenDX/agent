@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/comparison"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/comparison"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // cmdReport implements the 'report' subcommand.

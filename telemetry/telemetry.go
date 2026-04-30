@@ -14,7 +14,7 @@ import (
 
 const (
 	// InstrumentationName identifies this package in OTel tracer/meter setup.
-	InstrumentationName = "github.com/DocumentDrivenDX/agent/telemetry"
+	InstrumentationName = "github.com/DocumentDrivenDX/fizeau/telemetry"
 
 	operationInvokeAgent = "invoke_agent"
 	operationChat        = "chat"

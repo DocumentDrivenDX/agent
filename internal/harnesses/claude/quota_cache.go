@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 )
 
 // ClaudeQuotaSnapshot captures Claude's current-quota headroom as absolute

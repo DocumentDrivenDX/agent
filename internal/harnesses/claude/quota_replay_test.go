@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/pty/cassette"
-	"github.com/DocumentDrivenDX/agent/internal/pty/session"
-	"github.com/DocumentDrivenDX/agent/internal/pty/terminal"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/terminal"
 	"github.com/stretchr/testify/require"
 )
 

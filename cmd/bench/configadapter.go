@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agent "github.com/DocumentDrivenDX/fizeau"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
 // configAdapter wraps *config.Config and satisfies agent.ServiceConfig.

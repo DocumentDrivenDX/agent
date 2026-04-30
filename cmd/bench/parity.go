@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/comparison"
+	"github.com/DocumentDrivenDX/fizeau/internal/comparison"
 )
 
 // normalizeInput canonicalizes a JSON tool-input string for comparison:

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
-	"github.com/DocumentDrivenDX/agent/internal/benchmark/external/termbench"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agent "github.com/DocumentDrivenDX/fizeau"
+	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/external/termbench"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
 // termbenchSubsetEntry is one row from scripts/beadbench/external/termbench-subset.json.

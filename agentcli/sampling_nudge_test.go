@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
-	"github.com/DocumentDrivenDX/agent/internal/sampling"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
 	"github.com/stretchr/testify/assert"
 )
 

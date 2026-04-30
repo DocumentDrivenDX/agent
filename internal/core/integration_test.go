@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	antProvider "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
-	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/session"
-	"github.com/DocumentDrivenDX/agent/internal/tool"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	antProvider "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
+	oaiProvider "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

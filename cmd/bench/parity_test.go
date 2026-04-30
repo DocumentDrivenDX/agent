@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/comparison"
+	"github.com/DocumentDrivenDX/fizeau/internal/comparison"
 )
 
 // ---------------------------------------------------------------------------

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 // WriteParams are the parameters for the write tool.

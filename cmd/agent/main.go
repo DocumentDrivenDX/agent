@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/DocumentDrivenDX/agent/agentcli"
+	"github.com/DocumentDrivenDX/fizeau/agentcli"
 )
 
 // Version info set via -ldflags.

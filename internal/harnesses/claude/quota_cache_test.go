@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func TestClaudeQuotaCachePathXDG(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/tmp/xdg-state")
 	path, err := ClaudeQuotaCachePath()
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("/tmp/xdg-state", "ddx-agent", "claude-quota.json"), path)
+	assert.Equal(t, filepath.Join("/tmp/xdg-state", "fizeau", "claude-quota.json"), path)
 }
 
 func TestClaudeQuotaCachePathHomeFallback(t *testing.T) {
@@ -32,7 +32,7 @@ func TestClaudeQuotaCachePathHomeFallback(t *testing.T) {
 	t.Setenv("HOME", "/tmp/fake-home")
 	path, err := ClaudeQuotaCachePath()
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("/tmp/fake-home", ".local", "state", "ddx-agent", "claude-quota.json"), path)
+	assert.Equal(t, filepath.Join("/tmp/fake-home", ".local", "state", "fizeau", "claude-quota.json"), path)
 }
 
 func TestClaudeQuotaCachePathEnvOverride(t *testing.T) {

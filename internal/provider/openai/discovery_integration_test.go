@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
-	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
-	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

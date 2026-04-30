@@ -1,6 +1,6 @@
 package harnesses
 
-import "github.com/DocumentDrivenDX/agent/internal/productinfo"
+import "github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 
 // PreferenceOrder defines the default harness preference when multiple are available.
 var PreferenceOrder = []string{"codex", "claude", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "gemini"}

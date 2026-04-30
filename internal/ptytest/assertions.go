@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/pty/cassette"
-	"github.com/DocumentDrivenDX/agent/internal/pty/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
 )
 
 func evaluateAssertion(group string, spec AssertionSpec, events []cassette.Event) *Failure {

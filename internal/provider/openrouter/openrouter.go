@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
-	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/limits"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
 
 const DefaultBaseURL = "https://openrouter.ai/api/v1"

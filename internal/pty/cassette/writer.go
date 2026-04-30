@@ -13,9 +13,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/pty/session"
-	"github.com/DocumentDrivenDX/agent/internal/pty/terminal"
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/terminal"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 type Clock interface {

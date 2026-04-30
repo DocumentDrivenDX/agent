@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

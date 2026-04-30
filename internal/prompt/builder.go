@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 )
 
 // ContextFile is a project instruction file (AGENTS.md, CLAUDE.md, etc.).

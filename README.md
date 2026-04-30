@@ -2,8 +2,8 @@
 
 Embeddable Go agent runtime — local-model-first via LM Studio.
 
-[![CI](https://github.com/DocumentDrivenDX/agent/actions/workflows/ci.yml/badge.svg)](https://github.com/DocumentDrivenDX/agent/actions/workflows/ci.yml)
-[![Release](https://github.com/DocumentDrivenDX/agent/releases/latest/badge.svg)](https://github.com/DocumentDrivenDX/agent/releases/latest)
+[![CI](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml)
+[![Release](https://github.com/DocumentDrivenDX/fizeau/releases/latest/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/agent/master/insta
 Or with Go:
 
 ```bash
-go install github.com/DocumentDrivenDX/agent/cmd/agent@latest
+go install github.com/DocumentDrivenDX/fizeau/cmd/agent@latest
 ```
 
 ## Quick Start
@@ -90,8 +90,8 @@ import (
     "context"
     "fmt"
 
-    "github.com/DocumentDrivenDX/agent"
-    _ "github.com/DocumentDrivenDX/agent/configinit"
+    "github.com/DocumentDrivenDX/fizeau"
+    _ "github.com/DocumentDrivenDX/fizeau/configinit"
 )
 
 func main() {

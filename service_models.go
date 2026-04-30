@@ -17,11 +17,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
+	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 )
 
 // ListModels returns models matching the filter, with full metadata.

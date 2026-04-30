@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 func TestResolveRouteExplicitHarnessModelIncompatible(t *testing.T) {

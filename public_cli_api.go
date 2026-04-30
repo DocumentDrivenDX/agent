@@ -10,11 +10,11 @@ package agent
 import (
 	"context"
 
-	"github.com/DocumentDrivenDX/agent/internal/compaction"
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/session"
-	"github.com/DocumentDrivenDX/agent/internal/tool"
+	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	oaiProvider "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/tool"
 )
 
 // Compaction.

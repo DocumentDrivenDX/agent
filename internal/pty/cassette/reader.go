@@ -14,7 +14,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
 type OpenOption func(*openConfig)

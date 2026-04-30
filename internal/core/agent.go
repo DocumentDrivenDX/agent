@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
-	"github.com/DocumentDrivenDX/agent/telemetry"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	"github.com/DocumentDrivenDX/fizeau/telemetry"
 )
 
 // Status represents the outcome of a internal agent loop.

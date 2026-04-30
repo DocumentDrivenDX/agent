@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 const codexSessionsRootEnv = "DDX_AGENT_CODEX_SESSIONS_DIR"

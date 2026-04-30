@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	agent "github.com/DocumentDrivenDX/fizeau"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 func TestDrainExecute_DecodesTypedResult(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 )
 
 // RoutingQualityScan is the result of walking session logs in a directory

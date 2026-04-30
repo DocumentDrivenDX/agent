@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/reasoning"
-	"github.com/DocumentDrivenDX/agent/internal/sampling"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
 )
 
 // Surface identifies the consumer-specific naming surface for a model target.

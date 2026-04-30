@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 func TestAxesOverridden_EmptyForUnpinnedRequest(t *testing.T) {

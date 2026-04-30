@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/sdk/openaicompat"
+	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
 )
 
 // ScoredModel is a discovered model with a selection preference score.

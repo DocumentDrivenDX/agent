@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/fizeau"
 )
 
 // TestRouteStatusOverridesSinceFilter verifies that --since trims the

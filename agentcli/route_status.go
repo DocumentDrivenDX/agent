@@ -19,8 +19,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	rootagent "github.com/DocumentDrivenDX/agent"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	rootagent "github.com/DocumentDrivenDX/fizeau"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
 const defaultRouteStatusOverridesWindow = 7 * 24 * time.Hour

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/corpus"
+	"github.com/DocumentDrivenDX/fizeau/internal/corpus"
 )
 
 // corpusRoot is the conventional location for the curated benchmark corpus.

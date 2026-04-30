@@ -5,7 +5,7 @@ package agent
 import (
 	"context"
 
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 )
 
 // Test builds expose the four CONTRACT-003 seams via embedded seamOptions.

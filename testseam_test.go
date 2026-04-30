@@ -5,7 +5,7 @@ package agent_test
 import (
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent"
+	"github.com/DocumentDrivenDX/fizeau"
 )
 
 // TestSeamFakeProvider demonstrates that FakeProvider compiles and can be

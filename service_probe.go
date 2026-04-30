@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/sdk/openaicompat"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
 )
 
 // probeOpenAIModels calls GET /v1/models against baseURL and classifies

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/DocumentDrivenDX/agent/internal/renamecheck"
+	"github.com/DocumentDrivenDX/fizeau/internal/renamecheck"
 )
 
 func main() {

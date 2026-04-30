@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	agent "github.com/DocumentDrivenDX/agent"
+	agent "github.com/DocumentDrivenDX/fizeau"
 )
 
 func init() {

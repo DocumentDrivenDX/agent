@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/DocumentDrivenDX/agent/internal/productinfo"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 )
 
 func main() {

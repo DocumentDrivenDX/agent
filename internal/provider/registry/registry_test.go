@@ -7,15 +7,15 @@ import (
 	// fire under the test binary. This mirrors the production import
 	// graph (cmd/agent transitively imports all providers via service)
 	// without depending on those packages directly here.
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/ollama"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/omlx"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
-	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
-	_ "github.com/DocumentDrivenDX/agent/internal/provider/vllm"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lucebox"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/ollama"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

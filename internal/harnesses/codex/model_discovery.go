@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	"github.com/DocumentDrivenDX/agent/internal/harnesses/ptyquota"
-	"github.com/DocumentDrivenDX/agent/internal/pty/cassette"
-	"github.com/DocumentDrivenDX/agent/internal/pty/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses/ptyquota"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
 )
 
 const CodexModelDiscoveryFreshnessWindow = 24 * time.Hour

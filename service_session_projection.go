@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/session"
+	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
 // UsageReportOptions configures DdxAgent.UsageReport.

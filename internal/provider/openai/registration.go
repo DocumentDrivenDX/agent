@@ -1,8 +1,8 @@
 package openai
 
 import (
-	agent "github.com/DocumentDrivenDX/agent/internal/core"
-	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 )
 
 // init registers the openai-flavored provider types whose factories call

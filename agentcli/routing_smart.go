@@ -26,10 +26,10 @@ import (
 	"strings"
 	"time"
 
-	rootagent "github.com/DocumentDrivenDX/agent"
-	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
-	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/observations"
+	rootagent "github.com/DocumentDrivenDX/fizeau"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/observations"
 )
 
 const (
