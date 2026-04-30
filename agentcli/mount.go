@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 	"github.com/spf13/cobra"
@@ -158,6 +159,44 @@ func mountedSubcommands() []string {
 		"update",
 		"run",
 	}
+}
+
+// NeedsLegacyPassthrough reports whether argv should bypass Cobra traversal
+// until the corresponding command path has native pflag definitions.
+func NeedsLegacyPassthrough(args []string) bool {
+	valueFlags := map[string]bool{
+		"--backend":   true,
+		"--max-power": true,
+		"--max-iter":  true,
+		"--min-power": true,
+		"--model":     true,
+		"--model-ref": true,
+		"--p":         true,
+		"-p":          true,
+		"--preset":    true,
+		"--provider":  true,
+		"--reasoning": true,
+		"--system":    true,
+		"--work-dir":  true,
+	}
+	subcommands := map[string]bool{}
+	for _, name := range mountedSubcommands() {
+		subcommands[name] = true
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			if valueFlags[arg] && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if arg == "run" {
+			return false
+		}
+		return subcommands[arg] || arg != ""
+	}
+	return false
 }
 
 func addLegacyPersistentFlags(cmd *cobra.Command) {

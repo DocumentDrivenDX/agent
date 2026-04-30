@@ -90,3 +90,24 @@ func TestMountCLI_ChildCommandsDelegateWithoutExiting(t *testing.T) {
 		})
 	}
 }
+
+func TestNeedsLegacyPassthrough(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "root version", args: []string{"--version"}, want: false},
+		{name: "root prompt", args: []string{"--work-dir", "/tmp/work", "-p", "hello"}, want: false},
+		{name: "explicit run", args: []string{"--work-dir", "/tmp/work", "run", "hello"}, want: false},
+		{name: "legacy subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "show"}, want: true},
+		{name: "unknown positional", args: []string{"unknown-subcommand"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NeedsLegacyPassthrough(tt.args); got != tt.want {
+				t.Fatalf("NeedsLegacyPassthrough(%v) = %t, want %t", tt.args, got, tt.want)
+			}
+		})
+	}
+}

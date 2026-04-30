@@ -22,7 +22,11 @@ func main() {
 		agentcli.WithStderr(os.Stderr),
 		agentcli.WithVersion(Version, BuildTime, GitCommit),
 	)
-	cmd.SetArgs(append([]string{"--"}, os.Args[1:]...))
+	args := os.Args[1:]
+	if agentcli.NeedsLegacyPassthrough(args) {
+		args = append([]string{"--"}, args...)
+	}
+	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
 		if code, ok := agentcli.ExitCode(err); ok {
 			os.Exit(code)
