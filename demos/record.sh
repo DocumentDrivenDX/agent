@@ -32,6 +32,7 @@ done
 
 # Copy session logs for CI replay
 echo "Copying session logs..."
+mkdir -p demos/sessions
 latest_sessions=$(ls -t .agent/sessions/*.jsonl 2>/dev/null | head -3)
 i=0
 for session in $latest_sessions; do
