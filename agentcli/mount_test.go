@@ -100,6 +100,8 @@ func TestNeedsLegacyPassthrough(t *testing.T) {
 		{name: "root version", args: []string{"--version"}, want: false},
 		{name: "root prompt", args: []string{"--work-dir", "/tmp/work", "-p", "hello"}, want: false},
 		{name: "explicit run", args: []string{"--work-dir", "/tmp/work", "run", "hello"}, want: false},
+		{name: "native session command", args: []string{"--work-dir", "/tmp/work", "usage", "--since", "7d"}, want: false},
+		{name: "native route status command", args: []string{"--work-dir", "/tmp/work", "route-status", "--profile", "smart"}, want: false},
 		{name: "native read-only catalog subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "show"}, want: false},
 		{name: "legacy mutating catalog subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "update"}, want: true},
 		{name: "unknown positional", args: []string{"unknown-subcommand"}, want: true},

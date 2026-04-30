@@ -132,11 +132,15 @@ func MountCLI(opts ...MountOption) *cobra.Command {
 }
 
 func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
+	root.AddCommand(nativeLogCommand())
+	root.AddCommand(nativeReplayCommand())
+	root.AddCommand(nativeUsageCommand())
 	root.AddCommand(nativeProvidersCommand())
 	root.AddCommand(nativeModelsCommand())
 	root.AddCommand(nativeCheckCommand())
 	root.AddCommand(nativeCatalogCommand(cfg))
-	for _, name := range []string{"log", "replay", "usage", "corpus", "route-status", "import", "version", "update", "run"} {
+	root.AddCommand(nativeRouteStatusCommand())
+	for _, name := range []string{"corpus", "import", "version", "update", "run"} {
 		subcommandName := name
 		root.AddCommand(&cobra.Command{
 			Use:                subcommandName,
@@ -149,6 +153,45 @@ func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
 			},
 		})
 	}
+}
+
+func nativeLogCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "log [session-id]",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdLog(rootWorkDir(cmd), args))
+		},
+	}
+}
+
+func nativeReplayCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "replay <session-id>",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdReplay(rootWorkDir(cmd), args))
+		},
+	}
+}
+
+func nativeUsageCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "usage",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdUsage(rootWorkDir(cmd), usageArgs(cmd, args)))
+		},
+	}
+	cmd.Flags().String("since", "", "Time window: today, 7d, 30d, YYYY-MM-DD, or YYYY-MM-DD..YYYY-MM-DD")
+	cmd.Flags().Bool("csv", false, "Output CSV")
+	return cmd
 }
 
 func mountedSubcommands() []string {
@@ -167,6 +210,24 @@ func mountedSubcommands() []string {
 		"update",
 		"run",
 	}
+}
+
+func nativeRouteStatusCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "route-status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdRouteStatus(rootWorkDir(cmd), routeStatusArgs(cmd, args)))
+		},
+	}
+	cmd.Flags().String("profile", "", "Routing profile")
+	cmd.Flags().String("harness", "", "Pin a specific harness")
+	cmd.Flags().Bool("overrides", false, "Print override_class_breakdown over a time window")
+	cmd.Flags().String("since", "", "Time window for --overrides mode")
+	cmd.Flags().String("axis", "", "With --overrides, filter rows to this axis")
+	return cmd
 }
 
 func nativeProvidersCommand() *cobra.Command {
@@ -311,6 +372,64 @@ func changedFlagArgs(cmd *cobra.Command, names ...string) []string {
 	return out
 }
 
+func changedBoolFlagArgs(cmd *cobra.Command, names ...string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		flag := cmd.Flags().Lookup(name)
+		if flag != nil && flag.Changed {
+			if flag.Value.String() == "true" {
+				out = append(out, "--"+name)
+			} else {
+				out = append(out, "--"+name+"="+flag.Value.String())
+			}
+		}
+	}
+	return out
+}
+
+func changedRootFlagArgs(cmd *cobra.Command, names ...string) []string {
+	out := make([]string, 0, len(names)*2)
+	flags := cmd.Root().PersistentFlags()
+	for _, name := range names {
+		flag := flags.Lookup(name)
+		if flag != nil && flag.Changed {
+			out = append(out, "--"+name, flag.Value.String())
+		}
+	}
+	return out
+}
+
+func changedRootBoolFlagArgs(cmd *cobra.Command, names ...string) []string {
+	out := make([]string, 0, len(names))
+	flags := cmd.Root().PersistentFlags()
+	for _, name := range names {
+		flag := flags.Lookup(name)
+		if flag != nil && flag.Changed {
+			if flag.Value.String() == "true" {
+				out = append(out, "--"+name)
+			} else {
+				out = append(out, "--"+name+"="+flag.Value.String())
+			}
+		}
+	}
+	return out
+}
+
+func usageArgs(cmd *cobra.Command, args []string) []string {
+	out := changedRootBoolFlagArgs(cmd, "json")
+	out = append(out, changedBoolFlagArgs(cmd, "csv")...)
+	out = append(out, changedFlagArgs(cmd, "since")...)
+	return append(out, args...)
+}
+
+func routeStatusArgs(cmd *cobra.Command, args []string) []string {
+	out := changedRootBoolFlagArgs(cmd, "json")
+	out = append(out, changedRootFlagArgs(cmd, "model", "model-ref", "provider", "min-power", "max-power")...)
+	out = append(out, changedBoolFlagArgs(cmd, "overrides")...)
+	out = append(out, changedFlagArgs(cmd, "profile", "harness", "since", "axis")...)
+	return append(out, args...)
+}
+
 func catalogModelsArgs(cmd *cobra.Command, args []string) []string {
 	out := changedFlagArgs(cmd, "model", "format")
 	return append(out, args...)
@@ -360,7 +479,7 @@ func NeedsLegacyPassthrough(args []string) bool {
 			return false
 		}
 		switch arg {
-		case "providers", "models", "check":
+		case "log", "replay", "usage", "providers", "models", "check", "route-status":
 			return false
 		case "catalog":
 			if i+1 < len(args) {
