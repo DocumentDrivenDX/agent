@@ -1,11 +1,46 @@
-# Routing Reference
+# Routing
 
-This directory is the public contract for profile-first route resolution. DDx
-consumer docs should link here instead of restating routing rules.
+DDX Agent routes automatically. Configure provider sources and endpoints, then
+let the agent discover models, join them with the model catalog, track
+availability/usage, and select the best candidate for the request.
 
-- [Profile catalog](profiles.md) lists every named routing profile from the
-  embedded model catalog.
-- [Override precedence](override-precedence.md) defines how explicit harness,
-  model, and provider pins interact with profiles.
-- [Best-provider contract](best-provider.md) defines candidate eligibility,
-  ranking, and profile-specific ordering overrides.
+The primary strength control is numeric power:
+
+- Power is a catalog score from 1 to 10.
+- Higher means more capable for agent tasks.
+- Power 0 means unknown or exact-pin-only.
+- `--min-power` and `--max-power` apply only to unpinned automatic routing.
+
+If no power bound or hard pin is supplied, the agent selects the best
+lowest-cost viable auto-routable model from discovered inventory.
+
+Hard pins are exclusive:
+
+- `--model qwen-3.6-27b` means only that model identity may be used.
+- `--provider lmstudio` means only that provider source or selected endpoint
+  may be used, depending on the request surface.
+- `--harness codex` means only that harness may be used.
+
+If a hard pin cannot be satisfied, routing fails with attempted-route and
+candidate evidence. The agent does not substitute a broader model, source,
+endpoint, or harness.
+
+Useful commands:
+
+```bash
+ddx-agent --list-models --json
+ddx-agent run --min-power 5 "prompt"
+ddx-agent run --min-power 8 "prompt"
+ddx-agent run --model qwen-3.6-27b "prompt"
+ddx-agent run --provider lmstudio "prompt"
+```
+
+The agent dispatches one selected candidate per request. Semantic retry or
+escalation belongs to the caller: rerun with a higher `--min-power`, a lower
+`--max-power`, or different hard pins when task evidence justifies it.
+
+See also:
+
+- [Candidate selection](best-provider.md)
+- [Hard pins](override-precedence.md)
+- [Legacy name surface](profiles.md)

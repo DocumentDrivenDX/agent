@@ -1,4 +1,3 @@
-# Routing Profile Override Precedence
+# Routing Docs Moved
 
-This page has moved to
-[docs/routing/override-precedence.md](routing/override-precedence.md).
+Use [docs/routing/override-precedence.md](routing/override-precedence.md).

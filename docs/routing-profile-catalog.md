@@ -1,3 +1,3 @@
-# Routing Profile Catalog
+# Routing Docs Moved
 
-This page has moved to [docs/routing/profiles.md](routing/profiles.md).
+Use [docs/routing/index.md](routing/index.md).
