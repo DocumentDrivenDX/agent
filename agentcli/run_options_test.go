@@ -19,7 +19,7 @@ func TestRun_UsesInjectedOutputAndDoesNotExit(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run exit = %d, want 0", code)
 	}
-	if got := stdout.String(); !strings.Contains(got, "ddx-agent v-test") || !strings.Contains(got, "abc123") {
+	if got := stdout.String(); !strings.Contains(got, "fiz v-test") || !strings.Contains(got, "abc123") {
 		t.Fatalf("stdout = %q, want injected version output", got)
 	}
 	if stderr.Len() != 0 {

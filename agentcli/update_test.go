@@ -359,7 +359,7 @@ func TestCmdVersion_ShowsUpdateAvailability(t *testing.T) {
 	})
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stderr)
-	assert.Contains(t, stdout, "ddx-agent v0.0.8")
+	assert.Contains(t, stdout, "fiz v0.0.8")
 	assert.Contains(t, stdout, "Update available: v0.0.9")
 }
 

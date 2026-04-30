@@ -31,7 +31,7 @@ func TestMountCLI_ReturnsFreshCommandAndInjectedOutput(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, "ddx-agent v-mounted") || !strings.Contains(got, "abc123") {
+	if got := stdout.String(); !strings.Contains(got, "fiz v-mounted") || !strings.Contains(got, "abc123") {
 		t.Fatalf("stdout = %q, want injected version output", got)
 	}
 	if stderr.Len() != 0 {

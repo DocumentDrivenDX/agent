@@ -73,7 +73,7 @@ func TestCLI_Version(t *testing.T) {
 	if err != nil {
 		t.Logf("Version output: %s", string(out))
 	}
-	assert.Contains(t, string(out), "ddx-agent")
+	assert.Contains(t, string(out), "fiz")
 }
 
 func TestCLI_Help(t *testing.T) {
@@ -192,7 +192,7 @@ func TestCLI_ImportPi_Diff_ObjectMapProviders(t *testing.T) {
 	require.NoError(t, err, string(out))
 	output := string(out)
 
-	assert.Contains(t, output, "ddx-agent: pi config -- what would be imported:")
+	assert.Contains(t, output, "fiz: pi config -- what would be imported:")
 	assert.Contains(t, output, "[grendel]")
 	assert.Contains(t, output, "http://grendel:1234/v1")
 	assert.Contains(t, output, "[vidar]")

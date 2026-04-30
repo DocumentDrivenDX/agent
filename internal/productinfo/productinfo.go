@@ -1,8 +1,8 @@
 package productinfo
 
-// Values stay at their current literals for this bead; there is no behavior change.
+// Values define the current product identity used by CLI/config surfaces.
 var (
-	Name       = "DDx Agent"
-	BinaryName = "ddx-agent"
-	ConfigDir  = "ddx-agent"
+	Name       = "Fizeau"
+	BinaryName = "fiz"
+	ConfigDir  = "fizeau"
 )
