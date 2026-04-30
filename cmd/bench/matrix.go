@@ -1,0 +1,786 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/DocumentDrivenDX/agent/internal/benchmark/profile"
+)
+
+const (
+	defaultMatrixSubset = "scripts/beadbench/external/termbench-subset-canary.json"
+	matrixLockName      = "report.lock"
+	matrixReportName    = "report.json"
+)
+
+type matrixRunReport struct {
+	Harness                 string    `json:"harness"`
+	ProfileID               string    `json:"profile_id"`
+	ProfilePath             string    `json:"profile_path"`
+	ProfileSnapshot         string    `json:"profile_snapshot,omitempty"`
+	AdapterModule           string    `json:"adapter_module"`
+	HarborAgent             string    `json:"harbor_agent"`
+	Rep                     int       `json:"rep"`
+	TaskID                  string    `json:"task_id"`
+	Category                string    `json:"category,omitempty"`
+	Difficulty              string    `json:"difficulty,omitempty"`
+	OutputDir               string    `json:"output_dir"`
+	ProcessOutcome          string    `json:"process_outcome"`
+	GradingOutcome          string    `json:"grading_outcome"`
+	Reward                  *int      `json:"reward"`
+	FinalStatus             string    `json:"final_status"`
+	Retriable               bool      `json:"retriable,omitempty"`
+	Turns                   *int      `json:"turns"`
+	ToolCalls               *int      `json:"tool_calls"`
+	ToolCallErrors          *int      `json:"tool_call_errors"`
+	InputTokens             *int      `json:"input_tokens"`
+	OutputTokens            *int      `json:"output_tokens"`
+	CachedInputTokens       *int      `json:"cached_input_tokens"`
+	RetriedInputTokens      *int      `json:"retried_input_tokens"`
+	WallSeconds             *float64  `json:"wall_seconds"`
+	CostUSD                 float64   `json:"cost_usd"`
+	PricingSource           string    `json:"pricing_source"`
+	AdapterTranslationNotes []string  `json:"adapter_translation_notes,omitempty"`
+	Command                 []string  `json:"command,omitempty"`
+	ExitCode                int       `json:"exit_code"`
+	Error                   string    `json:"error,omitempty"`
+	StartedAt               time.Time `json:"started_at"`
+	FinishedAt              time.Time `json:"finished_at"`
+}
+
+type matrixOutput struct {
+	GeneratedAt time.Time         `json:"generated_at"`
+	SubsetPath  string            `json:"subset_path"`
+	Profiles    []string          `json:"profiles"`
+	Harnesses   []string          `json:"harnesses"`
+	Reps        int               `json:"reps"`
+	BudgetUSD   float64           `json:"budget_usd"`
+	Runs        []matrixRunReport `json:"runs"`
+	Cells       []matrixCell      `json:"cells"`
+	Notes       []string          `json:"notes,omitempty"`
+}
+
+type matrixCell struct {
+	Harness       string   `json:"harness"`
+	ProfileID     string   `json:"profile_id"`
+	NRuns         int      `json:"n_runs"`
+	NReported     int      `json:"n_reported"`
+	MeanReward    *float64 `json:"mean_reward"`
+	SDReward      *float64 `json:"sd_reward"`
+	CostUSD       float64  `json:"cost_usd"`
+	InputTokens   int      `json:"input_tokens"`
+	OutputTokens  int      `json:"output_tokens"`
+	CachedTokens  int      `json:"cached_input_tokens"`
+	RetriedTokens int      `json:"retried_input_tokens"`
+}
+
+type matrixAdapterResult struct {
+	Telemetry map[string]any `json:"telemetry"`
+	Command   commandResult  `json:"command"`
+	Apply     commandResult  `json:"apply"`
+	Stdout    string         `json:"stdout"`
+	Stderr    string         `json:"stderr"`
+	ExitCode  int            `json:"exit_code"`
+	Duration  int64          `json:"duration_ms"`
+}
+
+type commandResult struct {
+	Argv  []string          `json:"argv"`
+	Env   map[string]string `json:"env"`
+	Notes []string          `json:"notes"`
+	Cwd   string            `json:"cwd"`
+}
+
+type matrixLock struct {
+	PID       int       `json:"pid"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+func cmdMatrix(args []string) int {
+	fs := flagSet("matrix")
+	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
+	subset := fs.String("subset", "", "TerminalBench subset manifest (default: scripts/beadbench/external/termbench-subset-canary.json)")
+	profilesCSV := fs.String("profiles", "", "Comma-separated benchmark profile ids")
+	harnessesCSV := fs.String("harnesses", "ddx-agent,pi,opencode", "Comma-separated harness adapter names")
+	reps := fs.Int("reps", 3, "Repetitions per harness/profile/task")
+	budgetUSD := fs.Float64("budget-usd", 0, "Matrix budget in USD (0 = no cap)")
+	out := fs.String("out", "", "Output directory (default: benchmark-results/matrix-<timestamp> under work-dir)")
+	resume := fs.Bool("resume", false, "Skip terminal reports already present under --out")
+	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
+	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *reps <= 0 {
+		fmt.Fprintf(os.Stderr, "%s matrix: --reps must be > 0\n", benchCommandName())
+		return 2
+	}
+	if *profilesCSV == "" {
+		fmt.Fprintf(os.Stderr, "%s matrix: --profiles is required\n", benchCommandName())
+		return 2
+	}
+	if *harnessesCSV == "" {
+		fmt.Fprintf(os.Stderr, "%s matrix: --harnesses is required\n", benchCommandName())
+		return 2
+	}
+
+	wd := resolveWorkDir(*workDir)
+	subsetPath := *subset
+	if subsetPath == "" {
+		subsetPath = filepath.Join(wd, defaultMatrixSubset)
+	} else if !filepath.IsAbs(subsetPath) {
+		subsetPath = filepath.Join(wd, subsetPath)
+	}
+	outDir := *out
+	if outDir == "" {
+		outDir = filepath.Join(wd, "benchmark-results", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
+	} else if !filepath.IsAbs(outDir) {
+		outDir = filepath.Join(wd, outDir)
+	}
+
+	profileIDs := splitCSV(*profilesCSV)
+	harnesses := splitCSV(*harnessesCSV)
+	if len(profileIDs) == 0 || len(harnesses) == 0 {
+		fmt.Fprintf(os.Stderr, "%s matrix: --profiles and --harnesses must not be empty\n", benchCommandName())
+		return 2
+	}
+
+	subsetData, err := loadTermbenchSubset(subsetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s matrix: load subset %s: %v\n", benchCommandName(), subsetPath, err)
+		return 1
+	}
+	profiles, err := selectMatrixProfiles(wd, profileIDs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), err)
+		return 1
+	}
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
+		fmt.Fprintf(os.Stderr, "%s matrix: create output dir: %v\n", benchCommandName(), err)
+		return 1
+	}
+
+	var runs []matrixRunReport
+	accumulatedCost := 0.0
+	for _, harness := range harnesses {
+		for _, prof := range profiles {
+			for rep := 1; rep <= *reps; rep++ {
+				for _, task := range subsetData.Tasks {
+					report, skipped, err := runMatrixTuple(matrixTupleOptions{
+						workDir:           wd,
+						outDir:            outDir,
+						harness:           harness,
+						profile:           prof,
+						rep:               rep,
+						task:              task,
+						budgetUSD:         *budgetUSD,
+						accumulatedCost:   accumulatedCost,
+						resume:            *resume,
+						forceRerun:        *forceRerun,
+						retryBudgetHalted: *retryBudgetHalted,
+					})
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), err)
+						return 1
+					}
+					runs = append(runs, report)
+					if !skipped {
+						accumulatedCost += report.CostUSD
+					}
+				}
+			}
+		}
+	}
+
+	sort.Slice(runs, func(i, j int) bool {
+		return matrixRunKey(runs[i]) < matrixRunKey(runs[j])
+	})
+	output := matrixOutput{
+		GeneratedAt: time.Now().UTC(),
+		SubsetPath:  subsetPath,
+		Profiles:    profileIDs,
+		Harnesses:   harnesses,
+		Reps:        *reps,
+		BudgetUSD:   *budgetUSD,
+		Runs:        runs,
+		Cells:       summarizeMatrixCells(runs),
+		Notes: []string{
+			"v1 runs serially; no concurrency flag is exposed.",
+			"adapter_module records the Python adapter path passed by the runner for the harness cell.",
+		},
+	}
+	matrixPath := filepath.Join(outDir, "matrix.json")
+	if err := writeJSONAtomic(matrixPath, output); err != nil {
+		fmt.Fprintf(os.Stderr, "%s matrix: write matrix.json: %v\n", benchCommandName(), err)
+		return 1
+	}
+	fmt.Printf("matrix results: %s\n", matrixPath)
+	return 0
+}
+
+type matrixTupleOptions struct {
+	workDir           string
+	outDir            string
+	harness           string
+	profile           *profile.Profile
+	rep               int
+	task              termbenchSubsetEntry
+	budgetUSD         float64
+	accumulatedCost   float64
+	resume            bool
+	forceRerun        bool
+	retryBudgetHalted bool
+}
+
+func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
+	cellDir := matrixTupleDir(opts.outDir, opts.harness, opts.profile.ID, opts.rep, opts.task.ID)
+	reportPath := filepath.Join(cellDir, matrixReportName)
+	if !opts.forceRerun {
+		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
+			return matrixRunReport{}, false, err
+		} else if ok && shouldSkipMatrixReport(existing.FinalStatus, opts.resume, opts.retryBudgetHalted) {
+			return existing, true, nil
+		}
+	}
+
+	release, err := acquireMatrixLock(filepath.Join(cellDir, matrixLockName))
+	if err != nil {
+		return matrixRunReport{}, false, err
+	}
+	defer release()
+
+	started := time.Now().UTC()
+	report := matrixRunReport{
+		Harness:         opts.harness,
+		ProfileID:       opts.profile.ID,
+		ProfilePath:     opts.profile.Path,
+		ProfileSnapshot: opts.profile.Versioning.Snapshot,
+		AdapterModule:   matrixAdapterModule(opts.harness),
+		HarborAgent:     filepath.ToSlash(filepath.Join("scripts", "benchmark", "harness_adapters", moduleFileName(opts.harness))) + ":Agent",
+		Rep:             opts.rep,
+		TaskID:          opts.task.ID,
+		Category:        opts.task.Category,
+		Difficulty:      opts.task.Difficulty,
+		OutputDir:       cellDir,
+		StartedAt:       started,
+		PricingSource:   profilePricingSource(opts.profile),
+	}
+
+	if opts.budgetUSD > 0 && opts.accumulatedCost >= opts.budgetUSD {
+		report.ProcessOutcome = "budget_halted"
+		report.GradingOutcome = "ungraded"
+		report.FinalStatus = deriveMatrixFinalStatus(report.ProcessOutcome, report.GradingOutcome, report.Reward, false)
+		report.FinishedAt = time.Now().UTC()
+		if err := writeJSONAtomic(reportPath, report); err != nil {
+			return matrixRunReport{}, false, err
+		}
+		return report, false, nil
+	}
+
+	workDir := filepath.Join(cellDir, "work")
+	if err := os.MkdirAll(workDir, 0o750); err != nil {
+		return matrixRunReport{}, false, fmt.Errorf("create tuple workdir: %w", err)
+	}
+	result, err := runMatrixAdapter(opts.workDir, report.AdapterModule, opts.profile, matrixPrompt(opts.task), opts.task.ID, workDir)
+	if err != nil {
+		report.ProcessOutcome = "harness_crash"
+		report.GradingOutcome = "ungraded"
+		report.Error = err.Error()
+	} else {
+		report.Command = result.Command.Argv
+		report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Apply.Notes...)
+		report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Command.Notes...)
+		report.ExitCode = result.ExitCode
+		if result.ExitCode != 0 {
+			report.ProcessOutcome = "harness_crash"
+			report.Error = strings.TrimSpace(result.Stderr)
+		}
+		applyTelemetry(&report, result.Telemetry)
+		if report.WallSeconds == nil && result.Duration >= 0 {
+			seconds := float64(result.Duration) / 1000
+			report.WallSeconds = &seconds
+		}
+	}
+	if report.ProcessOutcome == "" {
+		report.ProcessOutcome = "completed"
+	}
+	if report.GradingOutcome == "" {
+		report.GradingOutcome = "ungraded"
+	}
+	if report.Reward != nil && report.GradingOutcome == "ungraded" {
+		report.GradingOutcome = "graded"
+	}
+	report.CostUSD = matrixCostUSD(opts.profile, report)
+	report.FinalStatus = deriveMatrixFinalStatus(report.ProcessOutcome, report.GradingOutcome, report.Reward, report.Retriable)
+	report.FinishedAt = time.Now().UTC()
+	if err := writeJSONAtomic(reportPath, report); err != nil {
+		return matrixRunReport{}, false, err
+	}
+	return report, false, nil
+}
+
+func runMatrixAdapter(repoRoot, module string, prof *profile.Profile, prompt, taskID, workDir string) (matrixAdapterResult, error) {
+	profileJSON, err := json.Marshal(adapterProfileMapping(prof))
+	if err != nil {
+		return matrixAdapterResult{}, err
+	}
+	script := `
+import importlib, json, os, subprocess, sys, time
+from scripts.benchmark.harness_adapters.base import BenchmarkProfile
+
+module = importlib.import_module(sys.argv[1])
+profile_raw = json.loads(sys.argv[2])
+prompt = sys.argv[3]
+task_id = sys.argv[4]
+workdir = sys.argv[5]
+agent = module.Agent()
+profile = BenchmarkProfile.from_mapping(profile_raw)
+apply = agent.apply_profile(profile)
+command = agent.command(profile, prompt, workdir)
+env = os.environ.copy()
+env.update(getattr(apply, "env", {}) or {})
+env.update(getattr(command, "env", {}) or {})
+started = time.time()
+stdout = ""
+stderr = ""
+exit_code = 0
+argv = list(getattr(command, "argv", []) or [])
+if argv:
+    proc = subprocess.run(
+        argv,
+        input=getattr(command, "stdin", None),
+        text=True,
+        capture_output=True,
+        cwd=getattr(command, "cwd", None) or workdir,
+        env=env,
+        timeout=1800,
+    )
+    stdout = proc.stdout
+    stderr = proc.stderr
+    exit_code = proc.returncode
+duration_ms = int((time.time() - started) * 1000)
+stream = task_id + "\n" + stdout + "\n" + stderr
+telemetry = agent.parse_telemetry(stream)
+def spec_to_dict(spec):
+    return {
+        "argv": list(getattr(spec, "argv", []) or []),
+        "env": dict(getattr(spec, "env", {}) or {}),
+        "notes": list(getattr(spec, "notes", []) or []),
+        "cwd": getattr(spec, "cwd", None) or "",
+    }
+print(json.dumps({
+    "telemetry": telemetry,
+    "apply": spec_to_dict(apply),
+    "command": spec_to_dict(command),
+    "stdout": stdout,
+    "stderr": stderr,
+    "exit_code": exit_code,
+    "duration_ms": duration_ms,
+}, sort_keys=True))
+`
+	ctx, cancel := context.WithTimeout(context.Background(), 31*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "python3", "-c", script, module, string(profileJSON), prompt, taskID, workDir)
+	cmd.Dir = repoRoot
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return matrixAdapterResult{}, ctx.Err()
+	}
+	if err != nil {
+		if stderr.Len() > 0 {
+			return matrixAdapterResult{}, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return matrixAdapterResult{}, err
+	}
+	var result matrixAdapterResult
+	if err := json.Unmarshal(out, &result); err != nil {
+		return matrixAdapterResult{}, fmt.Errorf("parse adapter result: %w", err)
+	}
+	return result, nil
+}
+
+func selectMatrixProfiles(workDir string, ids []string) ([]*profile.Profile, error) {
+	profilesDir := filepath.Join(workDir, defaultProfilesDir)
+	loaded, err := profile.LoadDir(profilesDir)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]*profile.Profile{}
+	for _, p := range loaded {
+		byID[p.ID] = p
+	}
+	selected := make([]*profile.Profile, 0, len(ids))
+	for _, id := range ids {
+		p, ok := byID[id]
+		if !ok {
+			return nil, fmt.Errorf("profile %q not found under %s", id, profilesDir)
+		}
+		selected = append(selected, p)
+	}
+	return selected, nil
+}
+
+func splitCSV(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) string {
+	return filepath.Join(outDir, "cells", safeMatrixSegment(harness), safeMatrixSegment(profileID), fmt.Sprintf("rep-%03d", rep), safeMatrixSegment(taskID))
+}
+
+func safeMatrixSegment(s string) string {
+	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_")
+	return replacer.Replace(s)
+}
+
+func matrixAdapterModule(harness string) string {
+	return "scripts.benchmark.harness_adapters." + strings.TrimSuffix(moduleFileName(harness), ".py")
+}
+
+func moduleFileName(harness string) string {
+	return strings.ReplaceAll(harness, "-", "_") + ".py"
+}
+
+func matrixPrompt(task termbenchSubsetEntry) string {
+	return fmt.Sprintf("Complete TerminalBench task %s.", task.ID)
+}
+
+func matrixRunKey(r matrixRunReport) string {
+	return fmt.Sprintf("%s\x00%s\x00%06d\x00%s", r.Harness, r.ProfileID, r.Rep, r.TaskID)
+}
+
+func shouldSkipMatrixReport(finalStatus string, resume, retryBudgetHalted bool) bool {
+	if !resume {
+		return false
+	}
+	if retryBudgetHalted && finalStatus == "budget_halted" {
+		return false
+	}
+	switch finalStatus {
+	case "graded_pass", "graded_fail", "install_fail_permanent", "budget_halted":
+		return true
+	default:
+		return false
+	}
+}
+
+func loadExistingMatrixReport(path string) (matrixRunReport, bool, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a runner-owned report path
+	if errors.Is(err, os.ErrNotExist) {
+		return matrixRunReport{}, false, nil
+	}
+	if err != nil {
+		return matrixRunReport{}, false, fmt.Errorf("read existing report %s: %w", path, err)
+	}
+	var report matrixRunReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return matrixRunReport{}, false, fmt.Errorf("parse existing report %s: %w", path, err)
+	}
+	return report, true, nil
+}
+
+func acquireMatrixLock(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return nil, err
+	}
+	lock := matrixLock{PID: os.Getpid(), StartedAt: time.Now().UTC()}
+	raw, _ := json.Marshal(lock)
+	for attempts := 0; attempts < 2; attempts++ {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			if _, werr := f.Write(raw); werr != nil {
+				_ = f.Close()
+				_ = os.Remove(path)
+				return nil, werr
+			}
+			if err := f.Close(); err != nil {
+				_ = os.Remove(path)
+				return nil, err
+			}
+			return func() { _ = os.Remove(path) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+		existing, readErr := readMatrixLock(path)
+		if readErr == nil && !processAlive(existing.PID) {
+			if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				return nil, fmt.Errorf("remove stale lock %s: %w", path, removeErr)
+			}
+			continue
+		}
+		pid := "unknown"
+		if readErr == nil && existing.PID > 0 {
+			pid = strconv.Itoa(existing.PID)
+		}
+		return nil, fmt.Errorf("matrix tuple locked by pid %s: %s", pid, path)
+	}
+	return nil, fmt.Errorf("could not acquire matrix tuple lock: %s", path)
+}
+
+func readMatrixLock(path string) (matrixLock, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a runner-owned lock path
+	if err != nil {
+		return matrixLock{}, err
+	}
+	var lock matrixLock
+	if err := json.Unmarshal(data, &lock); err != nil {
+		return matrixLock{}, err
+	}
+	return lock, nil
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+func writeJSONAtomic(path string, value any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func adapterProfileMapping(p *profile.Profile) map[string]any {
+	return map[string]any{
+		"id": p.ID,
+		"provider": map[string]any{
+			"type":        string(p.Provider.Type),
+			"model":       p.Provider.Model,
+			"base_url":    p.Provider.BaseURL,
+			"api_key_env": p.Provider.APIKeyEnv,
+		},
+		"sampling": map[string]any{
+			"temperature": p.Sampling.Temperature,
+			"reasoning":   p.Sampling.Reasoning,
+		},
+		"limits": map[string]any{
+			"max_output_tokens": p.Limits.MaxOutputTokens,
+			"context_tokens":    p.Limits.ContextTokens,
+		},
+	}
+}
+
+func applyTelemetry(report *matrixRunReport, telemetry map[string]any) {
+	report.ProcessOutcome = stringField(telemetry, "process_outcome")
+	report.GradingOutcome = stringField(telemetry, "grading_outcome")
+	report.Retriable = boolField(telemetry, "retriable")
+	report.Reward = intPointerField(telemetry, "reward")
+	report.Turns = intPointerField(telemetry, "turns")
+	report.ToolCalls = intPointerField(telemetry, "tool_calls")
+	report.ToolCallErrors = intPointerField(telemetry, "tool_call_errors")
+	report.InputTokens = intPointerField(telemetry, "input_tokens")
+	report.OutputTokens = intPointerField(telemetry, "output_tokens")
+	report.CachedInputTokens = intPointerField(telemetry, "cached_input_tokens")
+	report.RetriedInputTokens = intPointerField(telemetry, "retried_input_tokens")
+	report.WallSeconds = floatPointerField(telemetry, "wall_seconds")
+}
+
+func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {
+	switch processOutcome {
+	case "budget_halted":
+		return "budget_halted"
+	case "install_failed":
+		if retriable {
+			return "install_fail_transient"
+		}
+		return "install_fail_permanent"
+	case "auth_fail", "provider_refusal", "malformed_command", "verifier_fail":
+		return processOutcome
+	}
+	if gradingOutcome == "graded" && reward != nil {
+		if *reward == 1 {
+			return "graded_pass"
+		}
+		return "graded_fail"
+	}
+	if processOutcome == "completed" && gradingOutcome == "ungraded" {
+		return "ran"
+	}
+	if processOutcome != "" {
+		return processOutcome
+	}
+	return "harness_crash"
+}
+
+func matrixCostUSD(p *profile.Profile, report matrixRunReport) float64 {
+	input := intValue(report.InputTokens)
+	output := intValue(report.OutputTokens)
+	cached := intValue(report.CachedInputTokens)
+	return (float64(input)*p.Pricing.InputUSDPerMTok +
+		float64(output)*p.Pricing.OutputUSDPerMTok +
+		float64(cached)*p.Pricing.CachedInputUSDPerMTok) / 1_000_000
+}
+
+func summarizeMatrixCells(runs []matrixRunReport) []matrixCell {
+	type acc struct {
+		cell          matrixCell
+		rewards       []float64
+		cost          float64
+		inputTokens   int
+		outputTokens  int
+		cachedTokens  int
+		retriedTokens int
+	}
+	byKey := map[string]*acc{}
+	for _, run := range runs {
+		key := run.Harness + "\x00" + run.ProfileID
+		a := byKey[key]
+		if a == nil {
+			a = &acc{cell: matrixCell{Harness: run.Harness, ProfileID: run.ProfileID}}
+			byKey[key] = a
+		}
+		a.cell.NRuns++
+		if run.Reward != nil {
+			a.cell.NReported++
+			a.rewards = append(a.rewards, float64(*run.Reward))
+		}
+		a.cost += run.CostUSD
+		a.inputTokens += intValue(run.InputTokens)
+		a.outputTokens += intValue(run.OutputTokens)
+		a.cachedTokens += intValue(run.CachedInputTokens)
+		a.retriedTokens += intValue(run.RetriedInputTokens)
+	}
+	cells := make([]matrixCell, 0, len(byKey))
+	for _, a := range byKey {
+		a.cell.CostUSD = a.cost
+		a.cell.InputTokens = a.inputTokens
+		a.cell.OutputTokens = a.outputTokens
+		a.cell.CachedTokens = a.cachedTokens
+		a.cell.RetriedTokens = a.retriedTokens
+		if len(a.rewards) > 0 {
+			mean := mean(a.rewards)
+			sd := sampleSD(a.rewards, mean)
+			a.cell.MeanReward = &mean
+			a.cell.SDReward = &sd
+		}
+		cells = append(cells, a.cell)
+	}
+	sort.Slice(cells, func(i, j int) bool {
+		if cells[i].Harness == cells[j].Harness {
+			return cells[i].ProfileID < cells[j].ProfileID
+		}
+		return cells[i].Harness < cells[j].Harness
+	})
+	return cells
+}
+
+func mean(values []float64) float64 {
+	var sum float64
+	for _, v := range values {
+		sum += v
+	}
+	return sum / float64(len(values))
+}
+
+func sampleSD(values []float64, mean float64) float64 {
+	if len(values) < 2 {
+		return 0
+	}
+	var sum float64
+	for _, v := range values {
+		d := v - mean
+		sum += d * d
+	}
+	return math.Sqrt(sum / float64(len(values)-1))
+}
+
+func intValue(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func stringField(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func boolField(m map[string]any, key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
+}
+
+func intPointerField(m map[string]any, key string) *int {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil
+	}
+	switch n := v.(type) {
+	case float64:
+		out := int(n)
+		return &out
+	case int:
+		out := n
+		return &out
+	default:
+		return nil
+	}
+}
+
+func floatPointerField(m map[string]any, key string) *float64 {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil
+	}
+	switch n := v.(type) {
+	case float64:
+		out := n
+		return &out
+	case int:
+		out := float64(n)
+		return &out
+	default:
+		return nil
+	}
+}
+
+func profilePricingSource(p *profile.Profile) string {
+	data, err := os.ReadFile(p.Path) // #nosec G304 -- profile path has already been loaded and validated
+	if err != nil {
+		return p.Path
+	}
+	sum := sha256.Sum256(data)
+	return p.Path + "#sha256=" + hex.EncodeToString(sum[:])
+}

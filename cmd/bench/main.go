@@ -29,6 +29,8 @@ func run(args []string) int {
 		return cmdReport(args[1:])
 	case "profiles":
 		return cmdProfiles(args[1:])
+	case "matrix":
+		return cmdMatrix(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -51,6 +53,7 @@ Commands:
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
+  matrix     Run the SD-010 harness/profile/task matrix
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())
