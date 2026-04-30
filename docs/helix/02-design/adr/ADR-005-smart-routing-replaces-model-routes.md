@@ -32,14 +32,120 @@ The shape we want: providers are transport, the catalog is policy, the routing e
 
 Replace the `model_routes`-driven resolution surface with deterministic smart routing.
 
+### 2026-04-30 clarification: profile-driven candidate inventory
+
+This ADR's original wording was too easy to implement as "profile resolves to
+one model, then score providers for that one model." That is not the intended
+router. A profile is a policy bundle that tells the service where to start in
+the model-selection tree, which placements are allowed, and which score weights
+matter most. It is not a concrete model alias.
+
+The service MUST build a complete candidate inventory before choosing:
+
+1. **Provider/harness inventory** — enumerate every available execution surface:
+   prepaid subscription harnesses (`claude`, `codex`, `gemini` when quota
+   evidence says usable), native provider endpoints (`lmstudio`, `omlx`,
+   `ollama`, OpenRouter/OpenAI-compatible endpoints), and test harnesses only
+   when explicitly requested.
+2. **Model inventory** — ask each surface what concrete models it can serve.
+   Live `/models` or harness discovery output wins; configured provider
+   defaults are fallback hints, not the whole inventory.
+3. **Catalog join** — match discovered concrete models to catalog entries.
+   Catalog metadata supplies tier, family, context window, reasoning support,
+   tool support, quality benchmarks, deprecation status, and list price.
+4. **Usage/cost join** — attach live usage/quota signals where the surface can
+   provide them. Prepaid harnesses expose quota remaining and reset time; paid
+   metered providers expose static or live cost; local/free providers expose
+   zero marginal cost plus measured latency/reliability when known.
+5. **Inspectable output** — expose this joined inventory through a public CLI
+   surface (`ddx agent available-models --json`, or an equivalent
+   `ddx agent models --available --json`) and the service `ListModels` API.
+   Operators must be able to see the same candidate table the router scores:
+   harness, provider, endpoint, model, tier, family, placement, cost class,
+   marginal cost, quota/reset, context, tool support, reasoning support,
+   health, recent latency, recent success rate, and filter reasons.
+
+Profiles then filter and weight that inventory:
+
+| Profile | Catalog floor | Placement policy | Primary weights |
+|---|---:|---|---|
+| `local`, `offline`, `air-gapped` | `code-economy` | local/free only | cost, availability, latency |
+| `cheap` | `code-economy` | local/free first; prepaid/cheap metered fallback | cost, availability, reliability |
+| `fast` | `code-medium` | local/free or prepaid, whichever is low-latency and capable | latency, reliability, cost |
+| `standard` | `code-medium` | local/free first when capable; prepaid fallback | reliability, cost, latency |
+| `smart` | `code-high` | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or explicitly cheaper for equivalent quality | capability, reliability, quota, latency |
+
+The "catalog floor" is a minimum quality tier, not a single target model. For
+example, `smart` filters out models below `code-high` and should normally rank
+current frontier Opus/GPT-class models above older or economy models. `cheap`
+starts at `code-economy` and may select a strong local model when it is live,
+tool-capable, and cheap to run.
+
+Selection is a transparent utility calculation, not a hidden preference:
+
+```
+score = profile_weighted_capability
+      + profile_weighted_reliability
+      + profile_weighted_latency
+      + placement_bonus
+      + quota_bonus
+      - marginal_cost_penalty
+      - cooldown_penalty
+      - stale_signal_penalty
+```
+
+Prepaid quota changes the marginal-cost term. If Claude Code reports usable
+Opus quota with a reset in five minutes, `smart` may rank Opus first because
+the effective marginal cost is near zero and the quality score is high. If the
+same quota is exhausted, stale, or near a long reset horizon, the quota bonus
+disappears and cost/availability penalties apply. Local LM Studio/oMLX/Ollama
+providers are treated as free marginal cost but still compete on capability,
+tool support, context, latency, and recent success.
+
+Provider placement is candidate-level. The native `agent` harness is not
+itself "local" or "subscription"; its child provider endpoints are. A single
+native harness may contain local oMLX, local LM Studio, and paid OpenRouter
+providers, and profile filtering must operate on those provider candidates.
+
+Failover uses the same ordered candidate trace and never escapes hard caller
+constraints. `Execute` tries the best candidate first, records the attempt,
+then tries the next eligible candidate on transient provider/harness failures
+only when that next candidate still satisfies the requested harness, provider,
+and exact-model constraints. It must not fail over deterministic request errors
+such as invalid prompt envelopes, malformed tool schemas, unsupported explicit
+pins, or configuration parse failures. Provider-specific authentication or
+quota failures are transient for that candidate and may fail over to another
+endpoint/provider only when the caller did not hard-constrain that axis; global
+missing configuration is not.
+
 ### 1. Auto-selection rules
 
-`Execute` auto-fills the route only when the caller pinned nothing (`Profile`, `Model`, `ModelRef`, `Provider` all empty). Explicit pins always win — no heuristic overrides them. Default profile is `smart`.
+`Execute` auto-fills only the axes the caller left unconstrained. A `Profile`
+is broad routing policy. `Harness`, `Provider`, and exact model identity are
+hard constraints:
+
+- `Harness=claude` means only the Claude harness may be used.
+- `Provider=lmstudio` means only LM Studio providers/endpoints may be used.
+- `Model=qwen-3.6-27b` means only that model, including provider-native aliases
+  that fuzzy-match the same catalog model, may be used. The router may optimize
+  provider/endpoint choice inside that model constraint, but it must not select
+  a different model such as GPT-5 mini.
+
+A `ModelRef` is interpreted by catalog type: refs that resolve to a concrete
+model entry are exact model constraints; refs that resolve to a target/profile
+(`cheap`, `standard`, `smart`, `code-medium`, etc.) expand to that target's
+candidate models. If a constrained request cannot be satisfied, routing fails
+with a detailed candidate/error trace instead of broadening the constraint.
+
+Default profile is `smart` when no profile/model intent is supplied.
 
 Auto-selection signals are deterministic and already available:
 
 - `EstimatedPromptTokens` — prompt size in tokens. Used to filter candidates whose context window cannot hold the prompt.
-- `RequiresTools` — whether the request enables tool calls. Used to filter providers/types whose `SupportsTools()` is false.
+- `RequiresTools` — whether the request requires tool calls. It is explicit
+  caller intent; automatic derivation is allowed only when the request surface
+  has unambiguously enabled tool execution. Text-only requests do not become
+  tool-requiring merely because a harness can use tools.
 - `Reasoning` — caller's reasoning request. Used to filter providers whose support level is below the request.
 
 These existed in `internal/routing.Request` already (`internal/routing/engine.go:15`); the gap is that public `RouteRequest`/`ServiceExecuteRequest` did not surface them, so service-side smart routing was blind. ADR adds them to the public surface (see CONTRACT-003 update).
@@ -50,10 +156,25 @@ No prose-heuristic complexity classifier. Token count plus `RequiresTools` is th
 
 Per request:
 
-1. **Build the candidate set** = every catalog `(provider, model)` whose tier ≥ caller's profile target and whose provider is configured.
-2. **Filter by liveness** via `HealthCheck`. Drop providers whose latest probe failed. If the filter empties the set, escalate the tier ceiling once (e.g. `code-medium` → `code-high`) and retry. If escalation also empties the set, surface a precise "no live provider for tier ≥ X" error — not "tiers exhausted."
-3. **Filter by capability**: drop candidates whose context window < `EstimatedPromptTokens`, whose `SupportsTools()` is false when `RequiresTools` is true, or whose reasoning support is below the request.
-4. **Score each survivor** using the existing engine scoring (`internal/routing/score.go`): quality score from catalog/benchmark, cost penalty (with subscription quota ramp already implemented at `service_routing.go:593`), latency penalty from per-(provider,model) success/latency stats, recent-success bonus.
+1. **Build the candidate set** = every available `(harness, provider,
+   endpoint, model)` joined with the catalog and live provider/harness signals,
+   then apply hard caller constraints before scoring. The requested profile's
+   catalog floor filters out models below the minimum tier; it does not
+   collapse the set to one primary model unless the caller supplied an exact
+   model constraint.
+2. **Filter by liveness** via `HealthCheck` and live model discovery. Drop
+   endpoints whose latest probe failed or which do not advertise the candidate
+   model. If the filter empties the set, escalate the catalog floor only for
+   profiles whose policy allows escalation. Local-only profiles never escalate
+   into subscription/cloud placement.
+3. **Filter by capability**: drop candidates whose context window <
+   `EstimatedPromptTokens`, whose `SupportsTools()` is false when
+   `RequiresTools` is true, whose reasoning support is below the request, or
+   whose catalog tier/family is below the profile floor.
+4. **Score each survivor** using explicit score components: catalog quality,
+   recent success rate, observed latency, marginal cost, quota/reset state,
+   placement preference, and cooldown/staleness penalties. Candidate trace
+   output must expose these components.
 5. **Dispatch top-1**, return the full ranked candidate trace in the routing decision event so callers can see why candidates 2..N lost.
 6. **On failure rotate** within the same tier; only escalate the tier when the same-tier set is exhausted. Record outcome to update per-(provider,model) stats. **Replaces the per-tier trailing-window adaptive min-tier** (which was too coarse — locked the cheap tier out forever after 17 failed attempts because no cheap attempts could refresh the signal).
 
@@ -61,13 +182,25 @@ Per request:
 
 Steps 1–6 above describe the user-visible flow. The implementation collapses them into the engine's two phases:
 
-**In `routing.Resolve` (`internal/routing/engine.go`):** build candidate set → apply inline gates (liveness via provider cooldown, capability via `EstimatedPromptTokens` / `RequiresTools` / `Reasoning`, subscription gate via `SubscriptionOK`, harness allowlist) → score eligible candidates with cost, latency, capability, and quota signals (subscription quota above the warning threshold applies a **score penalty**, not a cost-amount mutation) → rank and tie-break by cost.
+**In `routing.Resolve` (`internal/routing/engine.go`):** consume a fully joined
+candidate inventory → apply inline gates (liveness via provider/endpoint
+cooldown, capability via `EstimatedPromptTokens` / `RequiresTools` /
+`Reasoning`, placement policy, subscription quota, catalog tier floor, harness
+allowlist) → score eligible candidates with cost, latency, capability,
+reliability, placement, and quota signals → rank and tie-break by cost and
+latency.
 
 **In `service.ResolveRoute` (`service_routing.go`):** wrap the engine with profile-tier escalation when the engine returns `ErrNoLiveProvider`. Catalog tier filtering and profile ceiling enforcement happen in the engine's inline gates as part of candidate construction; cross-tier escalation lives at the service layer because it loops `routing.Resolve` over successive ladder profiles.
 
 #### Escalation ladder
 
-When same-tier candidates are exhausted (all filtered or all scored ineligible), `service.ResolveRoute` walks the profile tier ladder defined by the `routing.ProfileEscalationLadder` constant (`internal/routing/engine.go`). The ladder is `cheap → standard → smart` and is **one-way upward only** — escalation past `smart` returns `ErrNoLiveProvider` with no fallback down. Profiles not present in this ladder (custom profiles, `local`, `offline`, `air-gapped`) do not escalate. The ladder is not catalog-driven in this release.
+When same-tier candidates are exhausted (all filtered or all scored
+ineligible), `service.ResolveRoute` walks the profile escalation chain declared
+by the profile policy. Built-in default: `cheap → standard → smart`.
+Escalation is **one-way upward only**. Profiles with local-only placement
+(`local`, `offline`, `air-gapped`) do not escalate into subscription/cloud.
+Custom profiles escalate only when their catalog profile or future policy block
+declares a next profile; absence of that declaration means no escalation.
 
 ### 3. Per-(provider, model) success/latency
 

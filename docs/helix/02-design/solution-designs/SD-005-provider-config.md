@@ -72,6 +72,7 @@ model_catalog:
 providers:
   vidar:
     type: lmstudio
+    placement: local
     base_url: http://vidar:1234/v1
     api_key: lmstudio
     reasoning: off
@@ -88,6 +89,7 @@ providers:
 
   openrouter:
     type: openrouter
+    placement: metered
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
     headers:
@@ -100,6 +102,7 @@ providers:
 
   vidar-omlx:
     type: omlx
+    placement: local
     base_url: http://vidar:1235/v1
     model: Qwen3.5-27B-4bit
     reasoning: off
@@ -166,6 +169,7 @@ Per-provider optional fields (in addition to `type`, `base_url`, `api_key`, `hea
 | Field | Type | Description |
 |---|---|---|
 | `reasoning` | scalar string/int | Single public reasoning control: `auto`, `off`, `low`, `medium`, `high`, supported extended values such as `minimal`, `xhigh` / `x-high`, and `max`, or numeric values such as `0`, `2048`, and `8192` |
+| `placement` | enum | Optional override for routing placement: `local`, `prepaid`, `metered`, or `test`. Defaults from provider/harness type. Used for profile filtering and cost policy. |
 | `max_tokens` | int | Max output tokens per turn; `0` = use provider default |
 | `context_window` | int | Explicit context window override; `0` = attempt live discovery |
 
@@ -218,33 +222,117 @@ values above high such as `xhigh`, `x-high`, or `max`.
 Per request, the service:
 
 1. Loads provider config and the agent model catalog.
-2. If any of `--provider`, `--model`, `--model-ref`, or `--profile` is set,
-   honors the explicit pin. `--provider` builds that provider directly;
-   `--model` resolves the model name through the catalog; `--model-ref` is a
-   catalog alias (`code-medium`, `code-high`, etc.); `--profile` selects a
-   named routing policy bundle (`cheap`, `fast`, `smart`).
-3. Otherwise (caller pinned nothing), runs smart routing:
-   1. Builds the candidate set = every catalog `(provider, model)` whose tier
-      ≥ the profile's target and whose provider is configured.
-   2. Filters by liveness (`HealthCheck`); escalates the tier ceiling once if
-      the filter empties the set; surfaces a clear "no live provider" error
-      when truly empty.
-   3. Filters by capability: drops candidates whose context window <
-      `EstimatedPromptTokens`, whose `SupportsTools()` is false when
-      `RequiresTools` is true, or whose reasoning support is below the
-      request.
-   4. Scores survivors using the existing routing engine (quality + cost
-      penalty including subscription quota ramp + latency penalty +
-      recent-success bonus, all keyed per `(provider, model)`).
-   5. Dispatches top-1; on failure rotates within tier; only escalates the
-      tier when the same-tier set is exhausted.
-4. Falls back to `default:` provider as the last resort if nothing was
-   pinned, no profile resolved, and the catalog yielded no candidates.
-5. Builds exactly one provider with one concrete model string and dispatches.
+2. Builds an available-model inventory:
+   1. Enumerates every configured harness, provider, endpoint, and discovered
+      concrete model.
+   2. Joins each concrete model to the model catalog. Matched entries provide
+      tier, family, status, context window, reasoning capability, tool support,
+      list price, and benchmark quality. Unknown models remain inspectable but
+      are not eligible for automatic profile routing unless explicitly pinned.
+   3. Joins live operational signals: provider health, endpoint cooldown,
+      recent success rate, observed latency, prepaid quota remaining/reset
+      time, and known marginal cost.
+3. Applies caller intent:
+   - `--profile` selects a policy bundle. It is not a hard pin. Built-ins:
+     `local`, `offline`, `air-gapped`, `cheap`, `fast`, `standard`, `smart`.
+   - `--model-ref` is interpreted by catalog kind. A ref to a concrete model
+     entry is an exact model constraint. A ref to a target/profile/alias such
+     as `cheap`, `standard`, `smart`, or `code-medium` expands to that target's
+     candidate models.
+   - `--model` is an exact concrete model constraint. If the caller asks for
+     `qwen-3.6-27b`, the router may choose among providers/endpoints that serve
+     that model, but it MUST NOT substitute GPT, Claude, Gemini, or any other
+     different model.
+   - `--provider` is a hard provider constraint. `--provider lmstudio` means
+     only configured LM Studio provider entries/endpoints are considered;
+     `--provider openrouter` means only OpenRouter is considered.
+   - `--harness` is a hard harness constraint. `--harness codex` means only
+     Codex is considered.
+   - `--harness + --provider + --model` is concrete and bypasses scoring after
+     validation, except for multiple endpoints under the same provider that can
+     satisfy the same concrete model.
+4. Filters candidates:
+   0. Hard constraints remove all candidates outside requested harness,
+      provider, and exact-model axes. These constraints are never relaxed by
+      profile scoring or failover.
+   1. Profile catalog floor removes models below the profile minimum tier.
+   2. Placement policy removes disallowed placements. Local-only profiles never
+      try prepaid or metered providers.
+   3. Liveness/model-discovery removes endpoints that are down or do not serve
+      the candidate model.
+   4. Capability removes candidates with too-small context windows, missing
+      tool support for `RequiresTools`, unsupported explicit reasoning, or
+      stale/deprecated catalog status when not explicitly allowed.
+5. Scores survivors with explicit components:
+
+   ```
+   score = profile_weighted_capability
+         + profile_weighted_reliability
+         + profile_weighted_latency
+         + placement_bonus
+         + quota_bonus
+         - marginal_cost_penalty
+         - cooldown_penalty
+         - stale_signal_penalty
+   ```
+
+6. Dispatches the top candidate. On transient provider/harness failures, the
+   service records the attempt and tries the next eligible candidate in the
+   ranked trace, but only within the caller's hard constraints. It does not
+   fail over deterministic caller/config errors.
+7. Falls back to `default:` provider only when no routing intent was supplied
+   and the profile/catalog path cannot produce a candidate.
 
 The full ranked candidate trace and per-candidate score components are
 emitted as part of the routing-decision event (CONTRACT-003) so operators can
 explain why candidate 2 lost via `route-status`, not by reading config.
+
+### Available Model Inventory
+
+The service exposes the joined inventory through `DdxAgent.ListModels`. The CLI
+MUST expose an operator-facing equivalent, named either
+`ddx agent available-models` or `ddx agent models --available` before this
+design is implemented. JSON output is the contract; text output is a rendering.
+
+Each row contains:
+
+- identity: harness, provider, endpoint name/base URL, model ID, catalog ID
+- policy: profile/tier eligibility, family, placement, deprecation status
+- capability: context window, tool support, reasoning support, streaming and
+  structured-output support when known
+- economics: placement (`local`, `prepaid`, `metered`, `test`), marginal cost,
+  cost source, prepaid quota remaining/reset time
+- operations: health, cooldown, recent success rate, recent latency
+- routing: profile filter reasons and score components for a supplied profile
+
+This surface is the debugging contract for routing. If `route-status` says a
+candidate lost, `available-models --profile <name> --json` must show the raw
+facts that caused the loss.
+
+### Built-In Profile Policies
+
+| Profile | Minimum catalog tier | Placement policy | Selection intent |
+|---|---:|---|---|
+| `local`, `offline`, `air-gapped` | `code-economy` | `local` only | Use free local models; never spend prepaid or metered quota. |
+| `cheap` | `code-economy` | `local` first, then prepaid/cheap metered fallback | Minimize marginal cost while preserving enough capability for coding tasks. |
+| `fast` | `code-medium` | local or prepaid | Minimize latency among capable models. |
+| `standard` | `code-medium` | local/free first, prepaid fallback | Balanced default for routine implementation and review work. |
+| `smart` | `code-high` | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or no better than local | Maximize result quality within available quota and reasonable latency. |
+
+`smart` must prefer current frontier Opus/GPT-class models when the request is
+unconstrained and quota/cost signals make them practical. Example: if Claude
+Code reports usable Opus 4.7 quota and a reset in five minutes, the effective
+marginal cost is near zero and Opus should rank above weaker local models for
+`smart`. If that quota is exhausted, stale, or far from reset, prepaid bonus is
+removed and the router may choose a capable local or metered fallback. None of
+this overrides hard constraints: `--model qwen-3.6-27b --profile smart` still
+means "choose the best available Qwen 3.6 27B route," not "choose a frontier
+model."
+
+Custom profiles use catalog `profiles.<name>.target` as the minimum tier and
+may add placement/weight metadata in a future manifest extension. Until that
+extension lands, custom profiles inherit `standard` weights unless their
+provider preference is local-only or subscription-only.
 
 ## Key Design Decisions
 
@@ -301,30 +389,40 @@ SD-003. Model policy uses `model_ref`, `alias`, `profile`, or `catalog`, never
 `preset`.
 
 **D4: Smart routing replaces `model_routes`.** Per ADR-005, the service
-combines catalog (tier membership, cost, context, capability), provider
-config (transport), and live signals (liveness, per-(provider,model) success
-and latency, subscription quota) to pick the best candidate per request.
-Users do not author per-tier candidate lists. `model_routes:` config is
-deprecated for one release (parsed with a warning), then rejected outright.
+combines catalog tier membership, provider/harness model inventory, placement,
+cost, context, capability, liveness, usage/quota, and recent reliability to
+pick the best candidate per request. Users do not author per-tier candidate
+lists. `model_routes:` config is deprecated for one release (parsed with a
+warning), then rejected outright.
 
-**D5: Auto-selection inputs are deterministic.** The service auto-fills the
-route only when the caller pinned nothing. Auto-selection signals are
-`EstimatedPromptTokens` (filter by context window), `RequiresTools` (filter
-by `SupportsTools()`), and `Reasoning` (filter by reasoning support). No
-prose-heuristic complexity classifier; explicit pins always win.
+**D5: Profiles are routing intent; model/provider/harness are constraints.**
+`--profile` selects the model-selection policy and minimum catalog floor.
+`--model-ref` expands only when it names a catalog target/profile; when it
+names a concrete model entry it is exact. `--model`, `--provider`, and
+`--harness` are hard constraints. Routing may optimize cost and availability
+inside those constraints but must fail with a detailed candidate trace when
+they cannot be met.
 
-**D6: Passive availability with same-tier rotation, then escalation.** The
-routing engine ranks candidates with the existing scoring (quality − λ_cost ·
-cost − λ_lat · p50 + recent_success_bonus). On dispatch failure, the engine
-rotates within the same tier first; only escalates the tier when the
-same-tier set is exhausted. Per-(provider,model) success/latency replaces
-the per-tier adaptive min-tier window — one bad model no longer locks out
-its whole tier (in-memory + TTL this round; persistence deferred).
+**D6: Auto-selection inputs are deterministic.** Auto-selection signals are
+`EstimatedPromptTokens` (filter by context window), `RequiresTools` (filter by
+tool support), and `Reasoning` (filter by reasoning support). No prose
+heuristic complexity classifier. `RequiresTools` is explicit caller intent, or
+derived only when a request surface has unambiguously enabled tool execution.
 
-**D7: Explicit pins remain supported.** `--provider`, `--model`, `--model-ref`,
-and `--profile` remain valid for exact control. They override auto-selection
-unconditionally; the routing engine does not second-guess explicit caller
-intent.
+**D7: Passive availability with same-tier rotation, then escalation.** The
+routing engine ranks candidates with explicit components. On dispatch failure,
+the service rotates within the same profile/tier first; only escalates when
+the same-tier set is exhausted and the profile policy allows escalation.
+Per-(provider,model,endpoint) success/latency replaces the per-tier adaptive
+min-tier window — one bad model no longer locks out its whole tier.
+
+**D7A: Placement is provider-candidate metadata.** `agent` as a native harness
+may front local, prepaid, and metered providers. Routing placement filters
+operate on the provider/endpoint candidate, not the harness. Default
+placement: `lmstudio`, `omlx`, and `ollama` are `local`; Claude Code, Codex,
+and Gemini harnesses are `prepaid` when usable quota evidence exists;
+OpenRouter/OpenAI/Anthropic-compatible HTTP providers are `metered` unless
+configured otherwise; virtual/script are `test`.
 
 **D8: Environment variable expansion still applies to values.** `${VAR}` is
 expanded at config load time. No shell evaluation.
