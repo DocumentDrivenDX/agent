@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Demo: ddx-agent reads, edits, and verifies a file change.
+# Demo: fiz reads, edits, and verifies a file change.
 set -euo pipefail
 
 WORK=$(mktemp -d)
@@ -17,7 +17,7 @@ database:
   name: myapp_dev
 YAML
 
-echo "$ ddx-agent -p 'Read config.yaml, change the server port from 8080 to 9090, then verify'"
+echo "$ fiz -p 'Read config.yaml, change the server port from 8080 to 9090, then verify'"
 echo ""
-./ddx-agent -p "Read config.yaml, use the edit tool to change the server port from 8080 to 9090, then read it again to confirm the change was made." \
+./fiz -p "Read config.yaml, use the edit tool to change the server port from 8080 to 9090, then read it again to confirm the change was made." \
   --work-dir "$WORK" 2>&1

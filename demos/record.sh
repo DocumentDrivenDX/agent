@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record all demo reels. Requires ddx-agent binary and asciinema.
+# Record all demo reels. Requires fiz binary and asciinema.
 # Usage: ./demos/record.sh [--lmstudio URL]
 #
 # By default uses FIZEAU_BASE_URL from env or http://localhost:1234/v1.
@@ -8,7 +8,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Ensure ddx-agent is built
+# Ensure fiz is built
 make build
 
 LMSTUDIO_URL="${FIZEAU_BASE_URL:-http://localhost:1234/v1}"
@@ -25,7 +25,7 @@ for script in demos/scripts/demo-*.sh; do
   echo "Recording: $name -> $cast"
   asciinema rec "$cast" \
     --cols 100 --rows 30 \
-    --title "DDX Agent: $name" \
+    --title "Fizeau: $name" \
     --command "bash $script" \
     --overwrite
 done
