@@ -9,9 +9,9 @@ caps from observation rather than from a formula guessed before a run.
    tokens:
 
    ```sh
-   ddx-agent-bench matrix \
+   fiz-bench matrix \
      --subset=scripts/beadbench/external/termbench-subset-canary.json \
-     --harnesses=ddx-agent \
+     --harnesses=fiz \
      --profiles=gpt-5-3-mini \
      --reps=3 \
      --out=benchmark-results/cost-observation-$(date -u +%Y%m%dT%H%M%SZ)
@@ -47,16 +47,16 @@ caps from observation rather than from a formula guessed before a run.
 5. Run the real matrix with both caps:
 
    ```sh
-   ddx-agent-bench matrix \
+   fiz-bench matrix \
      --subset=scripts/beadbench/external/termbench-subset-canary.json \
-     --harnesses=ddx-agent,pi,opencode \
+     --harnesses=fiz,pi,opencode \
      --profiles=gpt-5-3-mini \
      --reps=3 \
      --per-run-budget-usd=<derived per-run cap> \
      --budget-usd=<derived matrix cap> \
      --out=benchmark-results/matrix-$(date -u +%Y%m%dT%H%M%SZ)
 
-   ddx-agent-bench matrix-aggregate benchmark-results/matrix-...
+   fiz-bench matrix-aggregate benchmark-results/matrix-...
    ```
 
    `costs.json` records the caps and every cell's token/cost totals.

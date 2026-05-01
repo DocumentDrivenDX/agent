@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ddx-agent are recorded here.
+All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
