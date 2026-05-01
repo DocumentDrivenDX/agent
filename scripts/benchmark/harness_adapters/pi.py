@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -31,19 +32,21 @@ class Agent(BaseAdapter):
         notes: list[str] = []
 
         provider = profile.provider.type
+        api_key = os.environ.get(profile.provider.api_key_env, "")
         if provider == "openai-compat":
-            provider = "openai-compat"
-            env["PI_OPENAI_COMPAT_BASE_URL"] = profile.provider.base_url
-            env["PI_OPENAI_COMPAT_API_KEY"] = "${" + profile.provider.api_key_env + "}"
+            if "openrouter" in profile.provider.base_url:
+                provider = "openrouter"
+                env["OPENROUTER_API_KEY"] = api_key
+            else:
+                provider = "openai-compat"
+                env["PI_OPENAI_COMPAT_BASE_URL"] = profile.provider.base_url
+                env["PI_OPENAI_COMPAT_API_KEY"] = api_key
         elif provider == "openai":
-            provider = "openai"
-            env["OPENAI_API_KEY"] = "${" + profile.provider.api_key_env + "}"
+            env["OPENAI_API_KEY"] = api_key
         elif provider == "anthropic":
-            provider = "anthropic"
-            env["ANTHROPIC_API_KEY"] = "${" + profile.provider.api_key_env + "}"
+            env["ANTHROPIC_API_KEY"] = api_key
         elif provider == "google":
-            provider = "google"
-            env["GEMINI_API_KEY"] = "${" + profile.provider.api_key_env + "}"
+            env["GEMINI_API_KEY"] = api_key
 
         args.extend(["--provider", provider, "--model", profile.provider.model])
         if profile.sampling.reasoning:

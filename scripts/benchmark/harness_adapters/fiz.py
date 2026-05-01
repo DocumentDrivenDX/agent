@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from typing import Any
 
 from .base import (
@@ -22,20 +24,22 @@ class Agent(BaseAdapter):
         return InstallSpec(["install", "-m", "0755", "${HARBOR_AGENT_ARTIFACT}", "/installed-agent/fiz"])
 
     def apply_profile(self, profile: BenchmarkProfile) -> CommandSpec:
-        env = {
-            "DDX_BENCH_PROVIDER_TYPE": profile.provider.type,
-            "DDX_BENCH_PROVIDER_MODEL": profile.provider.model,
-            "DDX_BENCH_PROVIDER_BASE_URL": profile.provider.base_url,
-            "DDX_BENCH_PROVIDER_API_KEY_ENV": profile.provider.api_key_env,
+        env: dict[str, str] = {
+            "FIZEAU_BASE_URL": profile.provider.base_url,
+            "FIZEAU_MODEL": profile.provider.model,
+            "FIZEAU_API_KEY": os.environ.get(profile.provider.api_key_env, ""),
         }
-        if profile.sampling.reasoning:
-            env["DDX_BENCH_PROVIDER_REASONING"] = profile.sampling.reasoning
+        if "openrouter" in profile.provider.base_url:
+            env["FIZEAU_PROVIDER"] = "openrouter"
+        elif profile.provider.type not in ("openai-compat",):
+            env["FIZEAU_PROVIDER"] = profile.provider.type
         return CommandSpec(argv=[], env=env, stdin=None)
 
     def command(self, profile: BenchmarkProfile, prompt: str, workdir: str | None = None) -> CommandSpec:
         applied = self.apply_profile(profile)
+        binary = shutil.which("fiz") or "/installed-agent/fiz"
         argv = [
-            "/installed-agent/fiz",
+            binary,
             "--json",
             "--preset",
             "benchmark",

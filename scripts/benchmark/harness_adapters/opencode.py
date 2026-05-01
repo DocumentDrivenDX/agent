@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from typing import Any
 
@@ -34,11 +36,12 @@ class Agent(BaseAdapter):
     def apply_profile(self, profile: BenchmarkProfile) -> CommandSpec:
         provider_id = provider_id_for(profile)
         provider_model = f"{provider_id}/{profile.provider.model}"
+        tmp = tempfile.mkdtemp(prefix="opencode-bench-")
         env = {
             "OPENCODE_DISABLE_AUTOUPDATE": "1",
-            "OPENCODE_CONFIG_DIR": "${CELL_TMP}/opencode-config",
-            "OPENCODE_DATA_DIR": "${CELL_TMP}/opencode-data",
-            profile.provider.api_key_env: "${" + profile.provider.api_key_env + "}",
+            "OPENCODE_CONFIG_DIR": f"{tmp}/opencode-config",
+            "OPENCODE_DATA_DIR": f"{tmp}/opencode-data",
+            profile.provider.api_key_env: os.environ.get(profile.provider.api_key_env, ""),
             "OPENCODE_PROVIDER_CONFIG_JSON": json.dumps(
                 provider_config(provider_id, profile),
                 sort_keys=True,
@@ -63,17 +66,13 @@ class Agent(BaseAdapter):
             "--format",
             "json",
             "--pure",
-            "--mdns",
-            "false",
-            "--hostname",
-            "127.0.0.1",
             "--port",
             "0",
         ]
         if workdir:
             argv.extend(["--dir", workdir])
         argv.extend(applied.argv)
-        argv.extend(["--", prompt])
+        argv.append(prompt)
         return CommandSpec(argv=argv, env=applied.env, stdin="", cwd=workdir, notes=applied.notes)
 
     def parse_telemetry(self, stream: str) -> dict[str, Any]:
