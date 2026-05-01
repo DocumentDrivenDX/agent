@@ -3,7 +3,7 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
-## [Unreleased]
+## [v0.9.26] — 2026-05-01
 
 ### Breaking Rename: Fizeau / fiz
 
@@ -40,11 +40,9 @@ Migration checklist:
 - **Config and env compatibility:** none. Users must move config and update
   env vars explicitly. The old config paths and old env prefixes are not
   migrated or loaded as fallbacks.
-- **DDx migration status:** DDx downstream migration is tracked separately by
-  the FZ-060/FZ-061/FZ-064 beads. At this point the Fizeau repository has the
-  new module, package, binary, config, env, release, and updater surfaces, but
-  DDx still needs to file and execute its downstream import bump against the
-  Fizeau pre-release, then pin the final Fizeau release.
+- **DDx migration status:** DDx consumed the Fizeau pre-release in downstream
+  commit `1aaf5a57` and now imports `github.com/DocumentDrivenDX/fizeau`.
+  The final DDx pin to this non-prerelease tag is tracked separately by FZ-064.
 - **Updater behavior:** the supported updater is `fiz update`. It checks
   `DocumentDrivenDX/fizeau` releases and downloads `fiz-<os>-<arch>` assets.
   Existing `ddx-agent update` installations do not bridge to `fiz`, do not
