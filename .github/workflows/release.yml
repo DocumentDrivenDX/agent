@@ -7,7 +7,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  BINARY_NAME: ddx-agent
+  BINARY_NAME: fiz
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           GIT_COMMIT=$(git rev-parse --short HEAD)
           go build -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
-            -o "${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/agent
+            -o "${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/fiz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
