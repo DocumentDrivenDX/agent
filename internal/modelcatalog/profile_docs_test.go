@@ -17,7 +17,7 @@ func TestRoutingLegacyNamesDocPointsToPowerRouting(t *testing.T) {
 		"--model",
 		"--provider",
 		"--harness",
-		"ddx-agent --list-models",
+		"fiz --list-models",
 		"compatibility data",
 		"must not be used for new automation",
 	}

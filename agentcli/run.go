@@ -1,4 +1,4 @@
-// Package agentcli exposes the ddx-agent command runner for binaries and
+// Package agentcli exposes the fiz command runner for binaries and
 // embedding callers that need to invoke the CLI without os.Exit.
 package agentcli
 
@@ -33,7 +33,7 @@ import (
 // samplingProfileNudgeOnce gates the ADR-007 §7 first-use catalog-stale
 // warning: when the resolver reports MissingProfile (the user's installed
 // catalog predates the requested sampling profile), we emit one warning
-// per process pointing at `ddx-agent catalog update`. Test code can swap
+// per process pointing at `fiz catalog update`. Test code can swap
 // the sink via samplingNudgeSink.
 var (
 	samplingProfileNudgeOnce sync.Once
