@@ -116,7 +116,7 @@ func cmdMatrix(args []string) int {
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
 	subset := fs.String("subset", "", "TerminalBench subset manifest (default: scripts/beadbench/external/termbench-subset-canary.json)")
 	profilesCSV := fs.String("profiles", "", "Comma-separated benchmark profile ids")
-	harnessesCSV := fs.String("harnesses", "ddx-agent,pi,opencode", "Comma-separated harness adapter names")
+	harnessesCSV := fs.String("harnesses", "fiz,pi,opencode", "Comma-separated harness adapter names")
 	reps := fs.Int("reps", 3, "Repetitions per harness/profile/task")
 	budgetUSD := fs.Float64("budget-usd", 0, "Matrix budget in USD (0 = no cap)")
 	out := fs.String("out", "", "Output directory (default: benchmark-results/matrix-<timestamp> under work-dir)")
