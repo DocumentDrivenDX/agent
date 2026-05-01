@@ -185,12 +185,10 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 // (internal/routing.Resolve) when under-specified, or accepted verbatim
 // when Harness is set explicitly.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
-	// If Harness is omitted but the engine has enough hints (Profile/ModelRef/
-	// Model/Provider) to disambiguate, route through ResolveRoute.
+	// If Harness is omitted, route through the engine. The engine defaults to
+	// local-first and auto-selects from configured endpoints when no other
+	// constraints are specified — an empty request is valid if providers exist.
 	if req.Harness == "" {
-		if req.Profile == "" && req.ModelRef == "" && req.Model == "" && req.Provider == "" {
-			return nil, fmt.Errorf("routing under-specified: pass at least one of Harness/Profile/ModelRef/Model/Provider, or auto-selection inputs")
-		}
 		return s.resolveExecuteRouteWithEngine(req)
 	}
 	canonical := harnesses.ResolveHarnessAlias(req.Harness)
