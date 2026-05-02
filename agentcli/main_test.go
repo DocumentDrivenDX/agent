@@ -134,7 +134,7 @@ func TestCLI_Subcommands(t *testing.T) {
 		{"log", []string{"log"}, "s"}, // session IDs start with s- or svc-
 		{"replay", []string{"replay"}, "usage:"},
 		{"models", []string{"models"}, ""}, // may succeed or fail
-		{"check", []string{"check"}, "error"},
+		{"check", []string{"check", "--work-dir", t.TempDir()}, "error"},
 		{"providers", []string{"providers"}, "NAME"},
 	}
 
@@ -156,7 +156,7 @@ func TestCLI_Providers_List(t *testing.T) {
 }
 
 func TestCLI_Check_NoConfig(t *testing.T) {
-	out, _ := runAgentCLI(t, "check")
+	out, _ := runAgentCLI(t, "check", "--work-dir", t.TempDir())
 	output := string(out)
 	assert.True(t, strings.Contains(output, "error") || strings.Contains(output, "unknown provider") || strings.Contains(output, "stat"),
 		"Expected error or stat error, got: %s", output)

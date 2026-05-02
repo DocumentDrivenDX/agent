@@ -23,6 +23,9 @@ website/resources/
 # DDx and HELIX runtime artifacts
 .ddx/agent-logs/
 .ddx/config.yaml
+
+# fizeau local provider config (machine-specific, not for commit)
+.fizeau/config.yaml
 .ddx/run-state.json
 .ddx/executions/
 .ddx/.execute-bead-wt-agent-*/
