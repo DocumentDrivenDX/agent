@@ -20,6 +20,25 @@ now install it automatically with `uv tool install harbor`.
 
 ---
 
+## Egress Canary (rig validation, before any new adapter work)
+
+`egress_canary.sh` proves in-container egress to a tool-capable smoke
+provider before spending budget on full benchmarks or building new
+adapters. It targets a single concrete TB-2 task (`fix-git` by default —
+the bead-pinned canary; terminal-bench@2.0 has no `hello-world` task at
+the pinned commit) and accepts an **egress signal** (trajectory.json with
+≥ 1 step) as success. The verifier reward is recorded but is *not* part
+of the gate, since smoke models routinely fail TB-2 tasks.
+
+```bash
+OPENROUTER_API_KEY=sk-or-... ./scripts/benchmark/egress_canary.sh
+```
+
+Output: `benchmark-results/egress-canary-<UTC-TIMESTAMP>/` containing the
+trajectory, reward, a `trial/` symlink, and a `canary.json` summary.
+
+---
+
 ## Smoke Run (adapter validation)
 
 Validates the Harbor adapter works end-to-end on a single task (~2 min).
