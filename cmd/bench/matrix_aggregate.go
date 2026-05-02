@@ -102,7 +102,7 @@ func loadMatrixRunReports(outDir string) ([]matrixRunReport, error) {
 		if d.IsDir() || d.Name() != matrixReportName {
 			return nil
 		}
-		data, err := os.ReadFile(path) // #nosec G304 -- path is found under runner-owned output dir
+		data, err := os.ReadFile(path) // #nosec G304 G122 -- path is found under runner-owned output dir
 		if err != nil {
 			return err
 		}

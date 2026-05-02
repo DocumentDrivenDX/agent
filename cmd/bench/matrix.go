@@ -530,7 +530,7 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opts.harborBin, args...)
+	cmd := exec.CommandContext(ctx, opts.harborBin, args...) // #nosec G204 G702 -- harborBin is a validated binary path from config
 	// Add repo root to PYTHONPATH so harbor_adapters modules resolve.
 	env := os.Environ()
 	pythonPath := opts.repoRoot
@@ -570,7 +570,7 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	entries, _ := os.ReadDir(jobOutDir)
 	for _, e := range entries {
 		rewardFile := filepath.Join(jobOutDir, e.Name(), "verifier", "reward.txt")
-		data, err := os.ReadFile(rewardFile)
+		data, err := os.ReadFile(rewardFile) // #nosec G304 -- rewardFile is under runner-owned output dir
 		if err == nil {
 			val, err := strconv.Atoi(strings.TrimSpace(string(data)))
 			if err == nil {
@@ -656,7 +656,7 @@ print(json.dumps({
 `
 	ctx, cancel := context.WithTimeout(context.Background(), 31*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", "-c", script, module, string(profileJSON), prompt, taskID, workDir)
+	cmd := exec.CommandContext(ctx, "python3", "-c", script, module, string(profileJSON), prompt, taskID, workDir) // #nosec G204 -- python3 is a fixed system binary
 	cmd.Dir = repoRoot
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -771,7 +771,7 @@ func acquireMatrixLock(path string) (func(), error) {
 	lock := matrixLock{PID: os.Getpid(), StartedAt: time.Now().UTC()}
 	raw, _ := json.Marshal(lock)
 	for attempts := 0; attempts < 2; attempts++ {
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- path is the matrix lock file path
 		if err == nil {
 			if _, werr := f.Write(raw); werr != nil {
 				_ = f.Close()

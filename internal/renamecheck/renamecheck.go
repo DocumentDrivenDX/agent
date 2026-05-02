@@ -146,7 +146,7 @@ func Run(opts Options) ([]Finding, error) {
 }
 
 func scanFile(root, rel string) ([]Finding, error) {
-	file, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+	file, err := os.Open(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- root is a validated repo root, rel is a relative path
 	if err != nil {
 		return nil, err
 	}
