@@ -58,7 +58,7 @@ func TestMatrixResumeSkipsTerminalReport(t *testing.T) {
 		t.Fatalf("initial cmdMatrix exit = %d, want 0", code)
 	}
 
-	reportPath := filepath.Join(outDir, "cells", "dumb_script", "noop", "rep-001", "hello-world", matrixReportName)
+	reportPath := filepath.Join(outDir, "cells", "dumb_script", "noop", "rep-001", "fix-git", matrixReportName)
 	before, err := os.Stat(reportPath)
 	if err != nil {
 		t.Fatalf("stat report: %v", err)
@@ -79,7 +79,7 @@ func TestMatrixResumeSkipsTerminalReport(t *testing.T) {
 func TestMatrixLockPreventsDoubleSpend(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
-	lockPath := filepath.Join(outDir, "cells", "noop", "noop", "rep-001", "hello-world", matrixLockName)
+	lockPath := filepath.Join(outDir, "cells", "noop", "noop", "rep-001", "fix-git", matrixLockName)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestMatrixResumeAfterStaleLockMatchesCleanRun(t *testing.T) {
 		t.Fatalf("clean cmdMatrix exit = %d, want 0", code)
 	}
 
-	lockPath := filepath.Join(resumeOut, "cells", "dumb_script", "noop", "rep-001", "hello-world", matrixLockName)
+	lockPath := filepath.Join(resumeOut, "cells", "dumb_script", "noop", "rep-001", "fix-git", matrixLockName)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o750); err != nil {
 		t.Fatal(err)
 	}

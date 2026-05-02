@@ -131,7 +131,7 @@ func TestCLI_Subcommands(t *testing.T) {
 		args    []string
 		matches string
 	}{
-		{"log", []string{"log"}, "s-"}, // session IDs start with s-
+		{"log", []string{"log"}, "s"}, // session IDs start with s- or svc-
 		{"replay", []string{"replay"}, "usage:"},
 		{"models", []string{"models"}, ""}, // may succeed or fail
 		{"check", []string{"check"}, "error"},
@@ -272,8 +272,8 @@ func TestCLI_Models_NoConfig(t *testing.T) {
 func TestCLI_Log_NoArgs(t *testing.T) {
 	out, _ := runAgentCLI(t, "log")
 	output := string(out)
-	// May show sessions (start with s-) or fail
-	assert.True(t, strings.Contains(output, "s-") || strings.Contains(output, "error"),
+	// May show sessions (start with s- or svc-) or fail
+	assert.True(t, strings.Contains(output, "s-") || strings.Contains(output, "svc-") || strings.Contains(output, "error"),
 		"Expected session list or error, got: %s", output)
 }
 

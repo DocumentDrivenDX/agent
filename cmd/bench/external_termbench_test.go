@@ -8,8 +8,9 @@ import (
 // TestLoadTermbenchSubset_Canary verifies the three-task canary manifest
 // parses cleanly through the same loader the matrix runner uses, and that
 // the contract chosen in Step 6 of the harness-matrix plan is preserved:
-// exactly the three task IDs hello-world, log-summary-date-ranges, and
+// exactly the three task IDs fix-git, log-summary-date-ranges, and
 // git-leak-recovery, pinned to the same TB-2 commit as the full subset.
+// (hello-world was replaced with fix-git; it is not present in TB-2.)
 func TestLoadTermbenchSubset_Canary(t *testing.T) {
 	path := filepath.Join("..", "..", "scripts", "beadbench", "external", "termbench-subset-canary.json")
 	subset, err := loadTermbenchSubset(path)
@@ -17,7 +18,7 @@ func TestLoadTermbenchSubset_Canary(t *testing.T) {
 		t.Fatalf("load canary subset: %v", err)
 	}
 
-	wantIDs := []string{"hello-world", "log-summary-date-ranges", "git-leak-recovery"}
+	wantIDs := []string{"fix-git", "log-summary-date-ranges", "git-leak-recovery"}
 	if got := len(subset.Tasks); got != len(wantIDs) {
 		t.Fatalf("canary must contain exactly %d tasks, got %d", len(wantIDs), got)
 	}
