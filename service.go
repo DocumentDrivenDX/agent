@@ -377,6 +377,17 @@ type RouteRequest struct {
 	// ResolveRoute as a public surface can plumb the same opt-out the
 	// Execute path honors.
 	CachePolicy string
+
+	// Role tags the kind of work this call performs (e.g. "implementer",
+	// "reviewer", "decomposer"). Observational only — it does NOT enter the
+	// routing precedence chain. Mirrors ServiceExecuteRequest.Role so
+	// ResolveRoute previews don't diverge from Execute.
+	Role string
+
+	// CorrelationID joins calls that share work context (e.g.
+	// "bead_123:attempt_4"). Observational only — it does NOT enter the
+	// routing precedence chain. Mirrors ServiceExecuteRequest.CorrelationID.
+	CorrelationID string
 }
 
 // Valid CachePolicy values.
@@ -426,6 +437,11 @@ type RouteDecision struct {
 	Model string
 	// Reason summarizes why the selected candidate won.
 	Reason string
+	// Power is the catalog-projected power of the selected Model
+	// (per CONTRACT-003 § Catalog Power Projection). 0 means
+	// unknown/exact-pin-only/no catalog entry. DDx callers read this
+	// to compute next-attempt MinPower without importing catalog code.
+	Power int
 	// Candidates is the full ranked decision trace, including rejected
 	// candidates and their rejection reasons.
 	Candidates []RouteCandidate
@@ -662,6 +678,27 @@ type ServiceExecuteRequest struct {
 	// Metadata is bidirectional: echoed back in every Event AND stamped
 	// onto every line of the session log so external consumers correlate.
 	Metadata map[string]string
+
+	// Role tags the kind of work this call performs (e.g. "implementer",
+	// "reviewer", "decomposer", "summarizer"). Observational: echoed into
+	// the routing_decision and final event Metadata, plus the session-log
+	// header. Per CONTRACT-003 it is NOT part of the selection precedence
+	// chain (Day 1) and does NOT affect routing. Empty means unset.
+	//
+	// Normalization: lowercased, alphanumeric + hyphen only, max 64 chars;
+	// invalid values are rejected pre-dispatch with RoleNormalizationError.
+	Role string
+	// CorrelationID links calls that share work context (e.g.
+	// "bead_123:attempt_4") so reviewer/implementer/retry attempts can be
+	// joined in logs and aggregations. Observational: echoed into
+	// routing_decision and final event Metadata, plus the session-log
+	// header. Per CONTRACT-003 it is NOT part of the selection precedence
+	// chain (Day 1) and does NOT affect routing. Empty means unset.
+	//
+	// Normalization: printable ASCII (no control chars, no whitespace
+	// except hyphen, colon, underscore), max 256 chars; invalid values
+	// are rejected pre-dispatch with CorrelationIDNormalizationError.
+	CorrelationID string
 }
 
 // StallPolicy bounds how long the agent will spin without making progress

@@ -96,6 +96,12 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	if err := ValidatePowerBounds(req.MinPower, req.MaxPower); err != nil {
 		return nil, err
 	}
+	if err := ValidateRole(req.Role); err != nil {
+		return nil, err
+	}
+	if err := ValidateCorrelationID(req.CorrelationID); err != nil {
+		return nil, err
+	}
 
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
@@ -208,11 +214,13 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	if err := validateExplicitHarnessReasoning(canonical, cfg, req.Reasoning); err != nil {
 		return nil, err
 	}
+	resolvedModel := resolveSubprocessModelAlias(canonical, req.Model)
 	return &RouteDecision{
 		Harness:  canonical,
 		Provider: req.Provider,
-		Model:    resolveSubprocessModelAlias(canonical, req.Model),
+		Model:    resolvedModel,
 		Reason:   "explicit",
+		Power:    catalogPowerForModel(serviceRoutingCatalog(), resolvedModel),
 	}, nil
 }
 
@@ -406,8 +414,12 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	}
 
 	// Emit routing_decision start event. Include session_id so callers can
-	// extract it and pass to TailSessionLog.
-	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, meta, ServiceRoutingDecisionData{
+	// extract it and pass to TailSessionLog. Per CONTRACT-003 the
+	// top-level Role + CorrelationID are echoed into routing_decision
+	// event Metadata (top-level wins over caller Metadata for these
+	// reserved keys).
+	routingMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
+	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, ServiceRoutingDecisionData{
 		Harness:    decision.Harness,
 		Provider:   decision.Provider,
 		Endpoint:   decision.Endpoint,
@@ -1389,12 +1401,37 @@ func (p *timeoutProviderInline) Chat(ctx context.Context, messages []agentcore.M
 // public event stream. Every terminal emit path in runExecute funnels
 // through this helper so the session log and the event channel stay in
 // lock-step (CONTRACT-003).
+//
+// finalizeAndEmit also performs the CONTRACT-003 echo of top-level Role
+// and CorrelationID into the final event Metadata (top-level wins over
+// any caller-supplied Metadata entry under the same reserved key) and
+// stamps RoutingActual.Power from the catalog projection of the
+// actually-dispatched Model. When the caller set both top-level
+// Role/CorrelationID and the same reserved Metadata key, a
+// MetadataKeyCollision warning is appended to final.Warnings.
 func finalizeAndEmit(out chan<- ServiceEvent, seq *atomic.Int64, meta map[string]string, req ServiceExecuteRequest, sl *serviceSessionLog, final harnesses.FinalData) {
 	if sl != nil && sl.path != "" {
 		final.SessionLogPath = sl.path
 	}
-	if sl != nil {
-		sl.writeEnd(req, meta, final)
+	// Stamp catalog power onto the actually-dispatched RoutingActual.
+	// final.RoutingActual is set by the caller (one per terminal path);
+	// when nil we leave it nil to avoid synthesizing routing evidence.
+	if final.RoutingActual != nil && final.RoutingActual.Power == 0 {
+		final.RoutingActual.Power = catalogPowerForModel(serviceRoutingCatalog(), final.RoutingActual.Model)
 	}
-	emitFinal(out, seq, meta, final)
+	// Detect reserved metadata-key collisions and append a warning so the
+	// caller learns when their caller-supplied Metadata entries were
+	// overridden by the top-level Role / CorrelationID fields.
+	if collisions := metadataReservedKeyCollisions(req.Metadata, req.Role, req.CorrelationID); len(collisions) > 0 {
+		final.Warnings = append(final.Warnings, harnesses.FinalWarning{
+			Code:    MetadataWarningCodeKeyCollision,
+			Message: metadataKeyCollisionMessage(collisions),
+		})
+	}
+	// Echo Role + CorrelationID onto the final event Metadata.
+	finalMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
+	if sl != nil {
+		sl.writeEnd(req, finalMeta, final)
+	}
+	emitFinal(out, seq, finalMeta, final)
 }

@@ -349,12 +349,46 @@ type ExecuteRequest struct {
     // Reserved cross-tool keys:
     //   produces_artifact — caller-declared artifact path or URI produced by the task
     //   media_type        — MIME/media type for produces_artifact
+    //   role              — alias for top-level Role; top-level wins on collision
+    //   correlation_id    — alias for top-level CorrelationID; top-level wins on collision
     //
     // The service currently treats metadata as an opaque string map and echoes
     // it; these keys are reserved so DDx/HELIX consumers can agree on artifact
     // semantics without parsing model output. Implemented echo path:
     // service.go ExecuteRequest.Metadata plus service_events.go Event.Metadata.
+    //
+    // When the caller sets a non-empty top-level Role or CorrelationID AND
+    // the same reserved key in Metadata, the top-level field wins and a
+    // MetadataKeyCollision warning is emitted on the final event
+    // (ServiceFinalWarning.Code = "metadata_key_collision"). Future versions
+    // may reject duplicate values outright.
     Metadata map[string]string
+
+    // Role tags the kind of work this call performs, e.g. "implementer",
+    // "reviewer", "decomposer", "summarizer". Observational only:
+    // echoed into the routing_decision and final event Metadata, plus the
+    // session-log header. Day 1, Role does NOT enter the selection
+    // precedence chain and does NOT affect routing eligibility. Empty
+    // means unset.
+    //
+    // Normalization: lowercased, alphanumeric and hyphen only, max 64
+    // characters. Invalid values are rejected pre-dispatch with a typed
+    // *RoleNormalizationError (see routing_errors.go / role_correlation.go).
+    Role string
+
+    // CorrelationID joins calls that share work context — for example
+    // "bead_123:attempt_4" — so reviewer + implementer + retry attempts
+    // can be joined in logs and aggregations. Observational only:
+    // echoed into routing_decision and final event Metadata, plus the
+    // session-log header. Day 1, CorrelationID does NOT enter the
+    // selection precedence chain and does NOT affect routing
+    // eligibility. Empty means unset.
+    //
+    // Normalization: printable ASCII only, no control characters, no
+    // whitespace except hyphen / colon / underscore (which are part of
+    // the printable range), max 256 characters. Invalid values are
+    // rejected pre-dispatch with a typed *CorrelationIDNormalizationError.
+    CorrelationID string
 }
 
 type StallPolicy struct {
@@ -396,6 +430,14 @@ viable auto-routable model from discovered inventory.
 
 Auto-selection inputs (`EstimatedPromptTokens`, `RequiresTools`, `Reasoning`)
 apply after hard pins and power bounds. They never override an explicit pin.
+
+`Role` and `CorrelationID` are observational only and do **NOT** enter the
+precedence chain in this contract version. They never affect candidate
+filtering, scoring, or tiebreaking. If a future revision adds routing-affecting
+behavior keyed on either field, this section must be amended at that time so
+the precedence chain documents the new dependency. Today they are echoed into
+the `routing_decision` and final-event `Metadata`, the session-log header, and
+nothing else routing-relevant.
 
 ### Prompt-caching opt-out (`CachePolicy`)
 
@@ -477,6 +519,8 @@ type RouteRequest struct {
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
     CachePolicy           string // "" / "default" / "off"; mirrors ServiceExecuteRequest.CachePolicy
+    Role                  string // observational; mirrors ServiceExecuteRequest.Role for ResolveRoute parity
+    CorrelationID         string // observational; mirrors ServiceExecuteRequest.CorrelationID for ResolveRoute parity
 }
 
 type RouteDecision struct {
@@ -855,6 +899,7 @@ type ServiceUsageTokenCounts struct {
 type ServiceRoutingActual struct {
     Harness, Provider, Model string
     FallbackChainFired []string
+    Power int // catalog-projected power of the actually-dispatched Model; 0 means unknown/exact-pin-only
 }
 
 type ServiceDecodedEvent struct {
@@ -1463,6 +1508,26 @@ contract sentence. agent-de968c76 owns this suite. Minimum statements:
   equaling managed cloud frontier power solely because one benchmark is high.
 - `Execute` dispatches one candidate and returns route evidence; it does not
   retry another candidate inside the same request.
+- `Role` and `CorrelationID` are echoed into `routing_decision` and `final`
+  event `Metadata`.
+- `Role` and `CorrelationID` are echoed into the session-log header (one line
+  per session, on `session.start`).
+- `Role` and `CorrelationID` are NOT echoed into `text_delta` event metadata
+  (per-event bloat avoidance); the existing Metadata echo path on `text_delta`
+  still applies for caller-supplied metadata under non-reserved keys.
+- `Role` and `CorrelationID` never affect eligibility filtering Day 1.
+- Without a `CorrelationID`, routing is unchanged from baseline.
+- `ResolveRoute` and `Execute` observe identical routing policy for the same
+  correlation-aware request (Day 1: both ignore the fields for routing).
+- Invalid `Role` and `CorrelationID` values are rejected pre-dispatch with the
+  typed `*RoleNormalizationError` and `*CorrelationIDNormalizationError`.
+- `ServiceRoutingActual.Power` reflects the catalog-projected power of the
+  actually-dispatched Model.
+- When the caller sets both top-level `Role` and `Metadata["role"]`, the
+  top-level field wins and a `MetadataKeyCollision` warning
+  (`ServiceFinalWarning.Code = "metadata_key_collision"`) is emitted on the
+  final event. Same rule applies for `CorrelationID` /
+  `Metadata["correlation_id"]`.
 
 ## Harness Integration Testing
 

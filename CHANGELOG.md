@@ -3,6 +3,36 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.10.0] — 2026-05-02
+
+### Added — CONTRACT-003 observability fields
+
+- `ServiceExecuteRequest` and `RouteRequest` gain `Role` and `CorrelationID`
+  string fields. Both are observational: echoed into `routing_decision` and
+  `final` event `Metadata` plus the session-log header, but never into
+  `text_delta` event metadata. Day 1 they do **not** enter the routing
+  precedence chain and never affect eligibility filtering.
+  - `Role` is normalized to lowercased alphanumeric + hyphen, max 64 chars.
+    Invalid values are rejected pre-dispatch with the typed
+    `*RoleNormalizationError`.
+  - `CorrelationID` is normalized to printable ASCII (no control chars or
+    whitespace), max 256 chars. Invalid values are rejected pre-dispatch with
+    the typed `*CorrelationIDNormalizationError`.
+- `ServiceRoutingActual` gains `Power int` — the catalog-projected power of the
+  actually-dispatched Model. Zero means unknown / no catalog entry. DDx callers
+  read this to compute next-attempt `MinPower` without importing catalog code.
+- `RouteDecision` gains `Power int` carrying the same value, populated by
+  `ResolveRoute`.
+- The reserved cross-tool metadata key list grows with `role` and
+  `correlation_id`. When the caller sets both a top-level field and the same
+  reserved metadata key, the top-level field wins and a
+  `metadata_key_collision` warning is appended to the final event's
+  `Warnings`.
+
+This is a strict additive change to the contract: existing callers that do not
+set `Role` or `CorrelationID` see no behavior change. DDx and other downstream
+consumers can import the new fields directly from the tagged release.
+
 ## [v0.9.28] — 2026-05-01
 
 ### Fixed

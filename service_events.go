@@ -261,6 +261,10 @@ type ServiceRoutingActual struct {
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
 	FailureClass       string   `json:"failure_class,omitempty"`
+	// Power is the catalog-projected power of the actually-dispatched
+	// Model (CONTRACT-003 § Catalog Power Projection). 0 means
+	// unknown/exact-pin-only/no catalog entry.
+	Power int `json:"power,omitempty"`
 }
 
 // ServiceDecodedEvent is a typed view of one ServiceEvent. Exactly one payload

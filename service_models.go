@@ -528,6 +528,19 @@ func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bo
 	return eligibility.Power, eligibility.AutoRoutable, eligibility.ExactPinOnly
 }
 
+// catalogPowerForModel returns the catalog-projected power for a model
+// (CONTRACT-003 § Catalog Power Projection). Returns 0 when the catalog
+// is nil or the model has no entry, which the contract documents as
+// "unknown / exact-pin-only / no catalog entry" for the
+// ServiceRoutingActual.Power surface.
+func catalogPowerForModel(cat *modelcatalog.Catalog, modelID string) int {
+	if cat == nil || modelID == "" {
+		return 0
+	}
+	power, _, _ := catalogPowerEligibility(cat, modelID)
+	return power
+}
+
 func catalogEntryInputCost(entry modelcatalog.ModelEntry) float64 {
 	if entry.CostInputPerM != 0 {
 		return entry.CostInputPerM

@@ -181,6 +181,9 @@ type RoutingActual struct {
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
 	FailureClass       string   `json:"failure_class,omitempty"`
+	// Power is the catalog-projected power of the actually-dispatched
+	// Model. 0 means unknown/exact-pin-only/no catalog entry.
+	Power int `json:"power,omitempty"`
 }
 
 // HarnessInfo describes a registered harness. Mirrors the public

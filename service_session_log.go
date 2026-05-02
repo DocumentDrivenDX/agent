@@ -40,6 +40,10 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 		path:      filepath.Join(req.SessionLogDir, sessionID+".jsonl"),
 		sessionID: sessionID,
 	}
+	// CONTRACT-003: echo top-level Role + CorrelationID into the
+	// session-log header (one line per session). Top-level wins over
+	// any caller Metadata entry under the reserved keys.
+	headerMeta := metaWithRoleAndCorrelation(req.Metadata, req.Role, req.CorrelationID)
 	start := session.SessionStartData{
 		Provider:          s.providerTypeLabel(decision.Provider),
 		Model:             decision.Model,
@@ -54,7 +58,7 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 		MaxIterations:     req.MaxIterations,
 		Prompt:            req.Prompt,
 		SystemPrompt:      req.SystemPrompt,
-		Metadata:          req.Metadata,
+		Metadata:          headerMeta,
 	}
 	logger.Emit(agentcore.EventSessionStart, start)
 	return sl

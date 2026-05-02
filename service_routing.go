@@ -27,6 +27,12 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	if err := ValidatePowerBounds(req.MinPower, req.MaxPower); err != nil {
 		return nil, err
 	}
+	if err := ValidateRole(req.Role); err != nil {
+		return nil, err
+	}
+	if err := ValidateCorrelationID(req.CorrelationID); err != nil {
+		return nil, err
+	}
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
@@ -72,6 +78,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
+		result.Power = catalogPowerForModel(cat, result.Model)
 	}
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
