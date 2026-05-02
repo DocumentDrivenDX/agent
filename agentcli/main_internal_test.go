@@ -44,9 +44,9 @@ func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
 func TestResolvePreset(t *testing.T) {
 	cfg := &agentConfig.Config{Preset: "cheap"}
 
-	got, err := resolvePreset("benchmark", cfg)
+	got, err := resolvePreset("smart", cfg)
 	require.NoError(t, err)
-	assert.Equal(t, "benchmark", got)
+	assert.Equal(t, "smart", got)
 
 	got, err = resolvePreset("", cfg)
 	require.NoError(t, err)
@@ -117,15 +117,15 @@ targets:
 	assert.Equal(t, 5*time.Minute, got)
 }
 
-func TestBuildToolsForPreset_BenchmarkExcludesTaskTool(t *testing.T) {
-	tools := buildToolsForPreset(t.TempDir(), "benchmark")
+func TestBuildToolsForPreset_IncludesTaskTool(t *testing.T) {
+	tools := buildToolsForPreset(t.TempDir(), "default")
 
 	var names []string
 	for _, tool := range tools {
 		names = append(names, tool.Name())
 	}
 
-	assert.NotContains(t, names, "task")
+	assert.Contains(t, names, "task")
 	assert.Contains(t, names, "patch")
 	assert.Contains(t, names, "find")
 	assert.NotContains(t, names, "glob")
@@ -146,7 +146,7 @@ func TestBuildToolsForPreset_DefaultIncludesTaskTool(t *testing.T) {
 
 func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 	workDir := t.TempDir()
-	tools := buildToolsForPreset(workDir, "benchmark")
+	tools := buildToolsForPreset(workDir, "default")
 	serviceReq := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  "hi",
 		SystemPrompt:            "system",
@@ -164,11 +164,11 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 		ReasoningStallTimeout:   3 * time.Second,
 		CompactionContextWindow: 128000,
 		CompactionReserveTokens: 4096,
-		ToolPreset:              "benchmark",
+		ToolPreset:              "default",
 	})
 
 	require.Len(t, serviceReq.Tools, len(tools))
-	assert.Equal(t, "benchmark", serviceReq.ToolPreset)
+	assert.Equal(t, "default", serviceReq.ToolPreset)
 	assert.Equal(t, toolNames(tools), toolNames(serviceReq.Tools))
 	assert.Equal(t, workDir, serviceReq.WorkDir)
 	assert.Equal(t, "agent", serviceReq.Harness)

@@ -615,8 +615,8 @@ type ServiceExecuteRequest struct {
 	// Tools overrides the built-in native agent tool set when Harness is
 	// "agent". Nil uses the native built-ins for ToolPreset and WorkDir.
 	Tools []Tool
-	// ToolPreset selects native built-in tool availability when Tools is nil.
-	// Empty means the default preset; "benchmark" excludes the task tool.
+	// ToolPreset is passed through to BuiltinToolsForPreset when Tools is nil.
+	// Empty uses the default tool set.
 	ToolPreset string
 
 	// EstimatedPromptTokens, when > 0, drives auto-selection's

@@ -23,6 +23,7 @@ from harbor.models.agent.context import AgentContext
 
 _INSTALL_ROOT = "/installed-agent"
 _BINARY_TARGET = f"{_INSTALL_ROOT}/fiz"
+_AGENTS_MD_TARGET = f"{_INSTALL_ROOT}/AGENTS.md"
 _HOME_DIR = f"{_INSTALL_ROOT}/home"
 _SESSION_LOG_DIR = "/logs/agent/sessions"
 _OUTPUT_LOG = "/logs/agent/fiz.txt"
@@ -66,6 +67,10 @@ class DDXAgent(BaseInstalledAgent):
             environment, command=f"chmod 755 {_BINARY_TARGET}"
         )
 
+        agents_md_src = Path(__file__).parent / "AGENTS.md"
+        if agents_md_src.exists():
+            await environment.upload_file(agents_md_src, _AGENTS_MD_TARGET)
+
     def _run_env(self, instruction: str) -> dict[str, str]:
         env: dict[str, str] = {
             "HARBOR_INSTRUCTION": instruction,
@@ -95,7 +100,8 @@ class DDXAgent(BaseInstalledAgent):
         command = (
             "set -euo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
-            f"{_BINARY_TARGET} --json --preset benchmark "
+            f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '
+            f"{_BINARY_TARGET} --json --preset default "
             '--work-dir "$(pwd)" '
             '-p "$HARBOR_INSTRUCTION" '
             f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}'

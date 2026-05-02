@@ -9,11 +9,11 @@ import (
 
 func TestPresetNames(t *testing.T) {
 	names := PresetNames()
-	require.Len(t, names, 5)
+	require.Len(t, names, 4)
 	assert.Equal(t, "default", names[0]) // default first
 	assert.Contains(t, names, "smart")
 	assert.Contains(t, names, "cheap")
-	assert.Contains(t, names, "benchmark")
+	assert.Contains(t, names, "minimal")
 }
 
 func TestGetPreset(t *testing.T) {

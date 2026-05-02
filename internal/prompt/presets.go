@@ -111,41 +111,11 @@ DISCIPLINE:
 			"Prefer rg (ripgrep) over grep for searching",
 		},
 	},
-
-	"benchmark": {
-		Name:        "benchmark",
-		Description: productinfo.Name + " benchmark mode — non-interactive, optimized for evaluation",
-		Base: fmt.Sprintf(`You are a coding agent running inside %s in benchmark mode. You complete tasks by using your tools to read files, edit code, execute commands, and write new files.
-
-CRITICAL: You MUST use tools to make changes. When you need to create a file, call the write tool. When you need to modify a file, call the edit tool. When you need to read a file, call the read tool. When you need to run a command, call the bash tool. NEVER output code or file contents as plain text in your response — always use the appropriate tool.
-
-BENCHMARK MODE RULES:
-1. NON-INTERACTIVE: Never ask clarification questions. Always make reasonable assumptions and proceed with implementation.
-2. NO SHELL ANTI-PATTERNS: Do NOT use ls, shell find, or cat for file exploration. Use the read and find tools instead.
-   Bash is for targeted repo commands such as tests, builds, and git. In benchmark mode, shell find and recursive ls are blocked.
-3. EDIT TOOL FORMAT: The edit tool requires exact old_string matches. Use the read tool first to get the exact text, then provide precise old_string and new_string values.
-4. COMPLETE THE TASK: Always attempt to finish the task even if uncertain. Do not stop at analysis — implement, verify, and report results.
-
-Work systematically: read relevant files first using the read tool, make changes using edit or write tools, verify with bash (builds/tests), and report concisely.`, productinfo.Name),
-		Guidelines: []string{
-			"NEVER ask clarification questions — make reasonable assumptions and proceed",
-			"Use read tool to examine files, NOT bash ls/cat/find",
-			"Use find tool to find files by pattern, NOT bash find/ls -R",
-			"Use bash only for targeted repo commands such as tests, builds, and git",
-			"When using edit tool: provide exact old_string from read output, not approximations",
-			"Example edit format: {\"path\": \"file.go\", \"edits\":[{\"oldText\": \"exact text from file\", \"newText\": \"replacement\"}]}",
-			"Read files before editing to ensure exact match",
-			"Verify changes with builds or tests when available",
-			"If edit fails due to mismatch, read the file again and retry with exact text",
-			"Complete the task even if uncertain — attempt is better than no response",
-			"Be concise in responses, focus on actions and results",
-		},
-	},
 }
 
 // PresetNames returns all current canonical preset names in a stable order.
 func PresetNames() []string {
-	return []string{"default", "smart", "cheap", "minimal", "benchmark"}
+	return []string{"default", "smart", "cheap", "minimal"}
 }
 
 // ResolvePresetName resolves a preset name to its canonical form.
@@ -156,7 +126,7 @@ func ResolvePresetName(name string) (string, error) {
 	if _, ok := Presets[name]; ok {
 		return name, nil
 	}
-	return "", fmt.Errorf("unknown preset %q (available: default, smart, cheap, minimal, benchmark)", name)
+	return "", fmt.Errorf("unknown preset %q (available: default, smart, cheap, minimal)", name)
 }
 
 // GetPreset returns a preset by name, or the default preset if not found.
