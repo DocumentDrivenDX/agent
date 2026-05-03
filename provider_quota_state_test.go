@@ -91,6 +91,28 @@ func TestProviderQuotaStateStoreZeroRetryNormalizes(t *testing.T) {
 	}
 }
 
+func TestProviderQuotaStateStoreAllExhaustedIncludesElapsed(t *testing.T) {
+	store := NewProviderQuotaStateStore()
+	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
+	store.MarkQuotaExhausted("openai", now.Add(5*time.Minute))
+	store.MarkQuotaExhausted("openrouter", now.Add(-time.Minute)) // elapsed but still in store
+
+	got := store.AllExhausted()
+	if len(got) != 2 {
+		t.Fatalf("AllExhausted size = %d, want 2 (elapsed entry must remain visible): %v", len(got), got)
+	}
+	if _, ok := got["openrouter"]; !ok {
+		t.Fatalf("AllExhausted must include providers whose retry_after has elapsed (probe loop relies on this): %v", got)
+	}
+
+	// Mutating returned map must not affect store.
+	got["openai"] = time.Time{}
+	state, _ := store.State("openai", now)
+	if state != ProviderQuotaStateQuotaExhausted {
+		t.Fatalf("store mutated by external map write")
+	}
+}
+
 func TestProviderQuotaStateStoreNilReceiverSafe(t *testing.T) {
 	var store *ProviderQuotaStateStore
 	store.MarkQuotaExhausted("x", time.Now())

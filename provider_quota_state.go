@@ -95,6 +95,34 @@ func (s *ProviderQuotaStateStore) State(provider string, now time.Time) (Provide
 	return entry.state, entry.retryAfter
 }
 
+// AllExhausted returns provider→retry_after for every provider whose entry is
+// currently in quota_exhausted state, regardless of whether retry_after has
+// elapsed. Unlike ExhaustedAt, entries past their retry_after are still
+// reported here; the recovery probe loop uses this to find providers that are
+// due for re-probing before the auto-decay in State() reveals them as
+// available.
+func (s *ProviderQuotaStateStore) AllExhausted() map[string]time.Time {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.entries) == 0 {
+		return nil
+	}
+	out := make(map[string]time.Time, len(s.entries))
+	for name, entry := range s.entries {
+		if entry.state != ProviderQuotaStateQuotaExhausted {
+			continue
+		}
+		out[name] = entry.retryAfter
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // ExhaustedAt returns provider→retry_after for every provider currently in
 // quota_exhausted state with retry_after > now. The returned map is a copy
 // safe for the caller to mutate.

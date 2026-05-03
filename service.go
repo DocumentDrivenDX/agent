@@ -851,6 +851,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	}
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
+	svc.startQuotaRecoveryProbeLoop()
 	return svc, nil
 }
 

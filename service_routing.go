@@ -515,6 +515,54 @@ func (s *service) providerQuotaExhaustedUntil(now time.Time) map[string]time.Tim
 	return s.providerQuota.ExhaustedAt(now)
 }
 
+// startQuotaRecoveryProbeLoop spawns the goroutine that periodically probes
+// quota_exhausted providers and either restores them to available or extends
+// their retry_after with bounded backoff. The goroutine is tied to
+// QuotaRefreshContext (or context.Background()) so server callers can cancel
+// it on shutdown.
+func (s *service) startQuotaRecoveryProbeLoop() {
+	if s == nil || s.providerQuota == nil {
+		return
+	}
+	ctx := s.opts.QuotaRefreshContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	probe := s.quotaRecoveryProber()
+	if probe == nil {
+		return
+	}
+	go runQuotaRecoveryProbeLoop(ctx, s.providerQuota, probe, defaultQuotaRecoveryFallbackInterval, nil, nil)
+}
+
+// quotaRecoveryProber returns the QuotaRecoveryProber used by the recovery
+// loop. It looks up the provider entry in ServiceConfig and reuses the same
+// probeProviderStatus the HealthCheck endpoint uses; a "connected" status
+// counts as recovery, anything else is reported as a probe failure so the
+// retry_after gets extended with backoff.
+func (s *service) quotaRecoveryProber() QuotaRecoveryProber {
+	sc := s.opts.ServiceConfig
+	if sc == nil {
+		return nil
+	}
+	return func(ctx context.Context, name string) error {
+		entry, ok := sc.Provider(name)
+		if !ok {
+			return fmt.Errorf("provider %q not found", name)
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		probe := probeProviderStatus(probeCtx, entry, time.Now().UTC())
+		if probe.status == "connected" {
+			return nil
+		}
+		if probe.detail != "" {
+			return fmt.Errorf("%s", probe.detail)
+		}
+		return fmt.Errorf("%s", probe.status)
+	}
+}
+
 // ProviderQuotaState returns the per-provider quota state machine for this
 // service. Callers (notably the quota-signal ingest path defined in sibling
 // beads) drive transitions via MarkQuotaExhausted / MarkAvailable.
