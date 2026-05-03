@@ -485,7 +485,7 @@ type harborRunResult struct {
 }
 
 // harborAgentArgs returns the agent selection args for harbor run.
-// opencode uses the built-in harbor agent; pi and ddx-agent use custom adapters.
+// opencode uses the built-in harbor agent; pi and fiz use custom adapters.
 func harborAgentArgs(harness string) []string {
 	switch harness {
 	case "opencode":
@@ -493,7 +493,7 @@ func harborAgentArgs(harness string) []string {
 		return []string{"--agent", "opencode"}
 	case "pi":
 		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.pi:PiAgent"}
-	default: // ddx-agent
+	default: // fiz
 		return []string{"--agent-import-path", "scripts.benchmark.harbor_agent:DDXAgent"}
 	}
 }

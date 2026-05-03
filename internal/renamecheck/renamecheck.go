@@ -46,6 +46,7 @@ var skippedDirs = map[string]bool{
 	".ddx":                 true,
 	".agents":              true,
 	".claude":              true,
+	".fizeau":              true,
 	".helix-ratchets":      true,
 	"docs/helix":           true,
 	"docs/research":        true,

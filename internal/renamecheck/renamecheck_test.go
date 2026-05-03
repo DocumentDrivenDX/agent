@@ -34,6 +34,7 @@ func TestScanSkipsAllowlistedHistoricalAndExternalPaths(t *testing.T) {
 	writeFile(t, root, ".ddx/beads.jsonl", `{"title":"ddx-agent"}`+"\n")
 	writeFile(t, root, ".agents/skills/ddx/SKILL.md", "The .agents directory is external.\n")
 	writeFile(t, root, ".claude/skills/ddx/SKILL.md", "The old ddx-agent skill copy is historical.\n")
+	writeFile(t, root, ".fizeau/sessions/svc-1.jsonl", `{"prompt":"old ddx-agent transcript"}`+"\n")
 
 	findings, err := Scan(Options{Root: root})
 	if err != nil {
