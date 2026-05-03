@@ -40,6 +40,12 @@ type streamThresholds struct {
 	// returned ReasoningStallError so callers can correlate the stall to a
 	// specific prompt/turn. May be empty.
 	promptID string
+	// reasoningBudgetTokens is the thinking_budget sent to the model for this
+	// turn. When non-zero, the stall deadline is extended forward as reasoning
+	// tokens arrive: remaining_budget_bytes / observed_bytes_per_sec * 2x,
+	// ensuring slow local providers are not cut off before the budget is spent.
+	// The static reasoningStallTimeout acts as a floor.
+	reasoningBudgetTokens int
 }
 
 // consumeStream reads from a StreamingProvider's channel, emits delta events,
@@ -71,6 +77,15 @@ func consumeStream(
 	byteLimit := thresholds.reasoningByteLimit
 	stallTimeout := thresholds.reasoningStallTimeout
 
+	// Adaptive stall deadline constants.
+	// Multiplier applied to projected remaining reasoning time when extending
+	// the deadline based on observed token rate + budget.
+	const adaptiveSafetyFactor = 2.0
+	// Minimum reasoning bytes received before we trust the rate estimate.
+	const adaptiveBootstrapBytes = 256
+	// Approximate UTF-8 bytes per reasoning token for Qwen3-style models.
+	const avgBytesPerToken = 4
+
 	// Reasoning tail buffer: bounded ring of the most recent reasoning
 	// content. On stall, the trailing slice is attached to ReasoningStallError
 	// and emitted in the reasoning.stall event so callers can debug what the
@@ -87,6 +102,13 @@ func consumeStream(
 	var reasoningBytes int
 	var nonReasoningSeen bool
 	reasoningStallStart := time.Now()
+	// stallDeadline is the absolute time after which a pure-reasoning stream
+	// fires ErrReasoningStall. Initialized from the static floor; extended
+	// forward adaptively as tokens arrive when reasoningBudgetTokens is set.
+	var stallDeadline time.Time
+	if stallTimeout > 0 {
+		stallDeadline = reasoningStallStart.Add(stallTimeout)
+	}
 
 	// Track tool call assembly — deltas arrive as fragments
 	type toolCallState struct {
@@ -170,8 +192,26 @@ func consumeStream(
 				if byteLimit > 0 && reasoningBytes > byteLimit {
 					return resp, reasoningOverflowError(thresholds.modelName, byteLimit, reasoningBytes)
 				}
-				if stallTimeout > 0 && time.Since(reasoningStallStart) > stallTimeout {
-					stallErr := newReasoningStallError(thresholds.modelName, stallTimeout, reasoningTail, thresholds.promptID)
+				// Adaptive deadline extension: when a budget is known and the
+				// rate estimate has enough data, push the deadline to
+				// now + remaining_budget_bytes / rate * 2x. Only extends —
+				// never moves the deadline earlier than the floor.
+				if !stallDeadline.IsZero() && thresholds.reasoningBudgetTokens > 0 && reasoningBytes >= adaptiveBootstrapBytes {
+					elapsed := time.Since(reasoningStallStart)
+					if elapsed > 0 {
+						rate := float64(reasoningBytes) / elapsed.Seconds()
+						remainingBytes := float64(thresholds.reasoningBudgetTokens*avgBytesPerToken) - float64(reasoningBytes)
+						if remainingBytes > 0 {
+							extra := time.Duration(remainingBytes / rate * adaptiveSafetyFactor * float64(time.Second))
+							if cand := time.Now().Add(extra); cand.After(stallDeadline) {
+								stallDeadline = cand
+							}
+						}
+					}
+				}
+				if !stallDeadline.IsZero() && time.Now().After(stallDeadline) {
+					effectiveTimeout := stallDeadline.Sub(reasoningStallStart)
+					stallErr := newReasoningStallError(thresholds.modelName, effectiveTimeout, reasoningTail, thresholds.promptID)
 					if callback != nil {
 						emitCallback(callback, Event{
 							SessionID: sessionID,
@@ -180,7 +220,7 @@ func consumeStream(
 							Timestamp: time.Now().UTC(),
 							Data: mustMarshal(map[string]any{
 								"model":          stallErr.Model,
-								"timeout_ms":     stallTimeout.Milliseconds(),
+								"timeout_ms":     effectiveTimeout.Milliseconds(),
 								"reasoning_tail": stallErr.ReasoningTail,
 								"prompt_id":      stallErr.PromptID,
 								"code":           ReasoningStallCode,

@@ -795,6 +795,71 @@ func TestConsumeStream_ReasoningStall_StructuredErrorAndEvent(t *testing.T) {
 	assert.Contains(t, tail, "step-3")
 }
 
+func TestConsumeStream_AdaptiveStallDeadline(t *testing.T) {
+	// When reasoningBudgetTokens is set, the stall deadline is extended based on
+	// observed token rate so that slow local providers are not cut off prematurely.
+	//
+	// Setup: floor timeout = 60ms, but the model is generating reasoning tokens at
+	// ~10ms each. With a 64-token budget (~256 bytes at 4B/tok), the adaptive
+	// deadline should be pushed well past the floor, allowing the stream to
+	// complete without a stall error.
+	const floorTimeout = 60 * time.Millisecond
+	const delayBetween = 10 * time.Millisecond
+	// Budget: 512 tokens × 4 bytes = 2048 bytes. Stream sends 10 × 64 = 640
+	// bytes, well within budget. After bootstrap (256B, ~4 deltas, ~40ms),
+	// adaptive extra ≈ (2048-256)/rate*2 >> 60ms floor, so no stall.
+	const budgetTokens = 512
+
+	chunk := strings.Repeat("x", 64) // 64 bytes per delta
+	var deltas []StreamDelta
+	for i := 0; i < 10; i++ { // 640 bytes total > 256B bootstrap
+		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+	}
+	deltas = append(deltas, StreamDelta{Content: "done", Done: true})
+
+	sp := &mockStreamingProvider{
+		delayBetween: delayBetween,
+		deltas:       deltas,
+	}
+
+	seq := 0
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningStallTimeout: floorTimeout,
+		reasoningBudgetTokens: budgetTokens,
+		modelName:             "test-adaptive",
+	})
+	require.NoError(t, err, "adaptive extension should prevent a stall for a stream within budget")
+	assert.Equal(t, "done", resp.Content)
+}
+
+func TestConsumeStream_AdaptiveStallDeadline_NoBudget(t *testing.T) {
+	// Without reasoningBudgetTokens, the floor timeout fires as normal.
+	const floorTimeout = 60 * time.Millisecond
+	const delayBetween = 10 * time.Millisecond
+
+	chunk := strings.Repeat("x", 64)
+	var deltas []StreamDelta
+	for i := 0; i < 10; i++ {
+		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+	}
+	deltas = append(deltas, StreamDelta{Content: "done", Done: true})
+
+	sp := &mockStreamingProvider{
+		delayBetween: delayBetween,
+		deltas:       deltas,
+	}
+
+	seq := 0
+	start := time.Now()
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, streamThresholds{
+		reasoningStallTimeout: floorTimeout,
+		// no reasoningBudgetTokens
+		modelName: "test-no-budget",
+	})
+	require.ErrorIs(t, err, ErrReasoningStall, "without a budget, the floor timeout should still fire")
+}
+
 func TestAppendBoundedTail(t *testing.T) {
 	t.Run("under limit accumulates", func(t *testing.T) {
 		out := appendBoundedTail(nil, "abc", 10)
