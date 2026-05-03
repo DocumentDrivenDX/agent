@@ -291,7 +291,7 @@ while IFS= read -r TASK_ID; do
         --dataset "${DATASET}" \
         --include-task-name "${TASK_ID}" \
         --n-tasks 1 \
-        --agent-import-path "harbor_agent:DDXAgent" \
+        --agent-import-path "harbor_agent:FizeauAgent" \
         --model "${PROVIDER_MODEL}" \
         --env "${RUNTIME}" \
         --jobs-dir "${HARBOR_JOBS_DIR}" \

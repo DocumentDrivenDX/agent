@@ -159,7 +159,7 @@ JOB_OUTPUT=$( \
     --dataset "${DATASET}" \
     --include-task-name "${SMOKE_TASK}" \
     --n-tasks 1 \
-    --agent-import-path "harbor_agent:DDXAgent" \
+    --agent-import-path "harbor_agent:FizeauAgent" \
     --model "${PROVIDER_MODEL}" \
     --env "${RUNTIME}" \
     --jobs-dir "${SMOKE_JOBS_DIR}" \

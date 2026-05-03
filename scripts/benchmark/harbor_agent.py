@@ -33,7 +33,7 @@ def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
-class DDXAgent(BaseInstalledAgent):
+class FizeauAgent(BaseInstalledAgent):
     SUPPORTS_ATIF: bool = False
 
     def __init__(self, *args: Any, **kwargs: Any):

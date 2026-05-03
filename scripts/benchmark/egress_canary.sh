@@ -155,7 +155,7 @@ FIZEAU_BENCH_SYSTEM_APPEND="${SYSTEM_APPEND}" \
     --dataset "${DATASET}" \
     --include-task-name "${CANARY_TASK}" \
     --n-tasks 1 \
-    --agent-import-path "harbor_agent:DDXAgent" \
+    --agent-import-path "harbor_agent:FizeauAgent" \
     --model "${PROVIDER_MODEL}" \
     --env "${RUNTIME}" \
     --jobs-dir "${JOBS_DIR}" \

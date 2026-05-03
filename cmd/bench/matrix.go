@@ -494,7 +494,7 @@ func harborAgentArgs(harness string) []string {
 	case "pi":
 		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.pi:PiAgent"}
 	default: // fiz
-		return []string{"--agent-import-path", "scripts.benchmark.harbor_agent:DDXAgent"}
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_agent:FizeauAgent"}
 	}
 }
 
