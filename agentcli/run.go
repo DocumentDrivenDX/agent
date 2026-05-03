@@ -131,6 +131,7 @@ func runWithOptions(opts Options) int {
 	version := fs.Bool("version", false, "Print version")
 	sysPromptFlag := fs.String("system", "", "System prompt (appended to preset)")
 	presetFlag := fs.String("preset", "", "System prompt preset: default, smart, cheap, minimal, benchmark")
+	planFlag := fs.Bool("plan", false, "Run a no-tool planning turn before the main loop (auto-enabled by --preset benchmark)")
 
 	if err := fs.Parse(cliArgs); err != nil {
 		return 2
@@ -393,6 +394,7 @@ func runWithOptions(opts Options) int {
 		RepetitionPenalty:       sRep,
 		Seed:                    sSeed,
 		SamplingSource:          samplingSource,
+		PlanningMode:            *planFlag,
 	})
 
 	result, err := executeViaService(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
@@ -552,6 +554,11 @@ type serviceExecuteRequestParams struct {
 	RepetitionPenalty *float64
 	Seed              *int64
 	SamplingSource    string
+
+	// PlanningMode requests a no-tool planning turn before the main loop.
+	// The service may also auto-enable planning for certain presets (e.g.
+	// benchmark) — this field is the explicit CLI override.
+	PlanningMode bool
 }
 
 type cliExecutionResult struct {
@@ -631,6 +638,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		RepetitionPenalty:       params.RepetitionPenalty,
 		Seed:                    params.Seed,
 		SamplingSource:          params.SamplingSource,
+		PlanningMode:            params.PlanningMode,
 	}
 	return req
 }
@@ -650,6 +658,7 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 		"allow-deprecated-model": true,
 		"json":                   true,
 		"list-models":            true,
+		"plan":                   true,
 		"version":                true,
 	}
 	valueFlags := map[string]bool{
