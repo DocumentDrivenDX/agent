@@ -280,11 +280,6 @@ type Config struct {
 	// Set to 0 for unlimited (same pattern as max_iterations).
 	ReasoningByteLimit int `yaml:"reasoning_byte_limit"`
 
-	// ReasoningStallTimeout is the maximum duration (e.g. "5m", "300s")
-	// that only reasoning tokens may arrive before the stream is aborted.
-	// Default is 300s. Set to "0s" for unlimited.
-	ReasoningStallTimeout string `yaml:"reasoning_stall_timeout"`
-
 	// CompactionPercent scales the effective context window used to trigger
 	// automatic compaction. Range 1-100. 0 or absent = use default (95%).
 	// The actual trigger threshold = context_window × percent/100 - reserve_tokens.
@@ -313,26 +308,11 @@ type Config struct {
 // Defaults returns a Config with sensible defaults.
 func Defaults() Config {
 	return Config{
-		MaxIterations:         100,
-		SessionLogDir:         DefaultSessionLogDir(),
-		Preset:                "default",
-		ReasoningByteLimit:    agent.DefaultReasoningByteLimit,
-		ReasoningStallTimeout: agent.DefaultReasoningStallTimeout.String(),
+		MaxIterations:      100,
+		SessionLogDir:      DefaultSessionLogDir(),
+		Preset:             "default",
+		ReasoningByteLimit: agent.DefaultReasoningByteLimit,
 	}
-}
-
-// ParseReasoningStallTimeout parses the ReasoningStallTimeout string into a
-// time.Duration. Returns 0 if the string is empty (caller should apply default).
-func (c *Config) ParseReasoningStallTimeout() (time.Duration, error) {
-	s := strings.TrimSpace(c.ReasoningStallTimeout)
-	if s == "" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, fmt.Errorf("config: invalid reasoning_stall_timeout %q: %w", s, err)
-	}
-	return d, nil
 }
 
 // Load reads configuration from .fizeau/config.yaml (project) and

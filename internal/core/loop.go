@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/compactionctx"
+	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 	"github.com/DocumentDrivenDX/fizeau/telemetry"
 )
 
@@ -377,9 +378,16 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 			llmStart := time.Now()
 			if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
+				budgetTokens := 0
+				if p, err2 := reasoning.ParseString(string(opts.Reasoning)); err2 == nil {
+					if b, err2 := reasoning.BudgetFor(p, nil, 0); err2 == nil {
+						budgetTokens = b
+					}
+				}
 				resp, err = consumeStream(chatCtx, sp, providerMessages, toolDefs, opts, req.Callback, sessionID, chatStart, &seq, streamThresholds{
 					reasoningByteLimit:    req.ReasoningByteLimit,
-					reasoningStallTimeout: req.ReasoningStallTimeout,
+					reasoningStallTimeout: DefaultReasoningStallTimeout,
+					reasoningBudgetTokens: budgetTokens,
 					modelName:             sessionModel,
 					promptID:              fmt.Sprintf("%s/i%d/a%d", sessionID, iteration+1, attempt),
 				})

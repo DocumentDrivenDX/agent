@@ -14,11 +14,13 @@ import (
 // seen yet. Configurable via config.yaml reasoning_byte_limit; 0 = unlimited.
 const DefaultReasoningByteLimit = 256 * 1024 // 256KB
 
-// DefaultReasoningStallTimeout is the default maximum duration that only
-// reasoning_content deltas may arrive before the stream is aborted with
-// ErrReasoningStall. Configurable via config.yaml reasoning_stall_timeout;
-// 0 = unlimited.
-const DefaultReasoningStallTimeout = 300 * time.Second
+// DefaultReasoningStallTimeout is the fallback stall deadline used when no
+// reasoning budget is available to drive the adaptive computation. Sized as
+// the worst-case absolute ceiling: max reasoning budget (32 768 tokens) at
+// the slowest plausible local inference rate (2 tok/s) = 16 384 s (~4.5 h).
+// The adaptive mechanism in consumeStream computes a tighter, budget-aware
+// deadline for any run where the reasoning budget is known.
+const DefaultReasoningStallTimeout = 16384 * time.Second
 
 // DefaultReasoningTailBytes is the default size of the reasoning-tail buffer
 // captured for inclusion in ReasoningStallError. Sized to roughly the last
@@ -78,13 +80,17 @@ func consumeStream(
 	stallTimeout := thresholds.reasoningStallTimeout
 
 	// Adaptive stall deadline constants.
-	// Multiplier applied to projected remaining reasoning time when extending
-	// the deadline based on observed token rate + budget.
+	// Multiplier applied to full-budget projection: if the model runs at the
+	// observed rate for the full budget and still hasn't produced output, allow
+	// 2× that time before declaring a stall.
 	const adaptiveSafetyFactor = 2.0
-	// Minimum reasoning bytes received before we trust the rate estimate.
+	// Minimum reasoning bytes received before the rate estimate is trusted.
 	const adaptiveBootstrapBytes = 256
 	// Approximate UTF-8 bytes per reasoning token for Qwen3-style models.
 	const avgBytesPerToken = 4
+	// Hard floor on the adaptive deadline: never abort sooner than this after
+	// the first reasoning token, to protect against noisy early rate estimates.
+	const adaptiveMinWindow = 30 * time.Second
 
 	// Reasoning tail buffer: bounded ring of the most recent reasoning
 	// content. On stall, the trailing slice is attached to ReasoningStallError
@@ -192,21 +198,23 @@ func consumeStream(
 				if byteLimit > 0 && reasoningBytes > byteLimit {
 					return resp, reasoningOverflowError(thresholds.modelName, byteLimit, reasoningBytes)
 				}
-				// Adaptive deadline extension: when a budget is known and the
-				// rate estimate has enough data, push the deadline to
-				// now + remaining_budget_bytes / rate * 2x. Only extends —
-				// never moves the deadline earlier than the floor.
-				if !stallDeadline.IsZero() && thresholds.reasoningBudgetTokens > 0 && reasoningBytes >= adaptiveBootstrapBytes {
+				// Adaptive deadline: when a budget is known and we have enough
+				// data to estimate the token rate, recompute the deadline as:
+				//   stall_start + (budget_tokens * avg_bytes_per_token) / rate * 2x
+				// This is "how long the full budget would take at the observed rate,"
+				// with a 2× safety margin. The result replaces the static floor so
+				// the timeout scales correctly with both budget size and provider speed.
+				// A hard minimum window (30s) guards against noisy early estimates.
+				if thresholds.reasoningBudgetTokens > 0 && reasoningBytes >= adaptiveBootstrapBytes {
 					elapsed := time.Since(reasoningStallStart)
 					if elapsed > 0 {
 						rate := float64(reasoningBytes) / elapsed.Seconds()
-						remainingBytes := float64(thresholds.reasoningBudgetTokens*avgBytesPerToken) - float64(reasoningBytes)
-						if remainingBytes > 0 {
-							extra := time.Duration(remainingBytes / rate * adaptiveSafetyFactor * float64(time.Second))
-							if cand := time.Now().Add(extra); cand.After(stallDeadline) {
-								stallDeadline = cand
-							}
+						totalBudgetBytes := float64(thresholds.reasoningBudgetTokens * avgBytesPerToken)
+						projected := time.Duration(totalBudgetBytes / rate * adaptiveSafetyFactor * float64(time.Second))
+						if projected < adaptiveMinWindow {
+							projected = adaptiveMinWindow
 						}
+						stallDeadline = reasoningStallStart.Add(projected)
 					}
 				}
 				if !stallDeadline.IsZero() && time.Now().After(stallDeadline) {

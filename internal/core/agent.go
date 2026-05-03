@@ -308,10 +308,6 @@ type Request struct {
 	// allowed before the stream is aborted. Zero means unlimited (no limit).
 	ReasoningByteLimit int
 
-	// ReasoningStallTimeout is the maximum duration that only reasoning
-	// tokens may arrive before the stream is aborted. Zero means unlimited.
-	ReasoningStallTimeout time.Duration
-
 	// WorkDir is the working directory for file operations and bash commands.
 	WorkDir string
 
