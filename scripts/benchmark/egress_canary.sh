@@ -44,7 +44,7 @@ PRESET="${FIZEAU_BENCH_PRESET:-benchmark}"
 # Smoke model defaults: cheapest tool-capable OpenAI-compat target on
 # OpenRouter. Override via env to point at any other smoke target.
 PROVIDER_NAME="${FIZEAU_PROVIDER_NAME:-openrouter}"
-PROVIDER_TYPE="${FIZEAU_PROVIDER:-openai-compat}"
+PROVIDER_TYPE="${FIZEAU_PROVIDER:-openrouter}"
 PROVIDER_MODEL="${FIZEAU_MODEL:-google/gemini-2.5-flash}"
 PROVIDER_BASE_URL="${FIZEAU_BASE_URL:-https://openrouter.ai/api/v1}"
 PROVIDER_API_KEY_ENV="${FIZEAU_API_KEY_ENV:-OPENROUTER_API_KEY}"
@@ -179,14 +179,29 @@ if [[ ! -f "${TRAJECTORY_FILE}" ]]; then
     exit 4
 fi
 STEP_COUNT="$(python3 -c "import json,sys; d=json.load(open('${TRAJECTORY_FILE}')); print(len(d.get('steps', [])))" 2>/dev/null || echo 0)"
-if [[ "${STEP_COUNT}" -lt 1 ]]; then
-    echo "ERROR: trajectory.json has ${STEP_COUNT} steps — egress signal absent"
-    exit 4
-fi
 
 REWARD="unknown"
 if [[ -f "${REWARD_FILE}" ]]; then
     REWARD="$(cat "${REWARD_FILE}")"
+fi
+
+# Egress signal: trajectory.json has >=1 step OR reward>0 (a successful
+# completion is the strongest possible proof that egress to the provider
+# works — stronger than a partial trajectory). The harbor adapter's
+# trajectory builder relies on session-log artifacts that aren't always
+# emitted in this rig; reward is the authoritative outer signal.
+EGRESS_OK=0
+if [[ "${STEP_COUNT}" -ge 1 ]]; then
+    EGRESS_OK=1
+fi
+if [[ "${REWARD}" != "unknown" ]]; then
+    if python3 -c "import sys; sys.exit(0 if float('${REWARD}') > 0 else 1)" 2>/dev/null; then
+        EGRESS_OK=1
+    fi
+fi
+if [[ "${EGRESS_OK}" -ne 1 ]]; then
+    echo "ERROR: no egress signal — trajectory_steps=${STEP_COUNT}, reward=${REWARD}"
+    exit 4
 fi
 
 ln -sfn "${TRIAL_DIR}" "${ARCHIVE_DIR}/trial"
@@ -203,7 +218,7 @@ cat > "${ARCHIVE_DIR}/canary.json" <<JSON
   "reward": "${REWARD}",
   "trial_dir": "${TRIAL_DIR}",
   "timestamp_utc": "${TIMESTAMP}",
-  "pass_criterion": "trajectory_steps>=1",
+  "pass_criterion": "trajectory_steps>=1 OR reward>0",
   "passed": true
 }
 JSON
