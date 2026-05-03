@@ -75,48 +75,6 @@ func TestResolveRunReasoningNormalizesExplicitValues(t *testing.T) {
 	assert.Equal(t, fizeau.ReasoningHigh, got)
 }
 
-func TestResolveReasoningStallTimeoutCatalogOverride(t *testing.T) {
-	manifestPath := filepath.Join(t.TempDir(), "models.yaml")
-	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 4
-generated_at: 2026-04-29T00:00:00Z
-catalog_version: 2026-04-29.1
-models:
-  thinker-1:
-    family: qwen
-    tier: thinker-tier
-    status: active
-    reasoning_stall_timeout_ms: 600000
-    surfaces:
-      fizeau.openai: thinker-1
-  default-1:
-    family: gpt
-    tier: default-tier
-    status: active
-    surfaces:
-      fizeau.openai: default-1
-targets:
-  thinker-tier:
-    family: qwen
-    candidates: [thinker-1]
-  default-tier:
-    family: gpt
-    candidates: [default-1]
-`), 0o644))
-	cfg := &agentConfig.Config{
-		ReasoningStallTimeout: "5m",
-		ModelCatalog:          agentConfig.ModelCatalogConfig{Manifest: manifestPath},
-	}
-
-	got, err := resolveReasoningStallTimeout(cfg, "thinker-1")
-	require.NoError(t, err)
-	assert.Equal(t, 10*time.Minute, got)
-
-	got, err = resolveReasoningStallTimeout(cfg, "default-1")
-	require.NoError(t, err)
-	assert.Equal(t, 5*time.Minute, got)
-}
-
 func TestBuildToolsForPreset_IncludesTaskTool(t *testing.T) {
 	tools := buildToolsForPreset(t.TempDir(), "default")
 
@@ -161,7 +119,6 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 		MaxIterations:           7,
 		MaxTokens:               2048,
 		ReasoningByteLimit:      4096,
-		ReasoningStallTimeout:   3 * time.Second,
 		CompactionContextWindow: 128000,
 		CompactionReserveTokens: 4096,
 		ToolPreset:              "default",
@@ -178,7 +135,6 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 	assert.Equal(t, 7, serviceReq.MaxIterations)
 	assert.Equal(t, 2048, serviceReq.MaxTokens)
 	assert.Equal(t, 4096, serviceReq.ReasoningByteLimit)
-	assert.Equal(t, 3*time.Second, serviceReq.ReasoningStallTimeout)
 	assert.Equal(t, 128000, serviceReq.CompactionContextWindow)
 	assert.Equal(t, 4096, serviceReq.CompactionReserveTokens)
 }

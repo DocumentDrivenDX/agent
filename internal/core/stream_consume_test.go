@@ -721,7 +721,7 @@ func TestConsumeStream_DefaultThresholds(t *testing.T) {
 
 func TestDefaultConstants(t *testing.T) {
 	assert.Equal(t, 256*1024, DefaultReasoningByteLimit)
-	assert.Equal(t, 300*time.Second, DefaultReasoningStallTimeout)
+	assert.Equal(t, 16384*time.Second, DefaultReasoningStallTimeout)
 	assert.Equal(t, 2000, DefaultReasoningTailBytes)
 }
 

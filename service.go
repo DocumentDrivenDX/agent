@@ -664,7 +664,6 @@ type ServiceExecuteRequest struct {
 	MaxIterations           int
 	MaxTokens               int
 	ReasoningByteLimit      int
-	ReasoningStallTimeout   time.Duration
 	CompactionContextWindow int
 	CompactionReserveTokens int
 
