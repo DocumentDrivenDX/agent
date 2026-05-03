@@ -127,14 +127,24 @@ class DDXAgent(BaseInstalledAgent):
     ) -> None:
         del context
 
+        # fiz writes its session JSONL to <workdir>/.fizeau/sessions/ by
+        # default (DefaultSessionLogDir). Harbor downloads /logs/agent into
+        # the adapter's logs_dir, so we mirror the JSONL files into
+        # /logs/agent/sessions/ after fiz exits — that's where
+        # populate_context_post_run looks for them. Without this copy,
+        # trajectory.json comes back with 0 steps even on passing runs.
         command = (
-            "set -euo pipefail; "
+            "set -uo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
             f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '
+            f"mkdir -p {_SESSION_LOG_DIR}; "
             f"{_BINARY_TARGET} --json --preset default "
             '--work-dir "$(pwd)" '
             '-p "$HARBOR_INSTRUCTION" '
-            f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}'
+            f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
+            'fiz_rc=${PIPESTATUS[0]}; '
+            f'cp -f "$(pwd)/.fizeau/sessions/"*.jsonl {_SESSION_LOG_DIR}/ 2>/dev/null || true; '
+            'exit "$fiz_rc"'
         )
 
         await self.exec_as_agent(
