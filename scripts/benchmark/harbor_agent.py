@@ -62,12 +62,38 @@ class DDXAgent(BaseInstalledAgent):
             ),
         )
 
-        # Some TB-2 task images (e.g. minimal LaTeX containers) ship without
-        # root CA certificates, which makes fiz's TLS handshake to OpenRouter
-        # fail with `x509: certificate signed by unknown authority` and burn a
-        # task with 0 tokens consumed. Probe for a CA bundle and install one if
-        # missing, across Debian/Ubuntu, Alpine, and RHEL-family images. All
-        # steps are best-effort so offline images do not block the run.
+        # Some TB-2 task images (e.g. ubuntu:24.04-based overfull-hbox /
+        # regex-log) ship without root CA certificates, which makes fiz's TLS
+        # handshake to OpenRouter fail with `x509: certificate signed by
+        # unknown authority` and burn a task with 0 tokens consumed. Stage a
+        # CA bundle into the container so fiz can reach https endpoints.
+        #
+        # Strategy: upload a host CA bundle directly to the standard Debian
+        # path. This is deterministic and does not depend on the container
+        # having working apt/dnf/network at install time (the runtime
+        # apt-install fallback below handles the case where no host bundle
+        # is available).
+        await self.exec_as_root(
+            environment,
+            command="mkdir -p /etc/ssl/certs",
+        )
+        host_ca_bundle = self._find_host_ca_bundle()
+        if host_ca_bundle is not None:
+            await environment.upload_file(
+                host_ca_bundle, "/etc/ssl/certs/ca-certificates.crt"
+            )
+            await self.exec_as_root(
+                environment,
+                command=(
+                    "chmod 644 /etc/ssl/certs/ca-certificates.crt && "
+                    "ln -sf /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem 2>/dev/null; "
+                    "exit 0"
+                ),
+            )
+
+        # Fallback: best-effort package-manager install for images that
+        # already had network/apt working but were missing the bundle. This
+        # also runs when the host had no bundle to upload.
         await self.exec_as_root(
             environment,
             command=(
@@ -98,6 +124,31 @@ class DDXAgent(BaseInstalledAgent):
         agents_md_src = Path(__file__).parent / "AGENTS.md"
         if agents_md_src.exists():
             await environment.upload_file(agents_md_src, _AGENTS_MD_TARGET)
+
+    @staticmethod
+    def _find_host_ca_bundle() -> Path | None:
+        # Standard CA bundle locations across Debian/Ubuntu, RHEL, Alpine,
+        # macOS-with-homebrew, and Python's certifi (used as a last resort).
+        candidates = [
+            os.environ.get("SSL_CERT_FILE", ""),
+            "/etc/ssl/certs/ca-certificates.crt",
+            "/etc/pki/tls/certs/ca-bundle.crt",
+            "/etc/ssl/cert.pem",
+            "/usr/local/etc/openssl/cert.pem",
+            "/opt/homebrew/etc/ca-certificates/cert.pem",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).is_file() and Path(candidate).stat().st_size > 0:
+                return Path(candidate)
+        try:
+            import certifi  # type: ignore[import-not-found]
+
+            certifi_path = Path(certifi.where())
+            if certifi_path.is_file() and certifi_path.stat().st_size > 0:
+                return certifi_path
+        except Exception:
+            pass
+        return None
 
     def _run_env(self, instruction: str) -> dict[str, str]:
         env: dict[str, str] = {
