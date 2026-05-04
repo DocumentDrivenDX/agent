@@ -29,25 +29,26 @@ budget account for an unknown share of any observed delta. See SD-010 §2 D4
 
 ## Preflight
 
-Commands executed on 2026-04-30:
+The 2026-04-30 preflight checked `OPENAI_API_KEY` against the historical
+dashed Phase A.1 profile name. The equivalent current Phase A.1 prerequisite
+check is:
 
 ```sh
-if [ -n "$OPENAI_API_KEY" ]; then echo OPENAI_API_KEY=set; else echo OPENAI_API_KEY=unset; fi
+if [ -n "$OPENROUTER_API_KEY" ]; then echo OPENROUTER_API_KEY=set; else echo OPENROUTER_API_KEY=unset; fi
 for bin in harbor pi opencode; do if command -v "$bin" >/dev/null 2>&1; then echo "$bin=$(command -v "$bin")"; else echo "$bin=missing"; fi; done
 ```
 
-Observed result:
+The original tool availability result also found missing harness prerequisites:
 
 ```text
-OPENAI_API_KEY=unset
 harbor=missing
 pi=/home/linuxbrew/.linuxbrew/bin/pi
 opencode=missing
 ```
 
-Because the anchor profile `gpt-5-3-mini` requires `OPENAI_API_KEY`, a live run
-would fail before producing acceptance-grade graded cells. Harbor and opencode
-are also missing from this environment.
+Because the current anchor profile `gpt-5-mini` requires
+`OPENROUTER_API_KEY`, a live run would fail before producing acceptance-grade
+graded cells. Harbor and opencode are also missing from this environment.
 
 ## Runner Verification
 

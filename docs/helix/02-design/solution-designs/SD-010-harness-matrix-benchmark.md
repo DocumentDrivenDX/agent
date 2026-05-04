@@ -78,7 +78,7 @@ once per run.
 ```
 fiz-bench matrix \
   --subset=scripts/beadbench/external/termbench-subset-canary.json \
-  --profiles=gpt-5-3-mini \
+  --profiles=gpt-5-mini \
   --harnesses=fiz,pi,opencode \
   --reps=3 \
   --budget-usd=15 \
@@ -173,8 +173,8 @@ id: gpt-5-mini
 provider:
   type: openai-compat        # anthropic | openai | openai-compat | google
   model: gpt-5-mini
-  base_url: https://api.openai.com/v1
-  api_key_env: OPENAI_API_KEY
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
 pricing:
   input_usd_per_mtok: 0.60
   output_usd_per_mtok: 2.00

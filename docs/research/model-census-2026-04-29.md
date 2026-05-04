@@ -204,11 +204,13 @@ The user is asked to sign off on:
 ```
 
 Once signed, NEW18 commits the profile YAMLs at
-`scripts/benchmark/profiles/gpt-5-3-mini.yaml` and
+`scripts/benchmark/profiles/gpt-5-mini.yaml` and
 `scripts/benchmark/profiles/gemini-3-flash.yaml`, fills in
 `versioning.snapshot` at `apply_profile` time per SD-010 §3, and the matrix
-runner can use `--profiles=gpt-5-3-mini` (Phase A.1) and
-`--profiles=gpt-5-3-mini,gemini-3-flash` (Phase A.2).
+runner can use `--profiles=gpt-5-mini` (Phase A.1) and
+`--profiles=gpt-5-mini,gemini-3-flash` (Phase A.2). The historical sign-off
+label above used the model family name; the active profile id was later
+renamed to `gpt-5-mini` for the Phase A runner.
 
 ---
 

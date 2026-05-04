@@ -12,7 +12,7 @@ caps from observation rather than from a formula guessed before a run.
    fiz-bench matrix \
      --subset=scripts/beadbench/external/termbench-subset-canary.json \
      --harnesses=fiz \
-     --profiles=gpt-5-3-mini \
+     --profiles=gpt-5-mini \
      --reps=3 \
      --out=benchmark-results/cost-observation-$(date -u +%Y%m%dT%H%M%SZ)
    ```
@@ -50,7 +50,7 @@ caps from observation rather than from a formula guessed before a run.
    fiz-bench matrix \
      --subset=scripts/beadbench/external/termbench-subset-canary.json \
      --harnesses=fiz,pi,opencode \
-     --profiles=gpt-5-3-mini \
+     --profiles=gpt-5-mini \
      --reps=3 \
      --per-run-budget-usd=<derived per-run cap> \
      --budget-usd=<derived matrix cap> \
