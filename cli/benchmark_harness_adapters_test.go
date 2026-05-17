@@ -242,7 +242,7 @@ func TestHarnessAdapterDiscovery(t *testing.T) {
 		got[parts[0]] = parts[1]
 	}
 
-	wantNames := []string{"claude", "codex", "cost-probe", "dumb-script", "fiz", "noop", "opencode", "pi"}
+	wantNames := []string{"claude", "codex", "cost-probe", "dumb-script", "fiz", "noop", "opencode", "pi", "test-echo"}
 	if len(got) != len(wantNames) {
 		names := make([]string, 0, len(got))
 		for name := range got {
@@ -406,8 +406,8 @@ func TestBenchmarkTaskSpecComposition(t *testing.T) {
 	if got := strings.Join(spec.SecretEnvKeys, ","); got != "FIZEAU_API_KEY" {
 		t.Fatalf("task-spec secret_env_keys = %#v, want [FIZEAU_API_KEY]", spec.SecretEnvKeys)
 	}
-	if len(spec.ExtraArgs) != 0 {
-		t.Fatalf("task-spec extra_args = %#v, want empty", spec.ExtraArgs)
+	if len(spec.ExtraArgs) != 4 || spec.ExtraArgs[0] != "--jobs-dir" || spec.ExtraArgs[1] != "/output" || spec.ExtraArgs[2] != "--job-name" {
+		t.Fatalf("task-spec extra_args = %#v, want [--jobs-dir, /output, --job-name, <cell_id>]", spec.ExtraArgs)
 	}
 }
 
