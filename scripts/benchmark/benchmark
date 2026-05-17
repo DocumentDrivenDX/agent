@@ -368,6 +368,206 @@ default_task_executor_for_framework() {
   esac
 }
 
+# concurrency_groups_json emits the concurrency-group manifest as JSON.
+concurrency_groups_json() {
+  local file="${SCRIPT_DIR}/concurrency-groups.yaml"
+  [[ -f "${file}" ]] || die "validate: concurrency-groups.yaml missing (${file})"
+  yq -o=json '.' "${file}"
+}
+
+# build_task_allowlist_file writes a newline-separated allowlist of canonical
+# task ids discovered from the checked-in task-subset manifests.
+build_task_allowlist_file() {
+  local out="$1"
+  local subset_files=()
+  local f
+  shopt -s nullglob
+  for f in "${SCRIPT_DIR}"/task-subset-*.yaml; do
+    subset_files+=("${f}")
+  done
+  shopt -u nullglob
+  [[ ${#subset_files[@]} -gt 0 ]] || die "validate: no task-subset YAML files found in ${SCRIPT_DIR}"
+
+  : >"${out}"
+  for f in "${subset_files[@]}"; do
+    yq -o=json '.' "${f}" \
+      | jq -r '.tasks[]? | (if type == "object" then (.id // empty) else . end)' \
+      >>"${out}"
+  done
+  LC_ALL=C sort -u "${out}" -o "${out}"
+}
+
+# validate_profile_catalog checks that every profile parses, keeps its
+# filename/id in sync, references a known concurrency group, and resolves to a
+# known harness adapter.
+validate_profile_catalog() {
+  local concurrency_json="$1"
+  local f json name profile_id concurrency_group harness adapter
+  local files=()
+  shopt -s nullglob
+  for f in "${PROFILES_DIR}"/*.yaml "${PROFILES_DIR}"/*.yml; do
+    files+=("${f}")
+  done
+  shopt -u nullglob
+  [[ ${#files[@]} -gt 0 ]] || die "validate: no profiles found in ${PROFILES_DIR}"
+
+  for f in "${files[@]}"; do
+    name="$(basename "${f%.*}")"
+    json="$(yq -o=json '.' "${f}")"
+    profile_id="$(jq -r '.id // ""' <<<"${json}")"
+    [[ -n "${profile_id}" ]] || die "validate: profile ${name} is missing .id"
+    [[ "${profile_id}" == "${name}" ]] || die "validate: profile ${name} id mismatch (${profile_id})"
+
+    concurrency_group="$(jq -r '.concurrency_group // ""' <<<"${json}")"
+    [[ -n "${concurrency_group}" ]] || die "validate: profile ${name} is missing .concurrency_group"
+    jq -e --arg group "${concurrency_group}" '.groups[$group] != null' <<<"${concurrency_json}" >/dev/null \
+      || die "validate: profile ${name} references unknown concurrency_group ${concurrency_group}"
+
+    harness="$(jq -r '.harness // "none"' <<<"${json}")"
+    adapter="$(resolve_adapter_for_harness "${harness}")"
+    [[ -x "${HARNESS_ADAPTERS_DIR}/${adapter}" ]] \
+      || die "validate: profile ${name} harness ${harness} resolves to missing adapter ${adapter}"
+  done
+}
+
+# validate_bench_sets checks that every bench-set parses, keeps its id synced
+# with the filename, and only references known task ids.
+validate_bench_sets() {
+  local allowlist_file="$1"
+  local f json name bench_set_id framework dataset reps task seen_task
+  local files=()
+  shopt -s nullglob
+  for f in "${BENCH_SETS_DIR}"/*.yaml "${BENCH_SETS_DIR}"/*.yml; do
+    files+=("${f}")
+  done
+  shopt -u nullglob
+  [[ ${#files[@]} -gt 0 ]] || die "validate: no bench-sets found in ${BENCH_SETS_DIR}"
+
+  for f in "${files[@]}"; do
+    name="$(basename "${f%.*}")"
+    json="$(bench_set_json "${f}")"
+    bench_set_id="$(jq -r '.id // ""' <<<"${json}")"
+    [[ -n "${bench_set_id}" ]] || die "validate: bench-set ${name} is missing .id"
+    [[ "${bench_set_id}" == "${name}" ]] || die "validate: bench-set ${name} id mismatch (${bench_set_id})"
+
+    framework="$(jq -r '.framework // ""' <<<"${json}")"
+    [[ -n "${framework}" ]] || die "validate: bench-set ${name} is missing .framework"
+    dataset="$(jq -r '.dataset // ""' <<<"${json}")"
+    [[ -n "${dataset}" ]] || die "validate: bench-set ${name} is missing .dataset"
+    reps="$(jq -r '.default_reps // 1' <<<"${json}")"
+    if ! [[ "${reps}" =~ ^[0-9]+$ ]] || (( reps < 1 )); then
+      die "validate: bench-set ${name} default_reps must be a positive integer (got ${reps})"
+    fi
+
+    seen_task=0
+    while IFS= read -r task; do
+      [[ -n "${task}" ]] || continue
+      seen_task=1
+      [[ "${task}" != "*all*" ]] || continue
+      grep -Fxq -- "${task}" "${allowlist_file}" \
+        || die "validate: bench-set ${name} references unknown task ${task}"
+    done < <(resolve_tasks "${f}")
+    [[ ${seen_task} -eq 1 ]] || die "validate: bench-set ${name} resolved no tasks"
+  done
+}
+
+# validate_harness_adapters checks adapter install/command JSON contracts for
+# every executable in scripts/benchmark/harness-adapters/.
+validate_harness_adapters() {
+  local tmpdir="$1" synthetic_profile="$2"
+  local artifact="${tmpdir}/agent-artifact"
+  : >"${artifact}"
+
+  local f name install_out command_out install_err command_err install_status command_status
+  local files=()
+  shopt -s nullglob dotglob
+  for f in "${HARNESS_ADAPTERS_DIR}"/*; do
+    [[ -f "${f}" && -x "${f}" ]] || continue
+    files+=("${f}")
+  done
+  shopt -u nullglob dotglob
+  [[ ${#files[@]} -gt 0 ]] || die "validate: no harness adapters found in ${HARNESS_ADAPTERS_DIR}"
+
+  for f in "${files[@]}"; do
+    name="$(basename "${f}")"
+    install_err="${tmpdir}/${name}.install.err"
+    command_err="${tmpdir}/${name}.command.err"
+
+    set +e
+    install_out="$("${f}" install "${artifact}" 2>"${install_err}")"
+    install_status=$?
+    set -e
+    if [[ ${install_status} -ne 0 ]]; then
+      die "validate: harness-adapter ${name} install failed: $(<"${install_err}")"
+    fi
+    jq -e '
+      type == "object"
+      and (.install_command | type == "string" and length > 0)
+      and (.artifact_source | type == "string" and length > 0)
+      and (.binary_path | type == "string")
+      and (has("harbor_plugin"))
+    ' <<<"${install_out}" >/dev/null \
+      || die "validate: harness-adapter ${name} install output is malformed"
+
+    set +e
+    command_out="$(printf '%s' "${synthetic_profile}" | "${f}" command 2>"${command_err}")"
+    command_status=$?
+    set -e
+    if [[ ${command_status} -ne 0 ]]; then
+      die "validate: harness-adapter ${name} command failed: $(<"${command_err}")"
+    fi
+    jq -e '
+      type == "object"
+      and (.command | type == "array" and length > 0)
+      and all(.command[]?; type == "string")
+      and (.env | type == "object")
+      and all((.env // {}) | to_entries[]?; (.value | type == "string"))
+      and (.secret_env_keys | type == "array")
+      and ((.secret_env_keys | unique | length) == (.secret_env_keys | length))
+      and (.env as $env | all(.secret_env_keys[]?; $env[.] != null))
+    ' <<<"${command_out}" >/dev/null \
+      || die "validate: harness-adapter ${name} command output is malformed"
+  done
+}
+
+# validate_task_executors checks that every task-executor honors the dry-run
+# contract and writes a valid result.json.
+validate_task_executors() {
+  local tmpdir="$1" synthetic_task_spec="$2"
+  local f name stdout_file stderr_file cell_dir result_path status
+  local files=()
+  shopt -s nullglob dotglob
+  for f in "${TASK_EXECUTORS_DIR}"/*; do
+    [[ -f "${f}" && -x "${f}" ]] || continue
+    files+=("${f}")
+  done
+  shopt -u nullglob dotglob
+  [[ ${#files[@]} -gt 0 ]] || die "validate: no task executors found in ${TASK_EXECUTORS_DIR}"
+
+  for f in "${files[@]}"; do
+    name="$(basename "${f}")"
+    cell_dir="${tmpdir}/cell"
+    mkdir -p "${cell_dir}"
+    stdout_file="${tmpdir}/${name}.stdout"
+    stderr_file="${tmpdir}/${name}.stderr"
+    result_path="${cell_dir}/result.json"
+
+    set +e
+    printf '%s' "${synthetic_task_spec}" | HARBOR_TASK_EXECUTOR_DRY_RUN=1 "${f}" \
+      >"${stdout_file}" 2>"${stderr_file}"
+    status=$?
+    set -e
+    if [[ ${status} -ne 0 ]]; then
+      die "validate: task-executor ${name} failed: $(<"${stderr_file}")"
+    fi
+    [[ -s "${result_path}" ]] || die "validate: task-executor ${name} did not write ${result_path}"
+    jq -e '.' "${result_path}" >/dev/null \
+      || die "validate: task-executor ${name} wrote invalid JSON to result.json"
+    jq -e '.' "${stdout_file}" >/dev/null \
+      || die "validate: task-executor ${name} wrote invalid JSON to stdout"
+  done
+}
+
 # ---------------------------------------------------------------------------
 # --plan: print matrix
 # ---------------------------------------------------------------------------
@@ -477,6 +677,7 @@ is_terminal_status() {
 resolve_adapter_for_harness() {
   case "${1:-}" in
     ""|none) printf 'fiz\n' ;;
+    anthropic) printf 'claude\n' ;;
     *)       printf '%s\n' "$1" ;;
   esac
 }
@@ -1268,11 +1469,75 @@ run_sweep() {
 }
 
 # ---------------------------------------------------------------------------
-# validate (placeholder until PR C)
+# validate checks the offline manifest surface without touching the network.
 # ---------------------------------------------------------------------------
 
 cmd_validate() {
-  warn "validate: schema + cross-reference checks land in PR C; this is a placeholder"
+  require_tool yq
+  require_tool jq
+
+  local tmpdir allowlist_file concurrency_json synthetic_profile synthetic_task_spec
+  tmpdir="$(mktemp -d)"
+  allowlist_file="${tmpdir}/task-allowlist.txt"
+
+  build_task_allowlist_file "${allowlist_file}"
+  concurrency_json="$(concurrency_groups_json)"
+  jq -e '
+    (.groups // {}) | type == "object"
+    and (to_entries | length > 0)
+    and all(to_entries[]; (.value.max_concurrency | type == "number") and (.value.max_concurrency > 0))
+  ' <<<"${concurrency_json}" >/dev/null \
+    || die "validate: concurrency-groups.yaml is malformed"
+
+  validate_profile_catalog "${concurrency_json}"
+  validate_bench_sets "${allowlist_file}"
+
+  synthetic_profile="$(jq -nc '{
+    id: "validate-profile",
+    harness: "none",
+    surface: "fiz_provider_native",
+    concurrency_group: "openrouter",
+    provider: {
+      type: "openrouter",
+      model: "openai/gpt-5.4-mini",
+      base_url: "https://openrouter.ai/api/v1",
+      api_key_env: "OPENROUTER_API_KEY"
+    },
+    sampling: {
+      temperature: 0.0,
+      reasoning: "low",
+      planning_mode: true,
+      top_p: 0.95,
+      top_k: 20,
+      min_p: 0
+    },
+    limits: {
+      max_output_tokens: 128000,
+      context_tokens: 1000000
+    },
+    metadata: {
+      runtime: "validate"
+    }
+  }')"
+  validate_harness_adapters "${tmpdir}" "${synthetic_profile}"
+
+  mkdir -p "${tmpdir}/tasks" "${tmpdir}/cell"
+  synthetic_task_spec="$(jq -nc --arg tasks_dir "${tmpdir}/tasks" --arg cell_dir "${tmpdir}/cell" '{
+    task_id: "validate-task",
+    tasks_dir: $tasks_dir,
+    cell_dir: $cell_dir,
+    harbor_plugin: "scripts.benchmark.harbor_agent:FizeauAgent",
+    image: "fizeau-harbor-runner:latest",
+    env: {
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1",
+      FIZEAU_MODEL: "openai/gpt-5.4-mini",
+      FIZEAU_API_KEY: "${OPENROUTER_API_KEY}"
+    },
+    secret_env_keys: ["FIZEAU_API_KEY"],
+    extra_args: []
+  }')"
+  validate_task_executors "${tmpdir}" "${synthetic_task_spec}"
+
   return 0
 }
 
