@@ -447,7 +447,7 @@ func runWithOptions(opts Options) int {
 		RepetitionPenalty:       sRep,
 		Seed:                    sSeed,
 		SamplingSource:          samplingSource,
-		PlanningMode:            *planFlag,
+		PlanningMode:            *planFlag || preset == "benchmark",
 	})
 	result, err := executeViaServiceFn(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
 	if err != nil {
