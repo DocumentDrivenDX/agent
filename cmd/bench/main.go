@@ -24,7 +24,8 @@ func run(args []string) int {
 	case "discover":
 		return cmdDiscover(args[1:])
 	case "run":
-		return cmdRun(args[1:])
+		fmt.Fprintf(os.Stderr, "use ./benchmark — see scripts/benchmark/README.md\n")
+		return 2
 	case "report":
 		return cmdReport(args[1:])
 	case "profiles":
@@ -34,13 +35,15 @@ func run(args []string) int {
 	case "evidence":
 		return cmdEvidence(args[1:])
 	case "matrix":
-		return cmdMatrix(args[1:])
+		fmt.Fprintf(os.Stderr, "use ./benchmark — see scripts/benchmark/README.md\n")
+		return 2
 	case "matrix-aggregate":
 		return cmdMatrixAggregate(args[1:])
 	case "matrix-index":
 		return cmdMatrixIndex(args[1:])
 	case "plan":
-		return cmdPlan(args[1:])
+		fmt.Fprintf(os.Stderr, "use ./benchmark — see scripts/benchmark/README.md\n")
+		return 2
 	case "bench-sets":
 		return cmdBenchSets(args[1:])
 	case "help", "-h", "--help":
@@ -62,18 +65,18 @@ func printUsage() {
 
 Commands:
   discover   List discovered (harness, provider, model) candidates
-  run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
   fhi        Generate benchmark-specific deltas or cross-benchmark FHI claims
   evidence   Validate and append benchmark evidence records, including curated external imports
-  matrix     Run the SD-010 harness/profile/task matrix
   matrix-aggregate
              Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
   matrix-index
              Consolidate report.json files into phase-independent indexes
-  plan       Emit the resolved profile×bench-set execution matrix (used by ./benchmark)
   bench-sets List bench-sets under scripts/benchmark/bench-sets/
+
+Deprecated (use ./benchmark in scripts/benchmark/):
+  matrix, run, plan, sweep
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())
