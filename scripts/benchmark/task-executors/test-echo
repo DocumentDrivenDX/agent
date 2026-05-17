@@ -33,8 +33,8 @@ fi
 
 mkdir -p "$cell_dir"
 
-# Write a simple result.json
-jq -nc \
+# Generate result JSON
+result="$(jq -nc \
   --arg task_id "$task_id" \
   '{
     task_id: $task_id,
@@ -45,6 +45,10 @@ jq -nc \
     cached_input_tokens: 0,
     total_tokens: 0,
     grading_outcome: "pass"
-  }' >"${cell_dir}/result.json"
+  }')"
+
+# Write result to both stdout (for validation) and result.json
+printf '%s' "$result" >"${cell_dir}/result.json"
+printf '%s' "$result"
 
 exit 0
