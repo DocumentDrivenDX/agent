@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# SUMMARY: test executor that writes a simple result.json for testing cell lifecycle
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  test-echo  (reads task-spec.json on stdin)
+
+This is a fake task executor for testing. It writes a valid result.json
+with final_status=completed.
+EOF
+  return 2
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+fi
+
+spec="$(cat)"
+if [[ -z "$spec" ]]; then
+  echo "test-echo: empty task-spec on stdin" >&2
+  exit 2
+fi
+
+cell_dir="$(jq -r '.cell_dir // ""' <<<"$spec")"
+task_id="$(jq -r '.task_id // ""' <<<"$spec")"
+
+if [[ -z "$cell_dir" || -z "$task_id" ]]; then
+  echo "test-echo: task-spec missing one of {cell_dir, task_id}" >&2
+  exit 2
+fi
+
+mkdir -p "$cell_dir"
+
+# Write a simple result.json
+jq -nc \
+  --arg task_id "$task_id" \
+  '{
+    task_id: $task_id,
+    final_status: "completed",
+    turns: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    total_tokens: 0,
+    grading_outcome: "pass"
+  }' >"${cell_dir}/result.json"
+
+exit 0
