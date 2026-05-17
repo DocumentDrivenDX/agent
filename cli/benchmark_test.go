@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -19,123 +20,99 @@ func getRepoRoot(t *testing.T) string {
 	return filepath.Dir(wd)
 }
 
-// TestBenchmarkRunnerPlanExpansion verifies --plan output for profile×task×rep expansion
-// including tasks_from resolution.
-func TestBenchmarkRunnerPlanExpansion(t *testing.T) {
-	repoRoot := getRepoRoot(t)
-	benchmarkScript := filepath.Join(repoRoot, "scripts", "benchmark", "benchmark")
-	benchDir := filepath.Join(repoRoot, "scripts", "benchmark")
-
+func benchmarkPaths(t *testing.T) (repoRoot, benchmarkScript, benchDir string) {
+	t.Helper()
+	repoRoot = getRepoRoot(t)
+	benchmarkScript = filepath.Join(repoRoot, "scripts", "benchmark", "benchmark")
+	benchDir = filepath.Join(repoRoot, "scripts", "benchmark")
 	if _, err := os.Stat(benchmarkScript); err != nil {
 		t.Fatalf("benchmark script not found: %v", err)
 	}
+	return repoRoot, benchmarkScript, benchDir
+}
 
-	tests := []struct {
-		name        string
-		profile     string
-		benchSet    string
-		expectRows  int
-		shouldError bool
-	}{
-		{
-			name:       "simple canary plan",
-			profile:    "claude-sonnet-4-6",
-			benchSet:   "tb-2-1-canary",
-			expectRows: 9, // 1 profile × 3 tasks × 3 reps
-		},
-		{
-			name:        "missing profile",
-			profile:     "nonexistent-profile",
-			benchSet:    "tb-2-1-canary",
-			shouldError: true,
-		},
-		{
-			name:        "missing bench-set",
-			profile:     "claude-sonnet-4-6",
-			benchSet:    "nonexistent-bench-set",
-			shouldError: true,
-		},
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(benchmarkScript,
-				"--profile", tt.profile,
-				"--bench-set", tt.benchSet,
-				"--plan")
-			cmd.Dir = benchDir
-
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
-			if tt.shouldError {
-				if err == nil {
-					t.Errorf("expected error but command succeeded")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("command failed: %v\nstderr: %s", err, stderr.String())
-			}
-
-			// Parse output: each line is tab-separated key=value pairs
-			lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-			if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-				t.Fatalf("no output from --plan")
-			}
-
-			if len(lines) != tt.expectRows {
-				t.Errorf("expected %d rows, got %d\noutput: %s",
-					tt.expectRows, len(lines), stdout.String())
-			}
-
-			// Validate each line has expected fields
-			for i, line := range lines {
-				fields := strings.Split(line, "\t")
-				expectedFields := map[string]bool{
-					"profile":       false,
-					"bench_set":     false,
-					"framework":     false,
-					"dataset":       false,
-					"task":          false,
-					"rep":           false,
-					"task_executor": false,
-				}
-
-				for _, field := range fields {
-					parts := strings.SplitN(field, "=", 2)
-					if len(parts) == 2 {
-						expectedFields[parts[0]] = true
-					}
-				}
-
-				for key, found := range expectedFields {
-					if !found {
-						t.Errorf("row %d missing field '%s': %s", i, key, line)
-					}
-				}
-			}
-		})
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
-// TestBenchmarkRunnerArgParsing verifies correct handling of unknown subcommands
-// and missing required flags.
-func TestBenchmarkRunnerArgParsing(t *testing.T) {
-	repoRoot := getRepoRoot(t)
-	benchmarkScript := filepath.Join(repoRoot, "scripts", "benchmark", "benchmark")
-	benchDir := filepath.Join(repoRoot, "scripts", "benchmark")
-
-	if _, err := os.Stat(benchmarkScript); err != nil {
-		t.Fatalf("benchmark script not found: %v", err)
+func benchmarkEnv(overrides map[string]string) []string {
+	env := make(map[string]string, len(overrides)+len(os.Environ()))
+	for _, kv := range os.Environ() {
+		key, value, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		env[key] = value
 	}
+	for key, value := range overrides {
+		env[key] = value
+	}
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, key+"="+env[key])
+	}
+	return out
+}
+
+func runBenchmark(t *testing.T, benchmarkScript, benchDir string, args []string, env map[string]string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(benchmarkScript, args...)
+	cmd.Dir = benchDir
+	cmd.Env = benchmarkEnv(env)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+func parsePlanRow(t *testing.T, line string) map[string]string {
+	t.Helper()
+	row := make(map[string]string)
+	for _, field := range strings.Split(line, "\t") {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			t.Fatalf("plan field not in key=value format: %s", field)
+		}
+		row[key] = value
+	}
+	return row
+}
+
+// TestBenchmarkDispatchSubcommands verifies the top-level dispatcher accepts
+// the documented subcommands and rejects invalid arguments with usage errors.
+func TestBenchmarkDispatchSubcommands(t *testing.T) {
+	_, benchmarkScript, benchDir := benchmarkPaths(t)
+
+	stubDir := t.TempDir()
+	writeFile(t, filepath.Join(stubDir, "docker"), `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  exit 0
+fi
+echo "stub docker: unexpected args: $*" >&2
+exit 0
+`)
+	writeFile(t, filepath.Join(stubDir, "build-harbor-runner.sh"), `#!/usr/bin/env bash
+set -euo pipefail
+echo "stub harbor build"
+`)
 
 	tests := []struct {
 		name        string
 		args        []string
+		env         map[string]string
 		shouldError bool
 		checkOutput func(t *testing.T, stderr string)
 	}{
@@ -145,7 +122,7 @@ func TestBenchmarkRunnerArgParsing(t *testing.T) {
 			shouldError: true,
 			checkOutput: func(t *testing.T, stderr string) {
 				if !strings.Contains(stderr, "unknown subcommand") {
-					t.Errorf("expected 'unknown subcommand' in stderr, got: %s", stderr)
+					t.Fatalf("expected 'unknown subcommand' in stderr, got: %s", stderr)
 				}
 			},
 		},
@@ -155,7 +132,7 @@ func TestBenchmarkRunnerArgParsing(t *testing.T) {
 			shouldError: true,
 			checkOutput: func(t *testing.T, stderr string) {
 				if !strings.Contains(stderr, "--profile") {
-					t.Errorf("expected '--profile' mention in stderr, got: %s", stderr)
+					t.Fatalf("expected '--profile' mention in stderr, got: %s", stderr)
 				}
 			},
 		},
@@ -165,7 +142,7 @@ func TestBenchmarkRunnerArgParsing(t *testing.T) {
 			shouldError: true,
 			checkOutput: func(t *testing.T, stderr string) {
 				if !strings.Contains(stderr, "--bench-set") {
-					t.Errorf("expected '--bench-set' mention in stderr, got: %s", stderr)
+					t.Fatalf("expected '--bench-set' mention in stderr, got: %s", stderr)
 				}
 			},
 		},
@@ -175,120 +152,235 @@ func TestBenchmarkRunnerArgParsing(t *testing.T) {
 			shouldError: true,
 			checkOutput: func(t *testing.T, stderr string) {
 				if !strings.Contains(stderr, "unknown") {
-					t.Errorf("expected 'unknown' in stderr, got: %s", stderr)
+					t.Fatalf("expected 'unknown' in stderr, got: %s", stderr)
 				}
 			},
 		},
 		{
-			name:        "valid subcommand: profiles",
+			name:        "profiles listing",
 			args:        []string{"profiles"},
 			shouldError: false,
 		},
 		{
-			name:        "valid subcommand: bench-sets",
+			name:        "bench-sets listing",
 			args:        []string{"bench-sets"},
 			shouldError: false,
 		},
 		{
-			name:        "valid subcommand: task-executors",
+			name:        "task-executors listing",
 			args:        []string{"task-executors"},
 			shouldError: false,
 		},
 		{
-			name:        "valid subcommand: harness-adapters",
+			name:        "harness-adapters listing",
 			args:        []string{"harness-adapters"},
+			shouldError: false,
+		},
+		{
+			name:        "validate subcommand",
+			args:        []string{"validate"},
+			shouldError: false,
+		},
+		{
+			name: "preflight subcommand",
+			args: []string{"preflight"},
+			env: map[string]string{
+				"PATH":                stubDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"HARBOR_BUILD_SCRIPT": filepath.Join(stubDir, "build-harbor-runner.sh"),
+			},
 			shouldError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(benchmarkScript, tt.args...)
-			cmd.Dir = benchDir
+			env := map[string]string{}
+			if tt.env != nil {
+				for key, value := range tt.env {
+					env[key] = value
+				}
+			}
+			if tt.name == "validate subcommand" {
+				env["PATH"] = os.Getenv("PATH")
+			}
+			if tt.name == "preflight subcommand" {
+				env["PATH"] = tt.env["PATH"]
+			}
 
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
+			stdout, stderr, err := runBenchmark(t, benchmarkScript, benchDir, tt.args, env)
+			_ = stdout
 			if tt.shouldError {
 				if err == nil {
-					t.Errorf("expected error but command succeeded")
+					t.Fatalf("expected error but command succeeded")
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("command failed: %v\nstderr: %s", err, stderr.String())
-				}
+			} else if err != nil {
+				t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
 			}
 
 			if tt.checkOutput != nil {
-				tt.checkOutput(t, stderr.String())
+				tt.checkOutput(t, stderr)
 			}
 		})
 	}
 }
 
-// TestBenchmarkRunnerMatrixJSON verifies --plan output is correctly formatted
-// as key=value pairs that can be parsed into structured data.
-func TestBenchmarkRunnerMatrixJSON(t *testing.T) {
-	repoRoot := getRepoRoot(t)
-	benchmarkScript := filepath.Join(repoRoot, "scripts", "benchmark", "benchmark")
-	benchDir := filepath.Join(repoRoot, "scripts", "benchmark")
+// TestBenchmarkPlanMatrixExpansion verifies --plan output for profile×task×rep
+// expansion is deterministic and pure.
+func TestBenchmarkPlanMatrixExpansion(t *testing.T) {
+	_, benchmarkScript, benchDir := benchmarkPaths(t)
 
-	if _, err := os.Stat(benchmarkScript); err != nil {
-		t.Fatalf("benchmark script not found: %v", err)
+	outDir := filepath.Join(t.TempDir(), "plan-out")
+	stdout, stderr, err := runBenchmark(t, benchmarkScript, benchDir,
+		[]string{"--profile", "claude-sonnet-4-6", "--bench-set", "tb-2-1-canary", "--plan", "--out", outDir},
+		nil)
+	if err != nil {
+		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
+	}
+	if _, err := os.Stat(outDir); !os.IsNotExist(err) {
+		t.Fatalf("--plan should not create %s, but stat returned %v", outDir, err)
 	}
 
-	cmd := exec.Command(benchmarkScript,
-		"--profile", "claude-sonnet-4-6",
-		"--bench-set", "tb-2-1-canary",
-		"--plan")
-	cmd.Dir = benchDir
-
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("command failed: %v", err)
-	}
-
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) == 0 {
-		t.Fatalf("no output from --plan")
-	}
-
-	// Verify each line can be parsed as key=value pairs
-	for i, line := range lines {
-		fields := strings.Split(line, "\t")
-		for _, field := range fields {
-			if !strings.Contains(field, "=") {
-				t.Errorf("row %d field not in key=value format: %s", i, field)
-				continue
-			}
-		}
-	}
-
-	// Verify specific cells in the plan
-	// With 1 profile, 3 tasks, 3 reps: should have specific pattern
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	if len(lines) != 9 {
-		t.Errorf("expected 9 cells (1 profile × 3 tasks × 3 reps), got %d", len(lines))
+		t.Fatalf("expected 9 plan rows, got %d\noutput: %s", len(lines), stdout)
 	}
 
-	// Verify rep counting (should go from 1/3 to 3/3 for each task)
-	repCounts := make(map[string]int)
-	for _, line := range lines {
-		fields := strings.Split(line, "\t")
-		for _, field := range fields {
-			if strings.HasPrefix(field, "rep=") {
-				repCounts[field]++
-			}
+	expectedTasks := []string{
+		"cancel-async-tasks",
+		"log-summary-date-ranges",
+		"configure-git-webserver",
+	}
+	expectedRepSequence := []string{"1/3", "2/3", "3/3"}
+
+	for idx, line := range lines {
+		row := parsePlanRow(t, line)
+		if row["profile"] != "claude-sonnet-4-6" {
+			t.Fatalf("row %d profile mismatch: %q", idx, row["profile"])
+		}
+		if row["bench_set"] != "tb-2-1-canary" {
+			t.Fatalf("row %d bench_set mismatch: %q", idx, row["bench_set"])
+		}
+		if row["framework"] != "terminal-bench" {
+			t.Fatalf("row %d framework mismatch: %q", idx, row["framework"])
+		}
+		if row["dataset"] != "terminal-bench-2-1" {
+			t.Fatalf("row %d dataset mismatch: %q", idx, row["dataset"])
+		}
+		if row["task_executor"] != "harbor" {
+			t.Fatalf("row %d task_executor mismatch: %q", idx, row["task_executor"])
+		}
+		taskIndex := idx / len(expectedRepSequence)
+		repIndex := idx % len(expectedRepSequence)
+		if row["task"] != expectedTasks[taskIndex] {
+			t.Fatalf("row %d task mismatch: want %q got %q", idx, expectedTasks[taskIndex], row["task"])
+		}
+		if row["rep"] != expectedRepSequence[repIndex] {
+			t.Fatalf("row %d rep mismatch: want %q got %q", idx, expectedRepSequence[repIndex], row["rep"])
 		}
 	}
+}
 
-	expectedReps := []string{"rep=1/3", "rep=2/3", "rep=3/3"}
-	for _, rep := range expectedReps {
-		if repCounts[rep] != 3 {
-			t.Errorf("expected 3 cells with %s, got %d", rep, repCounts[rep])
+// TestBenchmarkTasksFromResolution verifies tasks_from paths resolve relative
+// to the bench-set file and merge with inline tasks lists.
+func TestBenchmarkTasksFromResolution(t *testing.T) {
+	_, benchmarkScript, _ := benchmarkPaths(t)
+
+	tmpDir := t.TempDir()
+	profilesDir := filepath.Join(tmpDir, "profiles")
+	benchSetsDir := filepath.Join(tmpDir, "bench-sets")
+	includeDir := filepath.Join(benchSetsDir, "includes")
+
+	writeFile(t, filepath.Join(profilesDir, "mini.yaml"), "id: mini\n")
+	writeFile(t, filepath.Join(includeDir, "tasks.yaml"), `tasks:
+  - id: from-alpha
+  - id: from-beta
+`)
+	writeFile(t, filepath.Join(benchSetsDir, "combo.yaml"), `id: combo
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 2
+task_executor: custom-executor
+tasks_from: includes/tasks.yaml
+tasks:
+  - inline-gamma
+  - inline-delta
+`)
+
+	stdout, stderr, err := runBenchmark(t, benchmarkScript, filepath.Join(getRepoRoot(t), "scripts", "benchmark"),
+		[]string{"--profile", "mini", "--bench-set", "combo", "--plan"},
+		map[string]string{
+			"PROFILES_DIR":   profilesDir,
+			"BENCH_SETS_DIR": benchSetsDir,
+		})
+	if err != nil {
+		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 8 {
+		t.Fatalf("expected 8 plan rows, got %d\noutput: %s", len(lines), stdout)
+	}
+
+	expectedTasks := []string{"from-alpha", "from-beta", "inline-gamma", "inline-delta"}
+	for idx, line := range lines {
+		row := parsePlanRow(t, line)
+		if row["task_executor"] != "custom-executor" {
+			t.Fatalf("row %d task_executor mismatch: %q", idx, row["task_executor"])
 		}
+		if row["task"] != expectedTasks[idx/2] {
+			t.Fatalf("row %d task mismatch: want %q got %q", idx, expectedTasks[idx/2], row["task"])
+		}
+		if row["rep"] != []string{"1/2", "2/2"}[idx%2] {
+			t.Fatalf("row %d rep mismatch: %q", idx, row["rep"])
+		}
+	}
+}
+
+// TestBenchmarkTerminalBenchDefaultsHarbor verifies matrix planning defaults
+// task_executor to harbor when the bench-set omits an explicit override.
+func TestBenchmarkTerminalBenchDefaultsHarbor(t *testing.T) {
+	_, benchmarkScript, benchDir := benchmarkPaths(t)
+
+	tmpDir := t.TempDir()
+	profilesDir := filepath.Join(tmpDir, "profiles")
+	benchSetsDir := filepath.Join(tmpDir, "bench-sets")
+
+	writeFile(t, filepath.Join(profilesDir, "mini.yaml"), "id: mini\n")
+	writeFile(t, filepath.Join(benchSetsDir, "default.yaml"), `id: default
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 1
+tasks:
+  - smoke-task
+`)
+
+	stdout, stderr, err := runBenchmark(t, benchmarkScript, benchDir,
+		[]string{"--profile", "mini", "--bench-set", "default", "--plan"},
+		map[string]string{
+			"PROFILES_DIR":   profilesDir,
+			"BENCH_SETS_DIR": benchSetsDir,
+		})
+	if err != nil {
+		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 plan row, got %d\noutput: %s", len(lines), stdout)
+	}
+
+	row := parsePlanRow(t, lines[0])
+	if row["task_executor"] != "harbor" {
+		t.Fatalf("expected harbor default task_executor, got %q", row["task_executor"])
+	}
+	if row["task"] != "smoke-task" {
+		t.Fatalf("expected smoke-task, got %q", row["task"])
+	}
+	if row["profile"] != "mini" {
+		t.Fatalf("expected profile mini, got %q", row["profile"])
+	}
+	if row["bench_set"] != "default" {
+		t.Fatalf("expected bench_set default, got %q", row["bench_set"])
 	}
 }
 

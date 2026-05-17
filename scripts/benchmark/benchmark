@@ -361,6 +361,8 @@ bench_set_json() {
 #   tasks: [id, id, ...]         inline list
 #   tasks: all                   defer to harness dataset; emit "*all*"
 #   tasks_from: <path>           load tasks[].id from a sibling YAML
+# tasks_from and inline tasks merge in deterministic order with duplicates
+# removed on first occurrence.
 resolve_tasks() {
   local bs_file="$1"
   local bs_json tasks_kind tasks_from
@@ -375,30 +377,58 @@ resolve_tasks() {
 
   tasks_from="$(jq -r '.tasks_from // ""' <<<"${bs_json}")"
 
-  if [[ "${tasks_kind}" == "list" ]]; then
-    jq -r '.tasks[]' <<<"${bs_json}"
-    return 0
-  fi
   if [[ "${tasks_kind}" == "string:all" ]]; then
+    [[ -z "${tasks_from}" ]] || die "bench-set ${bs_file}: tasks: all cannot be combined with tasks_from"
     # Defer to the harness dataset. The plan path emits a sentinel so
     # operators see the contract; the run path (PR A4) expands at execution.
     printf '*all*\n'
     return 0
   fi
+
+  local -A seen_tasks=()
+  local emitted=0
+  local task resolved
+
+  emit_task() {
+    local task="$1"
+    [[ -n "${task}" ]] || return 0
+    if [[ -z "${seen_tasks["${task}"]+x}" ]]; then
+      seen_tasks["${task}"]=1
+      printf '%s\n' "${task}"
+      emitted=1
+    fi
+  }
+
   if [[ -n "${tasks_from}" ]]; then
-    local resolved
     resolved="$(cd "$(dirname "${bs_file}")" && cd "$(dirname "${tasks_from}")" && pwd)/$(basename "${tasks_from}")"
     [[ -f "${resolved}" ]] || die "tasks_from path not found: ${tasks_from} (resolved to ${resolved})"
-    yq -o=json '.' "${resolved}" \
-      | jq -r '
-          if (.tasks | type) == "array" then
-            .tasks[] | (if type == "object" then .id else . end)
-          else
-            empty
-          end'
-    return 0
+    while IFS= read -r task; do
+      emit_task "${task}"
+    done < <(
+      yq -o=json '.' "${resolved}" \
+        | jq -r '
+            .tasks[]?
+            | (if type == "object" then (.id // empty) else . end)
+          '
+    )
   fi
-  die "bench-set ${bs_file}: no .tasks list, .tasks: all, or .tasks_from set"
+
+  if [[ "${tasks_kind}" == "list" ]]; then
+    while IFS= read -r task; do
+      emit_task "${task}"
+    done < <(jq -r '
+      .tasks[] | (if type == "object" then (.id // empty) else . end)
+    ' <<<"${bs_json}")
+  elif [[ "${tasks_kind}" != "none" ]]; then
+    die "bench-set ${bs_file}: unsupported tasks shape"
+  fi
+
+  if [[ ${emitted} -eq 0 ]]; then
+    if [[ -n "${tasks_from}" || "${tasks_kind}" == "list" ]]; then
+      die "bench-set ${bs_file}: resolved no tasks"
+    fi
+    die "bench-set ${bs_file}: no .tasks list, .tasks: all, or .tasks_from set"
+  fi
 }
 
 # bench_set_framework prints the framework name for the bench-set.
@@ -422,12 +452,39 @@ bench_set_reps() {
   jq -r '.default_reps // 1' <<<"${bs_json}"
 }
 
+# bench_set_task_executor prints the explicit task_executor override, if any.
+bench_set_task_executor() {
+  local bs_json
+  bs_json="$(bench_set_json "$1")"
+  jq -r '
+    if .task_executor? == null then ""
+    elif .task_executor | type == "string" then .task_executor
+    else error("task_executor must be a string")
+    end
+  ' <<<"${bs_json}"
+}
+
 # default_task_executor: harbor when terminal-bench, else "unknown".
 default_task_executor_for_framework() {
   case "$1" in
     terminal-bench) printf 'harbor\n' ;;
     *)              printf 'unknown\n' ;;
   esac
+}
+
+# resolve_bench_set_task_executor returns the explicit bench-set override when
+# present, otherwise falls back to the framework default.
+resolve_bench_set_task_executor() {
+  local bs_file="$1" task_executor framework
+  task_executor="$(bench_set_task_executor "${bs_file}")"
+  if [[ -n "${task_executor}" ]]; then
+    printf '%s\n' "${task_executor}"
+    return 0
+  fi
+  local bs_json
+  bs_json="$(bench_set_json "${bs_file}")"
+  framework="$(jq -r '.framework // "unknown"' <<<"${bs_json}")"
+  default_task_executor_for_framework "${framework}"
 }
 
 # concurrency_groups_json emits the concurrency-group manifest as JSON.
@@ -652,7 +709,7 @@ print_plan() {
       framework="$(bench_set_framework "${bs_file}")"
       dataset="$(bench_set_dataset "${bs_file}")"
       reps="$(bench_set_reps "${bs_file}")"
-      task_executor="$(default_task_executor_for_framework "${framework}")"
+      task_executor="$(resolve_bench_set_task_executor "${bs_file}")"
       tasks="$(resolve_tasks "${bs_file}")"
       i=0
       while IFS= read -r task; do
