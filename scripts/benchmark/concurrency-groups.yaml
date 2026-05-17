@@ -25,6 +25,12 @@ groups:
       vLLM with autoround quantization on bragi RTX 3090
       (http://bragi:8020/v1). Single-cell serialization.
 
+  bragi-lmstudio:
+    max_concurrency: 1
+    description: >-
+      LM Studio server on bragi (http://bragi:1234/v1). Single-model
+      local lane; serialize all cells.
+
   sindri-lucebox-dflash:
     max_concurrency: 1
     description: >-
@@ -69,3 +75,26 @@ groups:
     description: >-
       Native OpenAI GPT-5.5 lane (https://api.openai.com/v1). RPM 500,
       TPM 500000. Per-run cap $8; per-phase cap $300.
+
+  openai:
+    max_concurrency: 10
+    description: >-
+      Managed OpenAI smoke lane (https://api.openai.com/v1). Cheap
+      smoke runs only; keep moderate concurrency.
+
+  claude-code-native:
+    max_concurrency: 1
+    description: >-
+      Native Claude Code subscription lane. Local CLI state is not
+      shared; serialize all cells.
+
+  codex-native:
+    max_concurrency: 1
+    description: >-
+      Native Codex CLI lane. Local CLI state is not shared; serialize
+      all cells.
+
+  noop:
+    max_concurrency: 1
+    description: >-
+      Calibration lane with no model traffic. Serialize all cells.
